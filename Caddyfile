@@ -1,0 +1,7 @@
+{
+  email admin@cadencia.io
+}
+
+cadenciaa.duckdns.org {
+  reverse_proxy frontend:3000
+}

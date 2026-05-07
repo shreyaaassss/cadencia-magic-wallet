@@ -113,6 +113,12 @@ jobs:
             docker-compose.prod.yml \
             ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/app/docker-compose.prod.yml
 
+      - name: Copy Caddyfile to EC2
+        run: |
+          scp -o StrictHostKeyChecking=no -i cadencia-deploy.pem \
+            Caddyfile \
+            ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/app/Caddyfile
+
       - name: Deploy on EC2
         run: |
           ssh -o StrictHostKeyChecking=no -i cadencia-deploy.pem ec2-user@${{ secrets.EC2_HOST }} << 'ENDSSH'

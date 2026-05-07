@@ -63,5 +63,27 @@ services:
       backend:
         condition: service_healthy
 
+  # ── Caddy (HTTPS reverse proxy) ───────────────────────────────
+  # Automatically provisions a Let's Encrypt TLS cert for cadenciaa.duckdns.org.
+  # Requires ports 80 + 443 open in the EC2 security group and the DuckDNS
+  # hostname pointing to the EC2 public IP.
+  # crypto.subtle (needed by WalletConnect) requires a secure context (HTTPS),
+  # so this service is the fix for the wallet connection TypeError.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+
 volumes:
   redis_data:
+  caddy_data:
+  caddy_config:
