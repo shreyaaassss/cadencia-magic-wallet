@@ -3,6 +3,7 @@
 import { WalletProvider } from '@txnlab/use-wallet-react';
 import type { WalletManager } from '@txnlab/use-wallet-react';
 import { useState, useEffect, createContext, useContext } from 'react';
+import { installCryptoPolyfillIfNeeded } from '@/lib/crypto-polyfill';
 
 /**
  * Tracks whether the Algorand WalletManager has been initialised.
@@ -17,6 +18,9 @@ export function AlgorandWalletProvider({ children }: { children: React.ReactNode
 
   useEffect(() => {
     let cancelled = false;
+    // Patch window.crypto.subtle before WalletConnect loads — it captures the
+    // reference at module init time and has no built-in fallback for HTTP contexts.
+    installCryptoPolyfillIfNeeded();
     import('@/lib/wallet-config').then(({ getWalletManager }) => {
       if (!cancelled) setManager(getWalletManager());
     }).catch((err) => {
