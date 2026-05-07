@@ -4,6 +4,9 @@ const ALGOD_BASE = process.env.NEXT_PUBLIC_ALGOD_SERVER || 'https://testnet-api.
 const ALGOD_PORT = process.env.NEXT_PUBLIC_ALGOD_PORT || '';
 const ALGOD_TOKEN = process.env.NEXT_PUBLIC_ALGOD_TOKEN || '';
 const NETWORK = (process.env.NEXT_PUBLIC_ALGORAND_NETWORK || 'testnet') as NetworkId;
+// WalletConnect v2 requires a project ID to authenticate with the relay server.
+// Without it the relay session fails silently and the modal closes immediately.
+const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '';
 
 let _manager: WalletManager | null = null;
 
@@ -12,8 +15,18 @@ export function getWalletManager(): WalletManager {
 
   _manager = new WalletManager({
     wallets: [
-      WalletId.PERA,
-      WalletId.DEFLY,
+      {
+        id: WalletId.PERA,
+        options: {
+          projectId: WC_PROJECT_ID,
+        },
+      },
+      {
+        id: WalletId.DEFLY,
+        options: {
+          projectId: WC_PROJECT_ID,
+        },
+      },
     ],
     defaultNetwork: NETWORK,
     networks: {
@@ -68,4 +81,3 @@ export async function destroyWalletManager(): Promise<void> {
     }
   }
 }
-

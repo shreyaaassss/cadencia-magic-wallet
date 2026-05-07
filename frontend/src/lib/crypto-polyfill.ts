@@ -6,13 +6,16 @@
  * restrict SubtleCrypto to secure contexts), causing:
  *   TypeError: Cannot read properties of undefined (reading 'importKey')
  *
- * Fix: Patch window.crypto.subtle with a pure-JS AES-256-GCM implementation
- * backed by @noble/ciphers (already bundled transitively via @walletconnect/utils).
+ * Fix: Patch window.crypto.subtle with a pure-JS AES-256-GCM + HMAC-SHA256
+ * implementation backed by @noble/ciphers and @noble/hashes (bundled
+ * transitively via @walletconnect/utils). Uses static imports so turbopack
+ * always includes these modules in the client bundle.
  * On HTTPS, window.crypto.subtle is already defined so this is a no-op.
- *
- * Only AES-GCM importKey/generateKey/encrypt/decrypt are implemented — the
- * exact operations WalletConnect v2 uses for relay message encryption.
  */
+
+import { gcm } from '@noble/ciphers/aes';
+import { sha256 } from '@noble/hashes/sha256';
+import { hmac } from '@noble/hashes/hmac';
 
 type PolyfillKey = {
   _raw: Uint8Array;
@@ -65,7 +68,6 @@ const subtlePolyfill: SubtleCrypto = {
     key: CryptoKey,
     data: BufferSource
   ): Promise<ArrayBuffer> {
-    const { gcm } = await import('@noble/ciphers/aes');
     const params = algorithm as AesGcmParams;
     const iv = toBytes(params.iv as BufferSource);
     const aad = params.additionalData ? toBytes(params.additionalData as BufferSource) : undefined;
@@ -78,7 +80,6 @@ const subtlePolyfill: SubtleCrypto = {
     key: CryptoKey,
     data: BufferSource
   ): Promise<ArrayBuffer> {
-    const { gcm } = await import('@noble/ciphers/aes');
     const params = algorithm as AesGcmParams;
     const iv = toBytes(params.iv as BufferSource);
     const aad = params.additionalData ? toBytes(params.additionalData as BufferSource) : undefined;
@@ -86,8 +87,7 @@ const subtlePolyfill: SubtleCrypto = {
     return toArrayBuffer(result);
   },
 
-  async digest(algorithm: AlgorithmIdentifier, data: BufferSource): Promise<ArrayBuffer> {
-    const { sha256 } = await import('@noble/hashes/sha256');
+  async digest(_algorithm: AlgorithmIdentifier, data: BufferSource): Promise<ArrayBuffer> {
     return toArrayBuffer(sha256(toBytes(data)));
   },
 
@@ -99,8 +99,6 @@ const subtlePolyfill: SubtleCrypto = {
   ): Promise<ArrayBuffer> {
     const algName = typeof algorithm === 'string' ? algorithm : (algorithm as Algorithm).name;
     if (algName === 'HMAC') {
-      const { hmac } = await import('@noble/hashes/hmac');
-      const { sha256 } = await import('@noble/hashes/sha256');
       return toArrayBuffer(hmac(sha256, (key as unknown as PolyfillKey)._raw, toBytes(data)));
     }
     throw new Error(`sign algorithm "${algName}" not implemented in HTTP polyfill`);
@@ -114,8 +112,6 @@ const subtlePolyfill: SubtleCrypto = {
   ): Promise<boolean> {
     const algName = typeof algorithm === 'string' ? algorithm : (algorithm as Algorithm).name;
     if (algName === 'HMAC') {
-      const { hmac } = await import('@noble/hashes/hmac');
-      const { sha256 } = await import('@noble/hashes/sha256');
       const expected = hmac(sha256, (key as unknown as PolyfillKey)._raw, toBytes(data));
       const sig = toBytes(signature);
       if (expected.length !== sig.length) return false;
