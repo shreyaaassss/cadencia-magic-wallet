@@ -35,6 +35,13 @@ services:
     ports:
       - "8000:8000"
     env_file: .env.production
+    environment:
+      # Override SECURE_COOKIES so the httpOnly refresh-token cookie is sent
+      # over HTTP (port 3000). With Secure=true the browser silently drops the
+      # cookie on HTTP → /v1/auth/refresh returns 401 → user is logged out on
+      # every page refresh. Set back to true once HTTPS (Caddy) is the sole
+      # entry point.
+      - SECURE_COOKIES=false
     depends_on:
       redis:
         condition: service_healthy

@@ -91,9 +91,41 @@ const subtlePolyfill: SubtleCrypto = {
     return toArrayBuffer(sha256(toBytes(data)));
   },
 
-  // Stubs for unused SubtleCrypto methods
-  async sign(): Promise<ArrayBuffer> { throw new Error('sign not implemented in HTTP polyfill'); },
-  async verify(): Promise<boolean> { throw new Error('verify not implemented in HTTP polyfill'); },
+  // HMAC-SHA256 sign/verify — used by WalletConnect v2 for authenticated encryption
+  async sign(
+    algorithm: AlgorithmIdentifier | RsaPssParams | EcdsaParams,
+    key: CryptoKey,
+    data: BufferSource
+  ): Promise<ArrayBuffer> {
+    const algName = typeof algorithm === 'string' ? algorithm : (algorithm as Algorithm).name;
+    if (algName === 'HMAC') {
+      const { hmac } = await import('@noble/hashes/hmac');
+      const { sha256 } = await import('@noble/hashes/sha256');
+      return toArrayBuffer(hmac(sha256, (key as unknown as PolyfillKey)._raw, toBytes(data)));
+    }
+    throw new Error(`sign algorithm "${algName}" not implemented in HTTP polyfill`);
+  },
+
+  async verify(
+    algorithm: AlgorithmIdentifier | RsaPssParams | EcdsaParams,
+    key: CryptoKey,
+    signature: BufferSource,
+    data: BufferSource
+  ): Promise<boolean> {
+    const algName = typeof algorithm === 'string' ? algorithm : (algorithm as Algorithm).name;
+    if (algName === 'HMAC') {
+      const { hmac } = await import('@noble/hashes/hmac');
+      const { sha256 } = await import('@noble/hashes/sha256');
+      const expected = hmac(sha256, (key as unknown as PolyfillKey)._raw, toBytes(data));
+      const sig = toBytes(signature);
+      if (expected.length !== sig.length) return false;
+      let diff = 0;
+      for (let i = 0; i < expected.length; i++) diff |= expected[i] ^ sig[i];
+      return diff === 0;
+    }
+    throw new Error(`verify algorithm "${algName}" not implemented in HTTP polyfill`);
+  },
+
   async deriveKey(): Promise<CryptoKey> { throw new Error('deriveKey not implemented in HTTP polyfill'); },
   async deriveBits(): Promise<ArrayBuffer> { throw new Error('deriveBits not implemented in HTTP polyfill'); },
   async wrapKey(): Promise<ArrayBuffer> { throw new Error('wrapKey not implemented in HTTP polyfill'); },
