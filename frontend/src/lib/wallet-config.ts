@@ -15,18 +15,8 @@ export function getWalletManager(): WalletManager {
 
   _manager = new WalletManager({
     wallets: [
-      {
-        id: WalletId.PERA,
-        options: {
-          projectId: WC_PROJECT_ID,
-        },
-      },
-      {
-        id: WalletId.DEFLY,
-        options: {
-          projectId: WC_PROJECT_ID,
-        },
-      },
+      WalletId.PERA,
+      WalletId.DEFLY,
     ],
     defaultNetwork: NETWORK,
     networks: {
