@@ -135,6 +135,11 @@ jobs:
             export FRONTEND_IMAGE=315326805553.dkr.ecr.ap-south-1.amazonaws.com/cadencia-frontend:latest
             export REDIS_PASSWORD=$(grep REDIS_PASSWORD .env.production | cut -d= -f2)
 
+            # Free ports 80/443 from any host-level process (e.g. nginx, old caddy)
+            # before Caddy tries to bind them.
+            sudo fuser -k 80/tcp 2>/dev/null || true
+            sudo fuser -k 443/tcp 2>/dev/null || true
+
             # Bring up stack (migration runs first, then backend, then frontend)
             docker-compose -f docker-compose.prod.yml pull
             docker-compose -f docker-compose.prod.yml up -d --remove-orphans
