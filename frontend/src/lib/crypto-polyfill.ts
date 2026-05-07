@@ -109,7 +109,7 @@ export function installCryptoPolyfillIfNeeded(): void {
   if (typeof window === 'undefined') return;
   if (window.crypto?.subtle) return; // HTTPS / localhost — no polyfill needed
 
-  const target = window.crypto as Record<string, unknown>;
+  const target = window.crypto as unknown as Record<string, unknown>;
 
   // Strategy 1: own property via defineProperty
   try {
