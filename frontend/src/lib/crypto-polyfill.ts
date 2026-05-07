@@ -46,7 +46,7 @@ const subtlePolyfill: SubtleCrypto = {
   },
 
   async generateKey(
-    algorithm: AlgorithmIdentifier | RsaHashedKeyGenParams | EcKeyGenParams | CryptoKeyPairUsageName | AesKeyGenParams | HmacKeyGenParams,
+    algorithm: AlgorithmIdentifier | RsaHashedKeyGenParams | EcKeyGenParams | AesKeyGenParams | HmacKeyGenParams,
     extractable: boolean,
     keyUsages: KeyUsage[]
   ): Promise<CryptoKey | CryptoKeyPair> {
