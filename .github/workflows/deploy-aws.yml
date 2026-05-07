@@ -140,10 +140,18 @@ jobs:
             sudo fuser -k 80/tcp 2>/dev/null || true
             sudo fuser -k 443/tcp 2>/dev/null || true
 
-            # Bring up stack (migration runs first, then backend, then frontend)
-            docker-compose -f docker-compose.prod.yml pull
-            docker-compose -f docker-compose.prod.yml up -d --remove-orphans
+            # Tear down existing stack completely before pulling new images.
+            # Prevents stale containers from running old code when the image
+            # digest changes (docker-compose up -d alone may skip recreation
+            # if it thinks the container is already up-to-date).
+            docker-compose -f docker-compose.prod.yml down --remove-orphans || true
 
-            # Clean up old images
-            docker image prune -f
+            # Pull fresh images from ECR
+            docker-compose -f docker-compose.prod.yml pull
+
+            # Bring up stack (migration runs first, then backend, then frontend)
+            docker-compose -f docker-compose.prod.yml up -d
+
+            # Remove ALL unused images (not just dangling) to free disk space
+            docker image prune -a -f
           ENDSSH
