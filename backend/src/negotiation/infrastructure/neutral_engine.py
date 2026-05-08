@@ -259,12 +259,28 @@ class NeutralEngine:
         # ── LOGISTICS CONTEXT (from match scoring) ──
         logistics_context = self._get_logistics_context(session)
 
-        raw_output = await self.agent_driver.generate_offer(  # type: ignore[union-attr]
-            system_prompt=system_prompt,
-            session_context=session_context,
-            offer_history=offer_history,
-            logistics_context=logistics_context,
-        )
+        try:
+            raw_output = await self.agent_driver.generate_offer(  # type: ignore[union-attr]
+                system_prompt=system_prompt,
+                session_context=session_context,
+                offer_history=offer_history,
+                logistics_context=logistics_context,
+            )
+        except Exception as llm_err:
+            # LLM unavailable (rate-limit, timeout, exhausted retries).
+            # Fall back to the strategy-recommended price so the session
+            # continues rather than crashing mid-negotiation.
+            log.warning(
+                "llm_fallback_to_strategy",
+                error=str(llm_err),
+                strategy_price=float(strategy_rec.suggested_price),
+            )
+            raw_output = {
+                "action": "OFFER",
+                "price": float(strategy_rec.suggested_price),
+                "reasoning": "LLM unavailable — strategy fallback price used.",
+                "confidence": 0.5,
+            }
 
         action = raw_output.get("action", "OFFER").upper()
         llm_price = Decimal(str(raw_output.get("price", strategy_rec.suggested_price)))

@@ -41,8 +41,12 @@ class PersonalizationBuilder:
                 f"Stall threshold: {w.stall_threshold} rounds"
             )
 
-        # ── Risk profile: show actual INR amount so LLM has real number context ──
-        budget_inr = profile.risk_profile.budget_ceiling
+        # ── Risk profile: prefer RFQ budget over stale profile default (buyer only) ──
+        # profile.risk_profile.budget_ceiling is a stored default that may lag
+        # behind the actual RFQ. When an RFQ total_budget_inr is present it IS
+        # the real hard ceiling for this negotiation.
+        rfq_budget = (rfq_context or {}).get("total_budget_inr") if role == "buyer" else None
+        budget_inr = rfq_budget if rfq_budget else profile.risk_profile.budget_ceiling
         risk_section = (
             f"Budget ceiling: ₹{budget_inr:,.0f} INR (HARD LIMIT — never exceed this)\n"
             f"Margin floor: {profile.risk_profile.margin_floor}%\n"
@@ -62,12 +66,18 @@ class PersonalizationBuilder:
             total_cost = rfq_context.get("total_cost_basis")
             cost_lines = ""
             if unit_price is not None:
-                cost_lines += f"\nYour catalogue unit price: ₹{unit_price:,.0f} INR/unit"
+                cost_lines += f"\nYour listed unit price: ₹{unit_price:,.0f} INR/unit"
             if total_cost is not None:
+                # total_cost is the asking price total (per-unit × quantity).
+                # The negotiable floor is asking × (1 - margin_floor%) — the
+                # minimum the seller should accept while still preserving margin.
+                margin_floor_pct = float(profile.risk_profile.margin_floor) / 100.0
+                negotiable_floor = total_cost * (1.0 - margin_floor_pct)
                 cost_lines += (
-                    f"\nYour total cost basis for this order: ₹{total_cost:,.0f} INR"
-                    f"\n⚠️  FLOOR PRICE: You MUST NOT accept any offer below ₹{total_cost:,.0f} INR"
-                    f" — that is your cost. Any deal below this loses money."
+                    f"\nYour listed asking price (total for this order): ₹{total_cost:,.0f} INR"
+                    f"\nYour negotiable floor (minimum acceptable): ₹{negotiable_floor:,.0f} INR"
+                    f"\n⚠️  You MAY negotiate down to ₹{negotiable_floor:,.0f} INR but NEVER below it."
+                    f" Offers above your asking price are ideal — push toward ₹{total_cost:,.0f} INR."
                 )
 
             rfq_section = (
