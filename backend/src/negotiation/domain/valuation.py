@@ -240,11 +240,25 @@ def compute_buyer_valuation_from_rfq(
     """
     Compute buyer valuation from RFQ budget range.
 
-    Uses midpoint as fair price, budget_max as ceiling.
+    reservation_price = budget_max — the buyer's hard ceiling (won't pay more).
+    target_price      = budget_max × target_factor — aspirational low price.
+
+    NOTE: compute_valuation() applies (1-risk) which is the seller formula and
+    produces a reservation BELOW the fair price. For buyers the reservation is
+    their MAXIMUM (budget ceiling), so we set it directly rather than deriving it.
     """
-    fair_price = (budget_min + budget_max) / Decimal("2")
-    return compute_buyer_valuation(
-        fair_price=fair_price,
-        risk_appetite=risk_appetite,
-        budget_ceiling=budget_max,
+    target_factor_map = {"LOW": Decimal("0.85"), "MEDIUM": Decimal("0.80"), "HIGH": Decimal("0.70")}
+    target_factor = target_factor_map.get(risk_appetite, Decimal("0.80"))
+
+    reservation = budget_max.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    target = (budget_max * target_factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    walkaway_delta = (budget_max * Decimal("0.02")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    if target <= Decimal("0"):
+        target = Decimal("0.01")
+
+    return Valuation(
+        reservation_price=reservation,
+        target_price=target,
+        walkaway_delta=walkaway_delta,
     )
