@@ -56,10 +56,25 @@ class PersonalizationBuilder:
             unit = rfq_context.get("quantity_unit", "units")
             total_budget = rfq_context.get("total_budget_inr")
             budget_str = f"₹{total_budget:,.0f} INR" if total_budget else "see budget ceiling"
+
+            # Seller-specific cost structure (only present for seller agents with catalogue data)
+            unit_price = rfq_context.get("catalogue_unit_price")
+            total_cost = rfq_context.get("total_cost_basis")
+            cost_lines = ""
+            if unit_price is not None:
+                cost_lines += f"\nYour catalogue unit price: ₹{unit_price:,.0f} INR/unit"
+            if total_cost is not None:
+                cost_lines += (
+                    f"\nYour total cost basis for this order: ₹{total_cost:,.0f} INR"
+                    f"\n⚠️  FLOOR PRICE: You MUST NOT accept any offer below ₹{total_cost:,.0f} INR"
+                    f" — that is your cost. Any deal below this loses money."
+                )
+
             rfq_section = (
                 f"Product / Commodity: {product}\n"
                 f"Order quantity: {quantity} {unit}\n"
-                f"Buyer's total budget for this order: {budget_str}\n"
+                f"Buyer's total budget for this order: {budget_str}"
+                f"{cost_lines}\n"
                 f"⚠️  CRITICAL PRICE CONTEXT:\n"
                 f"    All prices in this negotiation are TOTAL ORDER VALUES in INR.\n"
                 f"    The 'suggested_price' you receive is the full deal amount — NOT a per-unit rate.\n"

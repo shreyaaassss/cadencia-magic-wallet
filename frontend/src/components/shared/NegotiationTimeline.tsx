@@ -51,7 +51,7 @@ export function NegotiationTimeline({ offers, sessionStatus }: NegotiationTimeli
               </div>
               <span className="text-lg font-bold text-foreground">
                 {formatCurrency(offer.price)}
-                <span className="text-xs font-normal text-muted-foreground">/MT</span>
+                <span className="text-xs font-normal text-muted-foreground"> total</span>
               </span>
             </div>
 

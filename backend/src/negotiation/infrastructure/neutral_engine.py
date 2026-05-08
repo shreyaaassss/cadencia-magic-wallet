@@ -223,6 +223,15 @@ class NeutralEngine:
                 "quantity_unit": rfq_parsed_fields.get("quantity_unit", "units"),
                 "total_budget_inr": rfq_parsed_fields.get("budget_max"),
             }
+            # For the seller agent: expose per-unit price and total cost basis so the
+            # LLM anchors correctly and never negotiates below its own cost floor.
+            if not is_buyer and catalogue_price is not None:
+                quantity_for_ctx = rfq_parsed_fields.get("quantity")
+                rfq_ctx["catalogue_unit_price"] = float(catalogue_price)
+                if quantity_for_ctx is not None and Decimal(str(quantity_for_ctx)) > 0:
+                    rfq_ctx["total_cost_basis"] = float(
+                        catalogue_price * Decimal(str(quantity_for_ctx))
+                    )
 
         system_prompt = self.personalization.build(
             profile=current_profile,
@@ -510,7 +519,12 @@ class NeutralEngine:
                             budget_ceiling=profile.risk_profile.budget_ceiling,
                         )
                     else:
-                        cost_basis = catalogue_price if catalogue_price is not None else intrinsic_value
+                        if catalogue_price is not None:
+                            # catalogue_price is per-unit — scale to total order value
+                            # so the seller's floor is on the same basis as the buyer's budget.
+                            cost_basis = catalogue_price * quantity
+                        else:
+                            cost_basis = intrinsic_value
                         val = compute_seller_valuation_from_catalogue(
                             catalogue_price=cost_basis,
                             margin_floor=profile.risk_profile.margin_floor,
@@ -532,16 +546,22 @@ class NeutralEngine:
                 if not is_buyer and rfq_parsed_fields.get("budget_max") is not None:
                     market_ref = Decimal(str(rfq_parsed_fields["budget_max"]))
                     if catalogue_price is not None:
-                        cost_basis = catalogue_price
+                        # catalogue_price is per-unit — multiply by order quantity
+                        # to get total cost basis comparable to the buyer's budget.
+                        quantity_raw_b = rfq_parsed_fields.get("quantity")
+                        if quantity_raw_b is not None and Decimal(str(quantity_raw_b)) > 0:
+                            cost_basis = catalogue_price * Decimal(str(quantity_raw_b))
+                        else:
+                            # No usable quantity — derive from budget with match_score heuristic
+                            match_score = Decimal(str(rfq_parsed_fields.get("_match_score", 0.5)))
+                            cost_basis = market_ref * (Decimal("0.85") - Decimal("0.25") * match_score)
                     else:
-                        # Use match_score to differentiate sellers:
+                        # No catalogue price — use match_score to differentiate sellers.
                         # Higher match score → lower cost basis → more competitive pricing.
-                        # Score 1.0 → 60% of budget, score 0.5 → 80% of budget.
+                        # Score 1.0 → 60% of budget, score 0.5 → 72.5% of budget.
                         match_score = Decimal(str(
                             rfq_parsed_fields.get("_match_score", 0.5)
                         ))
-                        # Linear interpolation: cost_factor = 0.85 - 0.25 * score
-                        # score=1.0 → 0.60, score=0.5 → 0.725, score=0.3 → 0.775
                         cost_factor = Decimal("0.85") - Decimal("0.25") * match_score
                         cost_basis = market_ref * cost_factor
                     val = compute_seller_valuation_from_catalogue(
