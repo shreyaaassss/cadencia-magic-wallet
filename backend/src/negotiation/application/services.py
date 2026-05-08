@@ -295,7 +295,7 @@ class NegotiationService:
 
         if is_terminal:
             reasoning = offer.agent_reasoning or ""
-            if "REJECTED" in reasoning or "WALK_AWAY" in reasoning:
+            if "REJECT" in reasoning or "WALK_AWAY" in reasoning:
                 await self._handle_walk_away(session, f"Agent rejected at round {session.round_count.value}")
             elif "POLICY_BREACH" in reasoning:
                 await self._handle_policy_breach(session)
