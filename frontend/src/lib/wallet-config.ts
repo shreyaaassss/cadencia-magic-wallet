@@ -14,16 +14,19 @@ let _manager: WalletManager | null = null;
 export function getWalletManager(): WalletManager {
   if (_manager) return _manager;
 
+  // Build wallet list imperatively to avoid TS discriminated-union narrowing
+  // issues when spreading a conditional WalletConnect entry.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const wallets: any[] = [WalletId.PERA, WalletId.DEFLY];
+  if (WC_PROJECT_ID) {
+    // WalletConnect v2 generic modal — authenticates the relay so the
+    // sign-client doesn't crash on importKey. Only added when a project ID
+    // is available (baked in at Docker build time from WALLETCONNECT_PROJECT_ID secret).
+    wallets.push({ id: WalletId.WALLETCONNECT, options: { projectId: WC_PROJECT_ID } });
+  }
+
   _manager = new WalletManager({
-    wallets: [
-      WalletId.PERA,
-      WalletId.DEFLY,
-      // WalletConnect v2 generic modal — authenticates the WC v2 relay and
-      // prevents the importKey TypeError. Only added when a project ID is set.
-      ...(WC_PROJECT_ID
-        ? [{ id: WalletId.WALLETCONNECT, options: { projectId: WC_PROJECT_ID } }]
-        : []),
-    ],
+    wallets,
     defaultNetwork: NETWORK,
     networks: {
       [NETWORK]: {
