@@ -201,14 +201,34 @@ def compute_seller_valuation_from_catalogue(
     """
     Compute seller valuation using catalogue pricing.
 
+    catalogue_price is the listed ASKING/SELLING price (what the seller wants
+    to receive), NOT an internal cost. margin_floor is the maximum discount
+    the seller will accept from their asking price (e.g. 10% → floor is 90%
+    of the catalogue price).
+
+    reservation_price = catalogue_price × (1 - margin_floor/100)
+    target_price      = catalogue_price  (seller aims for their full ask)
+
     Uses the bulk-tier price if available, otherwise the base catalogue price.
-    Delegates to compute_seller_valuation for the actual calculation.
     """
-    cost_basis = bulk_price if bulk_price else catalogue_price
-    return compute_seller_valuation(
-        cost_basis=cost_basis,
-        margin_floor=margin_floor,
-        risk_appetite=risk_appetite,
+    asking_price = bulk_price if bulk_price else catalogue_price
+    margin_d = margin_floor / Decimal("100")
+
+    reservation = (asking_price * (Decimal("1") - margin_d)).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    target = asking_price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    walkaway_delta = (asking_price * Decimal("0.02")).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+    if reservation <= Decimal("0"):
+        reservation = Decimal("0.01")
+
+    return Valuation(
+        reservation_price=reservation,
+        target_price=target,
+        walkaway_delta=walkaway_delta,
     )
 
 
