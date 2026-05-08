@@ -3,8 +3,8 @@ version: "3.9"
 # ─────────────────────────────────────────────────────────────
 # Cadencia — Production (EC2 + RDS)
 # Images pulled from ECR; RDS Postgres used instead of local DB
-# Access: http://<EC2_PUBLIC_IP>:8000  (backend)
-#         http://<EC2_PUBLIC_IP>:3000  (frontend)
+# Access: https://cadenciaa.duckdns.org  (frontend via Caddy)
+#         http://<EC2_PUBLIC_IP>:8000    (backend API)
 # ─────────────────────────────────────────────────────────────
 
 services:
@@ -36,12 +36,9 @@ services:
       - "8000:8000"
     env_file: .env.production
     environment:
-      # Override SECURE_COOKIES so the httpOnly refresh-token cookie is sent
-      # over HTTP (port 3000). With Secure=true the browser silently drops the
-      # cookie on HTTP → /v1/auth/refresh returns 401 → user is logged out on
-      # every page refresh. Set back to true once HTTPS (Caddy) is the sole
-      # entry point.
-      - SECURE_COOKIES=false
+      # Caddy is now the sole entry point (port 3000 not exposed to host),
+      # so all cookies travel over HTTPS — Secure flag is safe to enable.
+      - SECURE_COOKIES=true
     depends_on:
       redis:
         condition: service_healthy
@@ -57,8 +54,9 @@ services:
   frontend:
     image: ${FRONTEND_IMAGE:-315326805553.dkr.ecr.ap-south-1.amazonaws.com/cadencia-frontend:latest}
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    # Port 3000 is intentionally NOT exposed to the host — all traffic must flow
+    # through Caddy (ports 80/443) so the browser receives a secure context.
+    # window.crypto.subtle (required by WalletConnect) is only available on HTTPS.
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_ENABLE_MOCKS=false

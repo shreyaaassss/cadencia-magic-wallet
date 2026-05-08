@@ -12,6 +12,19 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# Accept build-time public env vars. NEXT_PUBLIC_* vars are baked into the
+# client bundle at build time — they must be declared as ARG + promoted to ENV
+# here, otherwise docker build-args are silently ignored by Next.js.
+ARG NEXT_PUBLIC_ENABLE_MOCKS=false
+ARG NEXT_PUBLIC_ALGORAND_NETWORK=testnet
+ARG NEXT_PUBLIC_ALGOD_SERVER=https://testnet-api.4160.nodely.dev
+ARG NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
+ENV NEXT_PUBLIC_ENABLE_MOCKS=${NEXT_PUBLIC_ENABLE_MOCKS}
+ENV NEXT_PUBLIC_ALGORAND_NETWORK=${NEXT_PUBLIC_ALGORAND_NETWORK}
+ENV NEXT_PUBLIC_ALGOD_SERVER=${NEXT_PUBLIC_ALGOD_SERVER}
+ENV NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=${NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID}
+
 RUN npm run build
 
 # Production runner

@@ -4,8 +4,9 @@ const ALGOD_BASE = process.env.NEXT_PUBLIC_ALGOD_SERVER || 'https://testnet-api.
 const ALGOD_PORT = process.env.NEXT_PUBLIC_ALGOD_PORT || '';
 const ALGOD_TOKEN = process.env.NEXT_PUBLIC_ALGOD_TOKEN || '';
 const NETWORK = (process.env.NEXT_PUBLIC_ALGORAND_NETWORK || 'testnet') as NetworkId;
-// WalletConnect v2 requires a project ID to authenticate with the relay server.
-// Without it the relay session fails silently and the modal closes immediately.
+// WalletConnect v2 project ID — required for the WalletConnect v2 relay.
+// Pera and Defly use WalletConnect v1 internally (no projectId needed).
+// WalletId.WALLETCONNECT (generic WC v2 modal) requires this explicitly.
 const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '';
 
 let _manager: WalletManager | null = null;
@@ -13,11 +14,23 @@ let _manager: WalletManager | null = null;
 export function getWalletManager(): WalletManager {
   if (_manager) return _manager;
 
+  const wallets: Parameters<typeof WalletManager>[0]['wallets'] = [
+    WalletId.PERA,
+    WalletId.DEFLY,
+  ];
+
+  // Add generic WalletConnect v2 support when a project ID is available.
+  // This covers wallets that connect via the WalletConnect QR/deep-link flow
+  // and properly authenticates the WC v2 relay to prevent importKey errors.
+  if (WC_PROJECT_ID) {
+    wallets.push({
+      id: WalletId.WALLETCONNECT,
+      options: { projectId: WC_PROJECT_ID },
+    });
+  }
+
   _manager = new WalletManager({
-    wallets: [
-      WalletId.PERA,
-      WalletId.DEFLY,
-    ],
+    wallets,
     defaultNetwork: NETWORK,
     networks: {
       [NETWORK]: {
