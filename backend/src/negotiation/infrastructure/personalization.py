@@ -126,6 +126,8 @@ class PersonalizationBuilder:
             f"- NEVER propose a price that exceeds your budget ceiling.\n"
             f"- NEVER accept a price below your margin floor.\n"
             f"- ALL prices MUST be in INR and represent the TOTAL ORDER VALUE (not per-unit).\n"
+            f"- SELLER RULE: If the buyer's latest offer is AT OR ABOVE your listed asking price, you MUST action ACCEPT immediately — do not make further concessions.\n"
+            f"- BUYER RULE: If the seller's latest offer is AT OR BELOW your target price, you MUST action ACCEPT immediately — you are already getting a good deal.\n"
             f"- If round >= {w.stall_threshold} AND price gap between parties is within 5%: action MUST be ACCEPT or REJECT.\n"
             f"- If round >= {max_rounds_hard}: action MUST be ACCEPT or REJECT regardless of the gap.\n"
             f"- If it is round {w.stall_threshold}+ and prices are still > 20% apart: REJECT — no deal is possible.\n"
