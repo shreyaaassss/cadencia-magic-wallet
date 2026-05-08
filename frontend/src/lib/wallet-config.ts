@@ -14,23 +14,16 @@ let _manager: WalletManager | null = null;
 export function getWalletManager(): WalletManager {
   if (_manager) return _manager;
 
-  const wallets: Parameters<typeof WalletManager>[0]['wallets'] = [
-    WalletId.PERA,
-    WalletId.DEFLY,
-  ];
-
-  // Add generic WalletConnect v2 support when a project ID is available.
-  // This covers wallets that connect via the WalletConnect QR/deep-link flow
-  // and properly authenticates the WC v2 relay to prevent importKey errors.
-  if (WC_PROJECT_ID) {
-    wallets.push({
-      id: WalletId.WALLETCONNECT,
-      options: { projectId: WC_PROJECT_ID },
-    });
-  }
-
   _manager = new WalletManager({
-    wallets,
+    wallets: [
+      WalletId.PERA,
+      WalletId.DEFLY,
+      // WalletConnect v2 generic modal — authenticates the WC v2 relay and
+      // prevents the importKey TypeError. Only added when a project ID is set.
+      ...(WC_PROJECT_ID
+        ? [{ id: WalletId.WALLETCONNECT, options: { projectId: WC_PROJECT_ID } }]
+        : []),
+    ],
     defaultNetwork: NETWORK,
     networks: {
       [NETWORK]: {
