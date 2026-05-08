@@ -288,7 +288,19 @@ class NeutralEngine:
         reasoning = raw_output.get("reasoning", "")
 
         # ── LAYER 4: GUARDRAIL VETO ──
-        # Use strategy price as fallback if LLM price violates guardrails
+        # Use strategy price as fallback if LLM price violates guardrails.
+        # For the buyer ceiling: prefer RFQ budget_max over the stale profile
+        # default so the guardrail matches the real negotiation constraint.
+        rfq_budget_max = (
+            Decimal(str(rfq_parsed_fields["budget_max"]))
+            if rfq_parsed_fields and rfq_parsed_fields.get("budget_max")
+            else None
+        )
+        effective_budget_ceiling = (
+            rfq_budget_max if (is_buyer and rfq_budget_max)
+            else current_profile.risk_profile.budget_ceiling
+        )
+
         final_price = llm_price
         is_terminal = False
 
@@ -309,7 +321,7 @@ class NeutralEngine:
                 envelope=envelope,
                 reservation_price=valuation.reservation_price,
                 budget_ceiling=(
-                    current_profile.risk_profile.budget_ceiling if is_buyer else None
+                    effective_budget_ceiling if is_buyer else None
                 ),
                 margin_floor=(
                     current_profile.risk_profile.margin_floor if not is_buyer else None
@@ -331,15 +343,15 @@ class NeutralEngine:
                 if session.record_schema_failure():
                     return self._create_policy_breach_offer(session, current_role), True
 
-            # Budget guard for buyer
+            # Budget guard for buyer — use RFQ budget if available, else profile default
             if is_buyer:
                 try:
                     NegotiationPolicy.check_budget_guard(
-                        final_price, current_profile.risk_profile.budget_ceiling
+                        final_price, effective_budget_ceiling
                     )
                 except Exception:
                     final_price = min(
-                        final_price, current_profile.risk_profile.budget_ceiling
+                        final_price, effective_budget_ceiling
                     )
 
         elif action == "ACCEPT":
