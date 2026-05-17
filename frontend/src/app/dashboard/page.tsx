@@ -119,7 +119,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             {isBuyer && (
               <a
-                href="https://credencia-platform.vercel.app/"
+                href="https://3.111.151.59.nip.io"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
