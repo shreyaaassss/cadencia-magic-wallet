@@ -23,7 +23,7 @@ from src.wallet.models import X402PaymentModel
 
 log = get_logger(__name__)
 
-router = APIRouter(prefix="/x402", tags=["x402"])
+router = APIRouter(prefix="/v1/x402", tags=["x402"])
 
 
 # ── GET /x402/payment-requirements ───────────────────────────────────────────

@@ -110,7 +110,7 @@ export function WalletWidget() {
     if (!walletAddress) return;
     setPaymentsLoading(true);
     try {
-      const { data } = await api.get('/x402/payment-history', {
+      const { data } = await api.get('/v1/x402/payment-history', {
         params: { buyer_address: walletAddress, limit: 5 },
       });
       setPayments((data?.data as X402PaymentRecord[]) ?? []);
