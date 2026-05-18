@@ -6,11 +6,9 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Building2, AlertCircle, Loader2, ShieldCheck, Wallet } from 'lucide-react';
-import { toast } from 'sonner';
+import { Building2, AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
 
 import { useAuth } from '@/hooks/useAuth';
-import { useMagic } from '@/context/MagicContext';
 import { ROUTES } from '@/lib/constants';
 import { FormField } from '@/components/shared/FormField';
 import { PasswordInput } from '@/components/shared/PasswordInput';
@@ -36,14 +34,10 @@ function ErrorBanner({ message }: { message: string }) {
 export default function LoginPage() {
   const router = useRouter();
   const { user, isLoading, login, adminLogin } = useAuth();
-  const { loginWithMagic, walletAddress, isLoading: magicLoading } = useMagic();
   const [globalError, setGlobalError] = React.useState<string | null>(null);
   const [showAdminForm, setShowAdminForm] = React.useState(false);
   const [adminError, setAdminError] = React.useState<string | null>(null);
   const [adminSubmitting, setAdminSubmitting] = React.useState(false);
-  const [showMagicForm, setShowMagicForm] = React.useState(false);
-  const [magicEmail, setMagicEmail] = React.useState('');
-  const [magicError, setMagicError] = React.useState<string | null>(null);
 
   const {
     register,
@@ -59,18 +53,6 @@ export default function LoginPage() {
       router.replace(ROUTES.DASHBOARD);
     }
   }, [user, isLoading, router]);
-
-  const onMagicSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setMagicError(null);
-    try {
-      await loginWithMagic(magicEmail);
-      toast.success('Magic wallet connected');
-      setShowMagicForm(false);
-    } catch (err: any) {
-      setMagicError(err.message || 'Magic login failed. Please try again.');
-    }
-  };
 
   const onSubmit = async (data: LoginFormValues) => {
     setGlobalError(null);
@@ -131,7 +113,7 @@ export default function LoginPage() {
           >
             <Input
               type="email"
-  className={touchedFields.email && errors.email ? 'border-destructive ring-destructive' : ''}
+              className={touchedFields.email && errors.email ? 'border-destructive ring-destructive' : ''}
               {...register('email')}
             />
           </FormField>
@@ -178,71 +160,6 @@ export default function LoginPage() {
             Seller
           </Link>
         </div>
-
-        {/* Magic Wallet */}
-        <div className="border-t border-border w-full my-6" />
-
-        {walletAddress ? (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground border border-border rounded-lg px-3 py-2">
-            <Wallet className="h-3.5 w-3.5 text-primary shrink-0" />
-            <span className="font-mono truncate">
-              {walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}
-            </span>
-            <span className="text-green-500 ml-auto">Connected</span>
-          </div>
-        ) : !showMagicForm ? (
-          <button
-            type="button"
-            onClick={() => setShowMagicForm(true)}
-            className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-xs font-medium transition-all border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"
-          >
-            <Wallet className="h-3.5 w-3.5" />
-            Connect with Magic Wallet
-          </button>
-        ) : (
-          <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
-            <div className="flex items-center gap-2 mb-2">
-              <Wallet className="h-4 w-4 text-primary" />
-              <span className="text-sm font-medium text-foreground">Magic Wallet Login</span>
-            </div>
-            {magicError && <ErrorBanner message={magicError} />}
-            <form onSubmit={onMagicSubmit} className="space-y-3">
-              <Input
-                type="email"
-                placeholder="your@email.com"
-                value={magicEmail}
-                onChange={(e) => setMagicEmail(e.target.value)}
-                required
-                className="text-sm"
-              />
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => { setShowMagicForm(false); setMagicError(null); }}
-                  className="flex-1 text-sm"
-                  disabled={magicLoading}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={magicLoading || !magicEmail}
-                  className="flex-1 text-sm bg-primary text-primary-foreground hover:bg-primary/90"
-                >
-                  {magicLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                      Connecting…
-                    </>
-                  ) : (
-                    'Send Magic Link'
-                  )}
-                </Button>
-              </div>
-            </form>
-          </div>
-        )}
 
         {/* Admin Login */}
         <div className="border-t border-border w-full my-6" />

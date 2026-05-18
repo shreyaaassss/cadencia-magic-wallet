@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
-import { MagicProvider } from '@/context/MagicContext';
 import { WalletProviderWrapper } from '@/components/providers/WalletProviderWrapper';
 import { CadenciaWalletProvider } from '@/context/WalletContext';
 import { QueryProvider } from '@/components/providers/QueryProvider';
@@ -28,14 +27,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MSWProvider>
           <QueryProvider>
             <AuthProvider>
-              <MagicProvider>
-                <WalletProviderWrapper>
-                  <CadenciaWalletProvider>
-                    {children}
-                    <Toaster position="bottom-right" theme="dark" />
-                  </CadenciaWalletProvider>
-                </WalletProviderWrapper>
-              </MagicProvider>
+              <WalletProviderWrapper>
+                <CadenciaWalletProvider>
+                  {children}
+                  <Toaster position="bottom-right" theme="dark" />
+                </CadenciaWalletProvider>
+              </WalletProviderWrapper>
             </AuthProvider>
           </QueryProvider>
         </MSWProvider>

@@ -1,18 +1,21 @@
 'use client';
 
 /**
- * WalletWidget — displays Magic wallet info, ALGO balance, and x402 payment history.
+ * WalletWidget — displays the connected Algorand wallet info and x402 payment history.
+ *
+ * Uses the existing CadenciaWalletContext (Pera / Defly / Lute / etc.) —
+ * no second wallet needed.
  *
  * Shows:
  *   - Algorand address (truncated, copy-to-clipboard)
- *   - Live ALGO balance (fetched from Algorand node)
- *   - "Top Up" button linking to the Algorand testnet faucet
+ *   - ALGO balance (from platform balance endpoint)
+ *   - "Get TestNet ALGO" button linking to the Algorand faucet
  *   - Last 5 x402 payment records
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { Copy, Check, ExternalLink, RefreshCw, Wallet } from 'lucide-react';
-import { useMagic } from '@/context/MagicContext';
+import { useWalletContext } from '@/context/WalletContext';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 
@@ -29,15 +32,14 @@ interface X402PaymentRecord {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function truncateAddress(address: string): string {
-  if (address.length <= 12) return address;
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
 function microAlgoToAlgo(microAlgo: number): string {
-  return (microAlgo / 1_000_000).toFixed(6);
+  return (microAlgo / 1_000_000).toFixed(4);
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Copy button ───────────────────────────────────────────────────────────────
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -48,7 +50,7 @@ function CopyButton({ text }: { text: string }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // clipboard API not available
+      // clipboard unavailable
     }
   }, [text]);
 
@@ -59,11 +61,7 @@ function CopyButton({ text }: { text: string }) {
       className="ml-1.5 text-muted-foreground hover:text-foreground transition-colors"
       title="Copy address"
     >
-      {copied ? (
-        <Check className="h-3.5 w-3.5 text-green-500" />
-      ) : (
-        <Copy className="h-3.5 w-3.5" />
-      )}
+      {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
     </button>
   );
 }
@@ -71,69 +69,39 @@ function CopyButton({ text }: { text: string }) {
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export function WalletWidget() {
-  const { walletAddress } = useMagic();
-  const [balance, setBalance] = useState<number | null>(null);
-  const [balanceLoading, setBalanceLoading] = useState(false);
+  const { activeAddress, balance, isLoadingBalance, refreshBalance } = useWalletContext();
   const [payments, setPayments] = useState<X402PaymentRecord[]>([]);
   const [paymentsLoading, setPaymentsLoading] = useState(false);
 
-  const nodeUrl =
-    process.env.NEXT_PUBLIC_ALGORAND_NODE_URL ?? 'https://testnet-api.algonode.cloud';
-
-  const isTestnet = nodeUrl.includes('testnet');
-  const faucetUrl = 'https://bank.testnet.algorand.network/';
-  const topUpUrl = faucetUrl;
-
-  // ── Fetch ALGO balance ──────────────────────────────────────────────────────
-
-  const fetchBalance = useCallback(async () => {
-    if (!walletAddress) return;
-    setBalanceLoading(true);
-    try {
-      const response = await fetch(`${nodeUrl}/v2/accounts/${walletAddress}`, {
-        headers: { Accept: 'application/json' },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setBalance(data.account?.amount ?? data.amount ?? null);
-      }
-    } catch {
-      setBalance(null);
-    } finally {
-      setBalanceLoading(false);
-    }
-  }, [walletAddress, nodeUrl]);
-
-  // ── Fetch payment history ───────────────────────────────────────────────────
+  const isTestnet = (process.env.NEXT_PUBLIC_ALGORAND_NODE_URL ?? '').includes('testnet')
+    || (process.env.NEXT_PUBLIC_ALGOD_SERVER ?? '').includes('testnet');
 
   const fetchPayments = useCallback(async () => {
-    if (!walletAddress) return;
+    if (!activeAddress) return;
     setPaymentsLoading(true);
     try {
       const { data } = await api.get('/v1/x402/payment-history', {
-        params: { buyer_address: walletAddress, limit: 5 },
+        params: { buyer_address: activeAddress, limit: 5 },
       });
       setPayments((data?.data as X402PaymentRecord[]) ?? []);
     } catch {
-      // Endpoint may not be available — silently skip
       setPayments([]);
     } finally {
       setPaymentsLoading(false);
     }
-  }, [walletAddress]);
+  }, [activeAddress]);
 
   useEffect(() => {
-    fetchBalance();
     fetchPayments();
-  }, [fetchBalance, fetchPayments]);
+  }, [fetchPayments]);
 
   // ── Not connected ──────────────────────────────────────────────────────────
 
-  if (!walletAddress) {
+  if (!activeAddress) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground border border-border rounded-lg px-3 py-2">
         <Wallet className="h-4 w-4" />
-        <span>No Magic wallet connected</span>
+        <span>No wallet connected</span>
       </div>
     );
   }
@@ -146,11 +114,11 @@ export function WalletWidget() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5 font-mono text-xs text-foreground">
           <Wallet className="h-3.5 w-3.5 text-primary shrink-0" />
-          <span title={walletAddress}>{truncateAddress(walletAddress)}</span>
-          <CopyButton text={walletAddress} />
+          <span title={activeAddress}>{truncateAddress(activeAddress)}</span>
+          <CopyButton text={activeAddress} />
         </div>
         <a
-          href={`https://${isTestnet ? 'testnet.' : ''}algoexplorer.io/address/${walletAddress}`}
+          href={`https://${isTestnet ? 'testnet.' : ''}algoexplorer.io/address/${activeAddress}`}
           target="_blank"
           rel="noopener noreferrer"
           className="text-muted-foreground hover:text-primary transition-colors"
@@ -162,19 +130,19 @@ export function WalletWidget() {
 
       {/* Balance row */}
       <div className="flex items-center justify-between">
-        <div className="text-muted-foreground">ALGO balance</div>
+        <span className="text-muted-foreground">ALGO balance</span>
         <div className="flex items-center gap-2">
-          {balanceLoading ? (
+          {isLoadingBalance ? (
             <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-          ) : balance !== null ? (
-            <span className="font-medium">{microAlgoToAlgo(balance)} ALGO</span>
+          ) : balance ? (
+            <span className="font-medium">{balance.algo_balance_algo} ALGO</span>
           ) : (
             <span className="text-muted-foreground">—</span>
           )}
           <button
             type="button"
-            onClick={fetchBalance}
-            disabled={balanceLoading}
+            onClick={refreshBalance}
+            disabled={isLoadingBalance}
             className="text-muted-foreground hover:text-foreground disabled:opacity-40"
             title="Refresh balance"
           >
@@ -183,23 +151,21 @@ export function WalletWidget() {
         </div>
       </div>
 
-      {/* Top Up button */}
-      <a
-        href={topUpUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full text-xs h-8 border-primary/30 text-primary hover:bg-primary/10"
-        >
-          Get TestNet ALGO (Faucet)
-          <ExternalLink className="ml-1.5 h-3 w-3" />
-        </Button>
-      </a>
+      {/* Faucet button (testnet only) */}
+      {isTestnet && (
+        <a href="https://bank.testnet.algorand.network/" target="_blank" rel="noopener noreferrer">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full text-xs h-8 border-primary/30 text-primary hover:bg-primary/10"
+          >
+            Get TestNet ALGO (Faucet)
+            <ExternalLink className="ml-1.5 h-3 w-3" />
+          </Button>
+        </a>
+      )}
 
-      {/* Payment history */}
+      {/* x402 payment history */}
       {process.env.NEXT_PUBLIC_X402_ENABLED === 'true' && (
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
