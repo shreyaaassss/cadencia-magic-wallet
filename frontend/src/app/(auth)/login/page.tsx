@@ -59,7 +59,14 @@ export default function LoginPage() {
       await login(data.email);
       // AuthContext redirects to /dashboard on success
     } catch (err: any) {
-      setGlobalError(err.message || 'Login failed. Please try again.');
+      // err.message is already the clean backend detail string (set in _hydrateFromMagic)
+      // Fall back to axios detail or generic message for unexpected errors
+      const detail = err?.response?.data?.detail;
+      const msg =
+        err.message ||
+        (typeof detail === 'string' ? detail : null) ||
+        'Login failed. Please try again.';
+      setGlobalError(msg);
     }
   };
 

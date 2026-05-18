@@ -55,6 +55,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /**
    * Exchange a Magic DID token for a Cadencia JWT, then load the profile.
    * Called after Magic OTP succeeds (login) and on session restore.
+   *
+   * If the backend rejects the user (not registered, network error, etc.)
+   * we log them out of Magic immediately so they aren't stuck in a half-authed
+   * state where every subsequent page load triggers another failed hydration.
    */
   const _hydrateFromMagic = useCallback(async () => {
     if (!magic) throw new Error('Magic SDK not available');
@@ -70,13 +74,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const didToken = await magic.user.getIdToken();
 
-    const { data } = await api.post('/v1/auth/magic-login', {
-      did_token: didToken,
-      email: metadata.email,
-      algo_address: address ?? '',
-    });
-    setAccessToken(data.data.access_token);
-    await fetchProfile();
+    try {
+      const { data } = await api.post('/v1/auth/magic-login', {
+        did_token: didToken,
+        email: metadata.email,
+        algo_address: address ?? '',
+      });
+      setAccessToken(data.data.access_token);
+      await fetchProfile();
+    } catch (err: any) {
+      // Backend rejected — log out of Magic so the user doesn't get stuck
+      try { await magic.user.logout(); } catch {}
+      setWalletAddress(null);
+
+      // Surface the backend's detail message if available
+      const detail = err?.response?.data?.detail;
+      const status = err?.response?.status;
+      if (status === 401 || status === 404) {
+        throw new Error(
+          typeof detail === 'string'
+            ? detail
+            : 'No account found for this email. Please register first.'
+        );
+      }
+      throw new Error(
+        typeof detail === 'string'
+          ? detail
+          : err?.message || 'Login failed. Please try again.'
+      );
+    }
   }, [fetchProfile]);
 
   // On mount: try Magic session first, then fall back to refresh-cookie session
