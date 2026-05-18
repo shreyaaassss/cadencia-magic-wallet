@@ -63,15 +63,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const _hydrateFromMagic = useCallback(async () => {
     if (!magic) throw new Error('Magic SDK not available');
 
-    const metadata = await magic.user.getMetadata();
+    // getInfo() is the non-deprecated replacement for getMetadata()
+    const info = await (magic.user as any).getInfo();
+    const metadata = { email: info.email };
     let address: string | null = null;
     try {
-      address = await getMagicAddress();
-      setWalletAddress(address);
+      address = (info as any).publicAddress as string ?? null;
+      if (address) setWalletAddress(address);
     } catch {
-      // Non-fatal — wallet address may be unavailable if Algorand not enabled
+      // Non-fatal
     }
 
+    // getIdToken() will throw if Magic's session has actually expired on their
+    // servers (even if isLoggedIn() returned true from stale local state).
+    // We let that throw propagate — the catch block below will log out cleanly.
     const didToken = await magic.user.getIdToken();
 
     try {
@@ -112,6 +117,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (magic) {
           const isLoggedIn = await magic.user.isLoggedIn();
           if (isLoggedIn) {
+            // _hydrateFromMagic will throw if the Magic session is actually
+            // expired on their servers (stale isLoggedIn = true). The catch
+            // block below handles that — it logs out of Magic and shows login.
             await _hydrateFromMagic();
             setIsLoading(false);
             return;
@@ -122,10 +130,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAccessToken(data.data.access_token);
         await fetchProfile();
       } catch {
+        // Clear everything — user needs to log in fresh
         setAccessToken(null);
         setUser(null);
         setEnterprise(null);
         setWalletAddress(null);
+        // If Magic thinks the user is logged in but hydration failed,
+        // log them out of Magic too so the next mount starts clean.
+        if (magic) {
+          try { await magic.user.logout(); } catch {}
+        }
       } finally {
         setIsLoading(false);
       }

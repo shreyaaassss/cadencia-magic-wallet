@@ -25,8 +25,9 @@ export const magic = createMagicInstance();
 /** Returns the Magic-managed Algorand address for the current session. */
 export async function getMagicAddress(): Promise<string> {
   if (!magic) throw new Error('Magic SDK not available');
-  const metadata = await magic.user.getMetadata();
-  const address = (metadata as any).publicAddress as string;
+  // user.getInfo() is the non-deprecated replacement for user.getMetadata()
+  const info = await (magic.user as any).getInfo();
+  const address = (info as any).publicAddress as string;
   if (!address) throw new Error('No Algorand address in Magic session');
   return address;
 }
