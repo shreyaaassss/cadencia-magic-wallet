@@ -90,7 +90,20 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-lg p-8 w-full max-w-sm">
+      {/* Back to landing */}
+      <div className="w-full max-w-sm mb-4">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to Cadencia
+        </Link>
+      </div>
+
+      <div className="bg-card border border-border rounded-lg p-6 sm:p-8 w-full max-w-sm">
         <div className="flex flex-col items-center mb-6">
           <div className="bg-muted border border-border rounded-lg p-3 mb-4">
             <Building2 className="h-6 w-6 text-primary" />

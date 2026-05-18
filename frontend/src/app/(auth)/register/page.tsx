@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import * as z from 'zod';
 import { useForm, Controller, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -300,9 +301,22 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center py-10 px-4">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center py-8 px-4">
+      {/* Back to landing */}
+      <div className="w-full max-w-lg mb-4">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to Cadencia
+        </Link>
+      </div>
+
       <div className="bg-card border border-border rounded-lg w-full max-w-lg shadow-sm flex flex-col">
-        <div className="p-6 md:p-8">
+        <div className="p-5 sm:p-8">
           <StepIndicator currentStep={state.step} steps={stepLabels} />
           {globalError && <ErrorBanner message={globalError} />}
           {renderStep()}

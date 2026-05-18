@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   FileText, Search, MessageSquare, Lock, PieChart,
   Activity, BarChart3, CheckCircle2, Globe, Heart,
   ArrowRight, Play, CircleDot, CreditCard, DollarSign,
-  ShieldCheck,
+  ShieldCheck, Menu, X,
 } from 'lucide-react';
 import { SplineScene } from '@/components/ui/splite';
 import { Spotlight } from '@/components/ui/spotlight';
@@ -15,6 +15,7 @@ import './landing.css';
 export default function LandingPage() {
   const navRef = useRef<HTMLElement>(null);
   const revealRefs = useRef<HTMLDivElement[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     // Navbar border on scroll
@@ -80,7 +81,35 @@ export default function LandingPage() {
             </Link>
           </div>
         </div>
+        {/* Mobile hamburger */}
+        <button
+          className="nav-hamburger"
+          onClick={() => setMenuOpen(o => !o)}
+          aria-label="Toggle menu"
+        >
+          {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
       </nav>
+
+      {/* Mobile menu overlay */}
+      {menuOpen && (
+        <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
+          <div className="mobile-menu-inner" onClick={e => e.stopPropagation()}>
+            <a href="#how" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>How it works</a>
+            <a href="#features" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>Features</a>
+            <a href="#blockchain" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>Settlement</a>
+            <a href="#trust" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>Customers</a>
+            <div className="mobile-menu-divider" />
+            <Link href="/login" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>Sign in</Link>
+            <Link href="/register?role=buyer" className="btn-primary-nav w-full justify-center" onClick={() => setMenuOpen(false)}>
+              I&apos;m a Buyer <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+            <Link href="/register?role=seller" className="btn-primary-nav btn-seller-nav w-full justify-center" onClick={() => setMenuOpen(false)}>
+              I&apos;m a Seller <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* HERO */}
       <section className="hero hero-split">
