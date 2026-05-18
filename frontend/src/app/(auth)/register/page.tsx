@@ -14,7 +14,6 @@ import { formatCurrency, cn } from '@/lib/utils';
 import { ROUTES as AppRoutes } from '@/lib/constants';
 
 import { FormField } from '@/components/shared/FormField';
-import { PasswordInput } from '@/components/shared/PasswordInput';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -120,15 +119,6 @@ const buyerLocationSchema = addressSchema.extend({
 const step2Schema = z.object({
   full_name: z.string().min(2, 'Full name must be at least 2 characters'),
   email: z.string().email('Enter a valid email address'),
-  password: z.string()
-    .min(10, 'Password must be at least 10 characters')
-    .regex(/[A-Z]/, 'Must contain at least one uppercase letter')
-    .regex(/[0-9]/, 'Must contain at least one number')
-    .regex(/[^a-zA-Z0-9]/, 'Must contain at least one special character'),
-  confirm_password: z.string(),
-}).refine(d => d.password === d.confirm_password, {
-  message: 'Passwords do not match',
-  path: ['confirm_password'],
 });
 
 type Step1Values = z.infer<typeof step1Schema>;
@@ -136,6 +126,7 @@ type SellerFacilityValues = z.infer<typeof sellerFacilitySchema>;
 type SellerCapacityValues = z.infer<typeof sellerCapacitySchema>;
 type BuyerLocationValues = z.infer<typeof buyerLocationSchema>;
 type Step2Values = z.infer<typeof step2Schema>;
+// Password fields removed — Magic handles authentication, no password needed
 
 interface RegistrationState {
   step: number;
@@ -235,8 +226,8 @@ export default function RegisterPage() {
       },
       user: {
         email: state.user.email,
-        password: state.user.password,
         full_name: state.user.full_name,
+        // No password — Magic is the authentication provider
       }
     };
 
@@ -771,35 +762,15 @@ function BuyerLocationForm({ initialData, onSubmit, onBack }: { initialData: Buy
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Account Details (Step 2 / varies by role)
+// Account Details (Step 2 / varies by role) — Magic edition, no password
 // ─────────────────────────────────────────────────────────────────────────────
 
-function getPasswordStrengthOptions(pwd: string) {
-  let criteria = 0;
-  if (!pwd) return { criteria: 0, label: '', color: 'bg-muted', text: '' };
-  if (pwd.length >= 10) criteria++;
-  if (/[A-Z]/.test(pwd)) criteria++;
-  if (/[0-9]/.test(pwd)) criteria++;
-  if (/[^a-zA-Z0-9]/.test(pwd)) criteria++;
-  const configs: Record<number, { label: string; color: string; text: string }> = {
-    0: { label: '', color: 'bg-muted', text: '' },
-    1: { label: 'Weak', color: 'bg-destructive', text: 'text-destructive' },
-    2: { label: 'Fair', color: 'bg-amber-500', text: 'text-amber-500' },
-    3: { label: 'Good', color: 'bg-amber-400', text: 'text-amber-400' },
-    4: { label: 'Strong', color: 'bg-green-500', text: 'text-green-500' },
-  };
-  return { criteria, ...configs[criteria] };
-}
-
 function Step2Form({ initialData, onSubmit, onBack }: { initialData: Step2Values | null; onSubmit: (data: Step2Values) => void; onBack: () => void }) {
-  const { register, handleSubmit, watch, formState: { errors, touchedFields } } = useForm<Step2Values>({
+  const { register, handleSubmit, formState: { errors, touchedFields } } = useForm<Step2Values>({
     resolver: zodResolver(step2Schema),
     defaultValues: initialData || {},
     mode: 'onTouched',
   });
-
-  const pwd = watch('password');
-  const strength = getPasswordStrengthOptions(pwd);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 animate-in fade-in slide-in-from-bottom-2">
@@ -809,20 +780,9 @@ function Step2Form({ initialData, onSubmit, onBack }: { initialData: Step2Values
       <FormField label="Email address" required error={touchedFields.email ? errors.email?.message : undefined}>
         <Input type="email" {...register('email')} />
       </FormField>
-      <FormField label="Password" required error={touchedFields.password ? errors.password?.message : undefined}>
-        <PasswordInput error={touchedFields.password && !!errors.password} {...register('password')} />
-        <div className="mt-2 flex items-center justify-between">
-          <div className="flex gap-1 flex-1 max-w-[200px]">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className={cn("h-1 w-full rounded-full transition-colors", strength.criteria >= i ? strength.color : "bg-muted")} />
-            ))}
-          </div>
-          <span className={cn("text-xs w-10 text-right font-medium", strength.text)}>{strength.label}</span>
-        </div>
-      </FormField>
-      <FormField label="Confirm Password" required error={touchedFields.confirm_password ? errors.confirm_password?.message : undefined}>
-        <PasswordInput error={touchedFields.confirm_password && !!errors.confirm_password} {...register('confirm_password')} />
-      </FormField>
+      <p className="text-xs text-muted-foreground">
+        No password needed. We&apos;ll send a one-time code to your email to verify your identity.
+      </p>
       <div className="flex gap-3 pt-2">
         <Button type="button" variant="ghost" onClick={onBack} className="w-1/3 hover:bg-accent text-foreground">Back</Button>
         <Button type="submit" className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90">Next</Button>
@@ -924,7 +884,7 @@ function ReviewStep({
             <StatusBadge status={enterprise.trade_role} size="sm" />
           </div>
           <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Email</p><p className="text-foreground">{user.email}</p></div>
-          <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Password</p><p className="text-foreground">••••••••</p></div>
+          <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Authentication</p><p className="text-foreground text-xs text-muted-foreground">Magic one-time code (no password)</p></div>
         </div>
       </div>
 

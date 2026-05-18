@@ -3,16 +3,20 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, setAccessToken } from '@/lib/api';
-import { destroyWalletManager, clearForeignWalletSession } from '@/lib/wallet-config';
+import { magic, getMagicAddress } from '@/lib/magic';
 import type { User, Enterprise } from '@/types';
 import { ROUTES } from '@/lib/constants';
 
 interface AuthContextValue {
   user: User | null;
   enterprise: Enterprise | null;
+  walletAddress: string | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  /** Magic OTP login — email only, no password */
+  login: (email: string) => Promise<void>;
+  /** Password-based admin backdoor — kept for platform admin use */
   adminLogin: (email: string, password: string) => Promise<void>;
+  /** Magic-based registration — submits enterprise data + authenticates via Magic */
   register: (payload: Record<string, unknown>) => Promise<void>;
   logout: () => Promise<void>;
   setUser: (user: User) => void;
@@ -29,9 +33,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [enterprise, setEnterprise] = useState<Enterprise | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  /** Fetch user profile + enterprise using current access token */
+  /** Fetch Cadencia user profile + enterprise after we have an access token */
   const fetchProfile = useCallback(async () => {
     const { data: meRes } = await api.get('/v1/auth/me');
     const me: User = meRes.data;
@@ -40,23 +45,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (me.enterprise_id) {
       try {
         const { data: entRes } = await api.get(`/v1/enterprises/${me.enterprise_id}`);
-        const ent = entRes.data;
-        setEnterprise(ent);
-        // Allow same-user wallet auto-reconnect; purge session only if a
-        // different enterprise is logging in on this device.
-        clearForeignWalletSession(String(ent.id));
+        setEnterprise(entRes.data);
       } catch {
-        // Enterprise fetch failed — admin backdoor user has no real enterprise.
-        // Keep user authenticated, just clear enterprise.
         setEnterprise(null);
       }
     }
   }, []);
 
-  // Silent refresh on mount
+  /**
+   * Exchange a Magic DID token for a Cadencia JWT, then load the profile.
+   * Called after Magic OTP succeeds (login) and on session restore.
+   */
+  const _hydrateFromMagic = useCallback(async () => {
+    if (!magic) throw new Error('Magic SDK not available');
+
+    const metadata = await magic.user.getMetadata();
+    let address: string | null = null;
+    try {
+      address = await getMagicAddress();
+      setWalletAddress(address);
+    } catch {
+      // Non-fatal — wallet address may be unavailable if Algorand not enabled
+    }
+
+    const didToken = await magic.user.getIdToken();
+
+    const { data } = await api.post('/v1/auth/magic-login', {
+      did_token: didToken,
+      email: metadata.email,
+      algo_address: address ?? '',
+    });
+    setAccessToken(data.data.access_token);
+    await fetchProfile();
+  }, [fetchProfile]);
+
+  // On mount: try Magic session first, then fall back to refresh-cookie session
   useEffect(() => {
     const init = async () => {
       try {
+        if (magic) {
+          const isLoggedIn = await magic.user.isLoggedIn();
+          if (isLoggedIn) {
+            await _hydrateFromMagic();
+            setIsLoading(false);
+            return;
+          }
+        }
+        // Fallback: silent refresh for admin users (password-based sessions)
         const { data } = await api.post('/v1/auth/refresh');
         setAccessToken(data.data.access_token);
         await fetchProfile();
@@ -64,12 +99,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAccessToken(null);
         setUser(null);
         setEnterprise(null);
+        setWalletAddress(null);
       } finally {
         setIsLoading(false);
       }
     };
     init();
-  }, [fetchProfile]);
+  }, [_hydrateFromMagic, fetchProfile]);
 
   // Listen for session-expired events from the 401 interceptor
   useEffect(() => {
@@ -77,68 +113,90 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAccessToken(null);
       setUser(null);
       setEnterprise(null);
+      setWalletAddress(null);
     };
     window.addEventListener('auth:session-expired', handleSessionExpired);
     return () => window.removeEventListener('auth:session-expired', handleSessionExpired);
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const { data } = await api.post('/v1/auth/login', { email, password });
-    setAccessToken(data.data.access_token);
+  /** Magic OTP login — email only */
+  const login = async (email: string) => {
+    if (!magic) throw new Error('Magic SDK not available');
+    setIsLoading(true);
     try {
-      await fetchProfile();
-    } catch {
-      // Profile fetch failed after successful auth — clear token and surface error
-      setAccessToken(null);
-      throw new Error('Logged in but failed to load your profile. Please try again.');
+      await magic.auth.loginWithEmailOTP({ email });
+      await _hydrateFromMagic();
+      router.push(ROUTES.DASHBOARD);
+    } finally {
+      setIsLoading(false);
     }
-    router.push(ROUTES.DASHBOARD);
   };
 
+  /** Password-based admin backdoor — unchanged */
   const adminLogin = async (email: string, password: string) => {
     const { data } = await api.post('/v1/auth/admin-login', { email, password });
     setAccessToken(data.data.access_token);
     try {
       await fetchProfile();
     } catch {
-      // Admin backdoor user has no real enterprise — profile fetch may fail.
-      // Keep authenticated, just skip profile.
+      // Admin user may have no enterprise — keep authenticated
     }
     router.push(ROUTES.ADMIN);
   };
 
+  /**
+   * Magic-based registration.
+   *
+   * The payload includes enterprise data + user { email, full_name }.
+   * We first authenticate via Magic OTP, then submit everything to
+   * POST /v1/auth/magic-register which creates the enterprise without a password.
+   */
   const register = async (payload: Record<string, unknown>) => {
-    const { data } = await api.post('/v1/auth/register', payload);
-    setAccessToken(data.data.access_token);
+    if (!magic) throw new Error('Magic SDK not available');
+
+    const userPayload = payload.user as { email: string; full_name: string };
+    setIsLoading(true);
     try {
+      // 1. Authenticate via Magic OTP
+      await magic.auth.loginWithEmailOTP({ email: userPayload.email });
+
+      // 2. Get DID token + ALGO address
+      const didToken = await magic.user.getIdToken();
+      let algoAddress = '';
+      try {
+        algoAddress = await getMagicAddress();
+        setWalletAddress(algoAddress);
+      } catch {
+        // Non-fatal
+      }
+
+      // 3. Submit enterprise data to magic-register endpoint
+      const { data } = await api.post('/v1/auth/magic-register', {
+        did_token: didToken,
+        algo_address: algoAddress,
+        enterprise: payload.enterprise,
+        user: {
+          email: userPayload.email,
+          full_name: userPayload.full_name,
+        },
+      });
+      setAccessToken(data.data.access_token);
       await fetchProfile();
-    } catch {
-      // Profile fetch failed after successful auth — clear token and surface error
-      setAccessToken(null);
-      throw new Error('Registered but failed to load your profile. Please try again.');
+      router.push(ROUTES.DASHBOARD);
+    } finally {
+      setIsLoading(false);
     }
-    router.push(ROUTES.DASHBOARD);
   };
 
   const logout = async () => {
-    // 1. Disconnect wallet and record enterprise ID as session owner.
-    //    Session keys are preserved so the same user can auto-reconnect
-    //    on next login. Cross-user bleed is handled by clearForeignWalletSession()
-    //    which fires during the next login's fetchProfile().
-    await destroyWalletManager(enterprise?.id ? String(enterprise.id) : undefined);
-
-    // 2. Clear the httpOnly refresh token cookie on the server so page refresh
-    //    cannot silently re-authenticate.
-    try {
-      await api.post('/v1/auth/logout');
-    } catch {
-      // Non-fatal — still clear local state
+    if (magic) {
+      try { await magic.user.logout(); } catch {}
     }
-
+    try { await api.post('/v1/auth/logout'); } catch {}
     setAccessToken(null);
     setUser(null);
     setEnterprise(null);
-
+    setWalletAddress(null);
     router.push(ROUTES.LOGIN);
   };
 
@@ -148,7 +206,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, enterprise, isLoading,
+      user, enterprise, walletAddress, isLoading,
       login, adminLogin, register, logout,
       setUser, setEnterprise,
       refreshProfile: fetchProfile,

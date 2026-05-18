@@ -39,6 +39,7 @@ dependencies = [
     # context.md §14: RS256-signed JWT; HS256 PROHIBITED
     "python-jose[cryptography]>=3.3",
     "passlib[bcrypt]>=1.7",
+    "magic-admin>=0.2.0",              # Magic.link DID token verification
     "bcrypt>=4.0,<4.1",             # passlib incompatible with bcrypt>=4.1
     "cryptography>=42.0",
 

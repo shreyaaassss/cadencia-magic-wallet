@@ -478,6 +478,66 @@ class IdentityService:
 
     # ── Enterprise ────────────────────────────────────────────────────────────
 
+    async def magic_login(self, email: str, algo_address: str) -> dict:
+        """
+        Find an existing user by email and issue a Cadencia JWT.
+
+        Called after the frontend has already verified the Magic DID token.
+        Auto-links the Magic Algorand address to the enterprise if not yet linked.
+        Raises AuthenticationError if the email is not registered.
+        """
+        from src.identity.domain.value_objects import AlgorandAddress
+
+        user = await self._users.get_by_email(email.strip().lower())
+        if user is None:
+            raise AuthenticationError(
+                "No account found for this email. Please complete registration first."
+            )
+
+        enterprise = await self._enterprises.get_by_id(user.enterprise_id)
+
+        # Auto-link wallet if the enterprise has none yet
+        if enterprise and not enterprise.algorand_wallet and algo_address:
+            try:
+                enterprise.link_algorand_wallet(AlgorandAddress(value=algo_address))
+                async with self._uow:
+                    await self._enterprises.update(enterprise)
+                    await self._uow.commit()
+                log.info(
+                    "magic_wallet_auto_linked",
+                    enterprise_id=str(enterprise.id),
+                    address=algo_address[:8],
+                )
+            except Exception as exc:
+                log.warning("magic_wallet_auto_link_failed", error=str(exc))
+
+        enterprise_id = enterprise.id if enterprise else user.enterprise_id
+        trade_role_value = None
+        if enterprise:
+            trade_role_value = (
+                enterprise.trade_role.value
+                if hasattr(enterprise.trade_role, "value")
+                else str(enterprise.trade_role)
+            )
+
+        access_token = self._jwt.create_access_token(
+            subject=str(user.id),
+            enterprise_id=enterprise_id,
+            role=user.role.value,
+            trade_role=trade_role_value,
+        )
+        refresh_token = self._jwt.create_refresh_token(subject=str(user.id))
+
+        log.info("magic_login_success", user_id=str(user.id), email=email)
+
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "user_id": user.id,
+            "enterprise_id": enterprise_id,
+        }
+
     async def get_enterprise(self, query: GetEnterpriseQuery) -> Enterprise:
         """
         Return enterprise profile.

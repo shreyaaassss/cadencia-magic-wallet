@@ -392,6 +392,10 @@ def create_app() -> FastAPI:
     from src.admin.api.router import router as admin_router
     app.include_router(admin_router)
 
+    # Magic.link authentication — /v1/auth/magic-login and /v1/auth/magic-register
+    from src.identity.api.magic_auth import router as magic_auth_router
+    app.include_router(magic_auth_router)
+
     # Short-form Wallet API — /v1/wallet/* (proxies to identity wallet logic)
     from src.wallet.api.router import router as wallet_router
     app.include_router(wallet_router)

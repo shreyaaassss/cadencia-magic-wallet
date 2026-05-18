@@ -17,7 +17,6 @@ import { Input } from '@/components/ui/input';
 
 const loginSchema = z.object({
   email: z.string().email('Enter a valid email address'),
-  password: z.string().min(1, 'Password is required'),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -57,20 +56,13 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginFormValues) => {
     setGlobalError(null);
     try {
-      await login(data.email, data.password);
+      await login(data.email);
+      // AuthContext redirects to /dashboard on success
     } catch (err: any) {
-      const status = err.response?.status;
-      const detail = err.response?.data?.detail;
-      if (status === 401 || status === 422 || status === 404) {
-        const msg = typeof detail === 'string' ? detail : 'Invalid email or password. Please try again.';
-        setGlobalError(msg);
-      } else {
-        setGlobalError(err.message || 'Unable to connect. Please try again.');
-      }
+      setGlobalError(err.message || 'Login failed. Please try again.');
     }
   };
 
-  // Show a subtle spinner while the silent-refresh is in progress
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -85,7 +77,6 @@ export default function LoginPage() {
     );
   }
 
-  // User already authenticated — redirect handled by useEffect above
   if (user) return null;
 
   return (
@@ -114,7 +105,10 @@ export default function LoginPage() {
 
         <div className="border-t border-border w-full mb-6" />
 
-        <h2 className="text-base font-semibold text-foreground mb-6">Sign in to your account</h2>
+        <h2 className="text-base font-semibold text-foreground mb-2">Sign in to your account</h2>
+        <p className="text-xs text-muted-foreground mb-6">
+          Enter your email — we&apos;ll send you a one-time code to sign in instantly.
+        </p>
 
         {globalError && <ErrorBanner message={globalError} />}
 
@@ -126,19 +120,9 @@ export default function LoginPage() {
           >
             <Input
               type="email"
+              placeholder="you@company.com"
               className={touchedFields.email && errors.email ? 'border-destructive ring-destructive' : ''}
               {...register('email')}
-            />
-          </FormField>
-
-          <FormField
-            label="Password"
-            required
-            error={touchedFields.password ? errors.password?.message : undefined}
-          >
-            <PasswordInput
-              error={touchedFields.password && !!errors.password}
-              {...register('password')}
             />
           </FormField>
 
@@ -146,10 +130,10 @@ export default function LoginPage() {
             {isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Signing in...
+                Sending code…
               </>
             ) : (
-              'Sign In'
+              'Continue with Email'
             )}
           </Button>
         </form>
@@ -235,7 +219,12 @@ function AdminLoginForm({
         <span className="text-sm font-medium text-foreground">Platform Admin</span>
       </div>
 
-      {error && <ErrorBanner message={error} />}
+      {error && (
+        <div className="flex items-start gap-2 bg-red-950 border border-destructive/40 rounded-lg p-3 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>{error}</span>
+        </div>
+      )}
 
       <form
         onSubmit={(e) => {
