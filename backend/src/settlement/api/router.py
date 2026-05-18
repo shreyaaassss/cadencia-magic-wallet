@@ -167,6 +167,30 @@ async def select_deal(
         )
     )
 
+    # Auto-reject all other AGREED sessions for the same RFQ.
+    # Once the buyer picks one deal, the competing sessions are no longer valid.
+    try:
+        from sqlalchemy import update as sa_update
+        from src.negotiation.infrastructure.models import NegotiationSessionModel
+        await db_session.execute(
+            sa_update(NegotiationSessionModel)
+            .where(
+                NegotiationSessionModel.rfq_id == nego_session.rfq_id,
+                NegotiationSessionModel.id != session_id,
+                NegotiationSessionModel.status == "AGREED",
+            )
+            .values(status="FAILED")
+        )
+        await db_session.commit()
+        log.info(
+            "select_deal_competing_sessions_rejected",
+            selected_session=str(session_id),
+            rfq_id=str(nego_session.rfq_id),
+        )
+    except Exception as exc:
+        # Non-fatal: escrow was already created; rejection of siblings is best-effort
+        log.warning("select_deal_sibling_rejection_failed", error=str(exc))
+
     return success_response(SelectDealResponse(
         escrow_id=str(result["escrow_id"]),
         session_id=body.session_id,

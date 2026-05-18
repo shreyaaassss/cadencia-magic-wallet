@@ -66,13 +66,30 @@ export default function EscrowPage() {
     retry: 1,
   });
 
-  // Agreed sessions that DON'T have an escrow yet (buyer can select)
-  // When a ?session= param is present, scope to only sessions sharing the same RFQ
+  // Agreed sessions the buyer can still select.
+  // Rules:
+  //   1. Must be AGREED and not already have an escrow
+  //   2. Must NOT belong to an RFQ where another session was already selected
+  //      (once one deal is picked, all competing deals for that RFQ are hidden)
   const agreedWithoutEscrow = React.useMemo(() => {
     const escrowSessionIds = new Set(escrows.map(e => e.session_id));
-    const agreed = sessions.filter(s => s.status === 'AGREED' && !escrowSessionIds.has(s.session_id));
 
-    // If we came from a specific session, find its rfq_id and show only related deals
+    // RFQ IDs that already have at least one session promoted to escrow
+    const rfqsWithSelectedDeal = new Set(
+      sessions
+        .filter(s => escrowSessionIds.has(s.session_id))
+        .map(s => s.rfq_id)
+        .filter(Boolean),
+    );
+
+    const agreed = sessions.filter(
+      s =>
+        s.status === 'AGREED' &&
+        !escrowSessionIds.has(s.session_id) &&
+        !rfqsWithSelectedDeal.has(s.rfq_id),
+    );
+
+    // If we came from a specific session, scope to only that RFQ's deals
     if (sessionParam) {
       const sourceSession = sessions.find(s => s.session_id === sessionParam);
       if (sourceSession) {
