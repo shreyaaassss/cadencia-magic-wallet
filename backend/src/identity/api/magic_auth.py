@@ -59,7 +59,7 @@ async def magic_login(
 
     # Verify DID token — raises if invalid or expired
     try:
-        from magic import Magic as MagicAdmin  # magic-admin SDK
+        from magic_admin import Magic as MagicAdmin  # magic-admin SDK (v2.x: magic_admin module)
         magic_client = MagicAdmin(secret_key=magic_secret)
         magic_client.Token.validate(body.did_token)
     except Exception as exc:
@@ -123,7 +123,7 @@ async def magic_register(
         raise HTTPException(status_code=500, detail="MAGIC_SECRET_KEY not configured")
 
     try:
-        from magic import Magic as MagicAdmin
+        from magic_admin import Magic as MagicAdmin
         magic_client = MagicAdmin(secret_key=magic_secret)
         magic_client.Token.validate(body.did_token)
     except Exception as exc:
