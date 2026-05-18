@@ -400,6 +400,10 @@ def create_app() -> FastAPI:
     from src.treasury.api.router import router as treasury_router
     app.include_router(treasury_router)
 
+    # x402 payment protocol — public + verification endpoints
+    from src.wallet.api.x402_routes import router as x402_router
+    app.include_router(x402_router)
+
     # Prometheus metrics endpoint (RW-05)
     from src.shared.api.metrics_router import router as metrics_router
     app.include_router(metrics_router)

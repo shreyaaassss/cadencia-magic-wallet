@@ -9,6 +9,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.shared.middleware.x402_payment import require_x402_payment
+
 from src.identity.api.dependencies import get_current_user, get_current_buyer, get_current_seller
 from src.identity.domain.user import User
 from sqlalchemy import select
@@ -763,4 +765,97 @@ async def lookup_pincode(
             latitude=row.latitude,
             longitude=row.longitude,
         )
+    )
+
+
+# ── x402-gated premium endpoints ─────────────────────────────────────────────
+# These endpoints require an Algorand micropayment via the x402 protocol.
+# Clients that call without payment receive HTTP 402 with payment requirements.
+# The require_x402_payment dependency handles validation + on-chain confirmation.
+
+
+@router.get(
+    "/loans/{loan_id}/analytics",
+    response_model=ApiResponse[dict],
+    summary="[x402] Detailed loan analytics — requires micropayment",
+    dependencies=[Depends(require_x402_payment)],
+)
+async def get_loan_analytics(
+    loan_id: uuid.UUID,
+    current_user: User = Depends(get_current_buyer),
+) -> dict:
+    """
+    Returns detailed analytics for a loan/RFQ deal.
+
+    Protected by x402 Algorand payment (0.1 ALGO per call).
+    Stub: returns placeholder analytics structure.
+    Full implementation: query RFQ + negotiation + escrow tables for the deal.
+    """
+    return success_response(
+        {
+            "loan_id": str(loan_id),
+            "analytics": {
+                "deal_value_inr": None,
+                "negotiation_rounds": None,
+                "price_convergence_pct": None,
+                "escrow_status": None,
+                "note": "Analytics data will be populated in future implementation",
+            },
+        }
+    )
+
+
+@router.get(
+    "/loans/{loan_id}/credit-report",
+    response_model=ApiResponse[dict],
+    summary="[x402] Borrower credit report — requires micropayment",
+    dependencies=[Depends(require_x402_payment)],
+)
+async def get_loan_credit_report(
+    loan_id: uuid.UUID,
+    current_user: User = Depends(get_current_buyer),
+) -> dict:
+    """
+    Returns the credit report for the seller/borrower in a loan deal.
+
+    Protected by x402 Algorand payment (0.1 ALGO per call).
+    Stub: returns placeholder credit report structure.
+    Full implementation: integrate with KYC/credit provider (Karza, Digilocker).
+    """
+    return success_response(
+        {
+            "loan_id": str(loan_id),
+            "credit_report": {
+                "gstin_verified": None,
+                "credit_score": None,
+                "kyc_status": None,
+                "trade_history_summary": None,
+                "note": "Credit report will be populated in future implementation",
+            },
+        }
+    )
+
+
+@router.post(
+    "/match",
+    response_model=ApiResponse[dict],
+    summary="[x402] AI-powered loan matching — requires micropayment",
+    dependencies=[Depends(require_x402_payment)],
+)
+async def premium_match(
+    body: dict,
+    current_user: User = Depends(get_current_buyer),
+) -> dict:
+    """
+    Runs AI-powered premium matching against the full seller catalogue.
+
+    Protected by x402 Algorand payment (0.1 ALGO per call).
+    Stub: returns placeholder match result structure.
+    Full implementation: run PgvectorMatchmaker with extended scoring.
+    """
+    return success_response(
+        {
+            "matches": [],
+            "note": "Premium matching will be populated in future implementation",
+        }
     )

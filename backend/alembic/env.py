@@ -34,6 +34,7 @@ import src.settlement.infrastructure.models  # noqa: F401
 import src.compliance.infrastructure.models  # noqa: F401
 import src.treasury.infrastructure.models  # noqa: F401
 import src.admin.models  # noqa: F401
+import src.wallet.models  # noqa: F401
 
 # Alembic Config object — provides access to alembic.ini values.
 config = context.config
