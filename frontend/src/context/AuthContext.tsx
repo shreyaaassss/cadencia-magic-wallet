@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, setAccessToken } from '@/lib/api';
-import { destroyWalletManager } from '@/lib/wallet-config';
+import { destroyWalletManager, clearForeignWalletSession } from '@/lib/wallet-config';
 import type { User, Enterprise } from '@/types';
 import { ROUTES } from '@/lib/constants';
 
@@ -40,7 +40,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (me.enterprise_id) {
       try {
         const { data: entRes } = await api.get(`/v1/enterprises/${me.enterprise_id}`);
-        setEnterprise(entRes.data);
+        const ent = entRes.data;
+        setEnterprise(ent);
+        // Allow same-user wallet auto-reconnect; purge session only if a
+        // different enterprise is logging in on this device.
+        clearForeignWalletSession(String(ent.id));
       } catch {
         // Enterprise fetch failed — admin backdoor user has no real enterprise.
         // Keep user authenticated, just clear enterprise.
@@ -117,10 +121,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    // 1. Destroy WalletManager singleton + purge ALL WalletConnect localStorage
-    //    keys. This prevents wallet session bleed when switching users in the
-    //    same browser (Issue #1).
-    await destroyWalletManager();
+    // 1. Disconnect wallet and record enterprise ID as session owner.
+    //    Session keys are preserved so the same user can auto-reconnect
+    //    on next login. Cross-user bleed is handled by clearForeignWalletSession()
+    //    which fires during the next login's fetchProfile().
+    await destroyWalletManager(enterprise?.id ? String(enterprise.id) : undefined);
 
     // 2. Clear the httpOnly refresh token cookie on the server so page refresh
     //    cannot silently re-authenticate.

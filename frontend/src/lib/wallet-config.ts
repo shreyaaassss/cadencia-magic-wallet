@@ -42,12 +42,66 @@ export function getWalletManager(): WalletManager {
   return _manager;
 }
 
+// Key used to track which enterprise ID owns the stored wallet session.
+// Allows same-user auto-reconnect while preventing cross-user session bleed.
+const WALLET_OWNER_KEY = 'cadencia:wallet-session-owner';
+
 /**
- * Destroy the WalletManager singleton and purge all WalletConnect localStorage
- * keys for this origin. Must be called on logout to prevent wallet session bleed
- * when multiple users share the same browser.
+ * Purge all wallet localStorage keys unconditionally.
+ * Used when a different user logs in to prevent session bleed.
  */
-export async function destroyWalletManager(): Promise<void> {
+function _purgeAllWalletKeys(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (
+        key.startsWith('wc@') ||
+        key.startsWith('walletconnect') ||
+        key.startsWith('@txnlab') ||
+        key.startsWith('pera') ||
+        key.startsWith('defly')
+      )) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+    localStorage.removeItem(WALLET_OWNER_KEY);
+  } catch {
+    // Non-fatal
+  }
+}
+
+/**
+ * Called after login. If the stored wallet session belongs to a different
+ * enterprise, purge it. Same enterprise → keep it so the session auto-resumes.
+ */
+export function clearForeignWalletSession(enterpriseId: string): void {
+  if (typeof window === 'undefined') return;
+  const storedOwner = localStorage.getItem(WALLET_OWNER_KEY);
+  if (storedOwner && storedOwner !== enterpriseId) {
+    // Different user logged in — purge the previous user's wallet session
+    _purgeAllWalletKeys();
+  }
+  // Record the current owner so next login can compare
+  localStorage.setItem(WALLET_OWNER_KEY, enterpriseId);
+}
+
+/**
+ * Disconnect the active wallet and record the owner enterprise ID.
+ * Session keys are preserved in localStorage so the same user can
+ * auto-reconnect on next login without re-scanning the QR code.
+ *
+ * Cross-user session bleed is prevented by clearForeignWalletSession()
+ * which is called on login and purges keys if a different enterprise logs in.
+ */
+export async function destroyWalletManager(enterpriseId?: string): Promise<void> {
+  // Record current owner before tearing down, so next login can compare
+  if (enterpriseId && typeof window !== 'undefined') {
+    localStorage.setItem(WALLET_OWNER_KEY, enterpriseId);
+  }
+
   if (_manager) {
     try {
       const active = (_manager as any).activeWallet;
@@ -58,25 +112,7 @@ export async function destroyWalletManager(): Promise<void> {
     _manager = null;
   }
 
-  // Purge all WalletConnect / Pera / use-wallet localStorage keys
-  if (typeof window !== 'undefined') {
-    try {
-      const keysToRemove: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && (
-          key.startsWith('wc@') ||
-          key.startsWith('walletconnect') ||
-          key.startsWith('@txnlab') ||
-          key.startsWith('pera') ||
-          key.startsWith('defly')
-        )) {
-          keysToRemove.push(key);
-        }
-      }
-      keysToRemove.forEach(k => localStorage.removeItem(k));
-    } catch {
-      // Non-fatal
-    }
-  }
+  // Session keys (@txnlab/*, walletconnect, pera, defly) are intentionally
+  // kept in localStorage so the same user can auto-reconnect on next login.
+  // clearForeignWalletSession() handles the cross-user purge on login.
 }
