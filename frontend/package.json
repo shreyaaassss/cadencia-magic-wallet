@@ -12,7 +12,7 @@
     "@agoralabs-sh/avm-web-provider": "^1.7.0",
     "@blockshake/defly-connect": "^1.2.1",
     "@hookform/resolvers": "^5.2.2",
-    "@magic-ext/algorand": "^28.6.1",
+    "@magic-ext/algorand": "^24.4.2",
     "@perawallet/connect": "^1.5.2",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-dialog": "^1.1.15",
