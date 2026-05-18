@@ -57,11 +57,14 @@ async def magic_login(
     if not magic_secret:
         raise HTTPException(status_code=500, detail="MAGIC_SECRET_KEY not configured")
 
-    # Verify DID token — raises if invalid or expired
+    # Verify DID token using magic-admin v2.x API.
+    # Magic(api_secret_key=...) — note: v2.x uses api_secret_key, not secret_key.
+    # User.get_metadata_by_token() validates the token AND returns user metadata.
+    # It raises if the token is invalid, expired, or from a different app.
     try:
-        from magic_admin import Magic as MagicAdmin  # magic-admin SDK (v2.x: magic_admin module)
-        magic_client = MagicAdmin(secret_key=magic_secret)
-        magic_client.Token.validate(body.did_token)
+        from magic_admin import Magic as MagicAdmin
+        magic_client = MagicAdmin(api_secret_key=magic_secret)
+        magic_client.User.get_metadata_by_token(body.did_token)
     except Exception as exc:
         log.warning("magic_did_token_invalid", error=str(exc))
         raise HTTPException(status_code=401, detail="Invalid or expired Magic token")
@@ -124,8 +127,8 @@ async def magic_register(
 
     try:
         from magic_admin import Magic as MagicAdmin
-        magic_client = MagicAdmin(secret_key=magic_secret)
-        magic_client.Token.validate(body.did_token)
+        magic_client = MagicAdmin(api_secret_key=magic_secret)
+        magic_client.User.get_metadata_by_token(body.did_token)
     except Exception as exc:
         log.warning("magic_did_token_invalid_register", error=str(exc))
         raise HTTPException(status_code=401, detail="Invalid or expired Magic token")
