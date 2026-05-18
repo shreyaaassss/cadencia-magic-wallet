@@ -16,6 +16,24 @@ const BACKEND_INTERNAL_URL =
 const nextConfig: NextConfig = {
   output: 'standalone',
 
+  // Force webpack to use the CJS builds of Magic SDK packages.
+  // The ESM builds (dist/es/*.mjs) of @magic-sdk/* reference 'Wallets' and
+  // 'Events' from @magic-sdk/types that only exist in the CJS build of
+  // @magic-sdk/types@24.22.x. Aliasing to CJS entry points fixes the build.
+  webpack(config) {
+    const path = require('path');
+    const nm = path.resolve(__dirname, 'node_modules');
+
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      'magic-sdk': path.join(nm, 'magic-sdk/dist/cjs/index.js'),
+      '@magic-sdk/provider': path.join(nm, '@magic-sdk/provider/dist/cjs/index.js'),
+      '@magic-sdk/commons': path.join(nm, '@magic-sdk/commons/dist/cjs/index.js'),
+      '@magic-sdk/types': path.join(nm, '@magic-sdk/types/dist/cjs/index.js'),
+    };
+    return config;
+  },
+
   // Turbopack config (Next.js 16 default bundler).
   // Empty object silences the "webpack config present but no turbopack config" error.
   turbopack: {},
