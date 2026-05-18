@@ -6,6 +6,7 @@ import algosdk from 'algosdk';
 import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useWalletReady } from '@/components/providers/AlgorandWalletProvider';
+import { setLastWalletId } from '@/lib/wallet-config';
 import type { WalletBalance } from '@/types';
 
 type LinkStatus = 'idle' | 'signing' | 'submitting' | 'error';
@@ -135,6 +136,7 @@ function WalletEnabledProvider({ children }: { children: React.ReactNode }) {
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
         await wallet.connect();
+        setLastWalletId(walletId);
         toast.success(`Connected to ${wallet.metadata.name}`);
         setIsConnecting(false);
         return;

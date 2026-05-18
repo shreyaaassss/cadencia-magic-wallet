@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect } from 'react';
-import { Wallet, Link2, Unlink, RefreshCw, Loader2, Copy, ExternalLink } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Wallet, Link2, Unlink, RefreshCw, Loader2, Copy, ExternalLink, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { AppShell } from '@/components/layout/AppShell';
 import { Button } from '@/components/ui/button';
 import { useWalletContext } from '@/context/WalletContext';
+import { getLastWalletId } from '@/lib/wallet-config';
 import { truncateAddress } from '@/lib/utils';
 
 export default function WalletPage() {
@@ -29,6 +30,12 @@ export default function WalletPage() {
     refreshBalance,
   } = useWalletContext();
 
+  const [lastWalletId, setLastWalletIdState] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLastWalletIdState(getLastWalletId());
+  }, []);
+
   useEffect(() => {
     if (isLinked) refreshBalance();
   }, [isLinked, refreshBalance]);
@@ -41,6 +48,9 @@ export default function WalletPage() {
   };
 
   const isLinking = linkStatus === 'signing' || linkStatus === 'submitting';
+
+  // Wallet is linked to this account but the WalletConnect session expired
+  const needsReconnect = isLinked && !isWalletConnected;
 
   return (
     <AppShell>
@@ -56,35 +66,60 @@ export default function WalletPage() {
 
         <div className="mt-8 space-y-6">
 
-          {/* Step 1: Connect Wallet (if not connected) */}
+          {/* Step 1: Connect or Reconnect */}
           {!isWalletConnected && (
             <div className="bg-card border border-border rounded-lg p-8 text-center">
               <div className="bg-muted rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                <Wallet className="h-8 w-8 text-muted-foreground" />
+                {needsReconnect
+                  ? <RotateCcw className="h-8 w-8 text-amber-400" />
+                  : <Wallet className="h-8 w-8 text-muted-foreground" />
+                }
               </div>
-              <h2 className="text-lg font-medium text-foreground mb-2">Connect Your Wallet</h2>
-              <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
-                Choose a wallet to connect. Your wallet will be used to sign transactions for escrow funding and settlement.
-              </p>
+
+              {needsReconnect ? (
+                <>
+                  <h2 className="text-lg font-medium text-foreground mb-2">Reconnect Your Wallet</h2>
+                  <p className="text-sm text-muted-foreground mb-1 max-w-md mx-auto">
+                    Your session expired. Reconnect the same wallet to continue signing escrow transactions.
+                  </p>
+                  <code className="inline-block text-xs font-mono text-muted-foreground bg-muted px-3 py-1 rounded mb-6">
+                    {linkedAddress ? `${linkedAddress.slice(0, 12)}…${linkedAddress.slice(-6)}` : ''}
+                  </code>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-lg font-medium text-foreground mb-2">Connect Your Wallet</h2>
+                  <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
+                    Choose a wallet to connect. Your wallet will be used to sign transactions for escrow funding and settlement.
+                  </p>
+                </>
+              )}
+
               <div className="flex flex-col gap-3 max-w-xs mx-auto">
-                {isReady && wallets.map(wallet => (
-                  <Button
-                    key={wallet.id}
-                    variant="outline"
-                    className="w-full justify-start gap-3 h-12"
-                    disabled={isConnecting}
-                    onClick={() => connectWallet(wallet.id)}
-                  >
-                    {isConnecting ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : wallet.metadata.icon ? (
-                      <img src={wallet.metadata.icon} alt={wallet.metadata.name} className="w-6 h-6 rounded" />
-                    ) : null}
-                    <span className="font-medium">
-                      {isConnecting ? 'Connecting...' : wallet.metadata.name}
-                    </span>
-                  </Button>
-                ))}
+                {isReady && wallets.map(wallet => {
+                  const isLastUsed = wallet.id === lastWalletId;
+                  return (
+                    <Button
+                      key={wallet.id}
+                      variant={isLastUsed && needsReconnect ? 'default' : 'outline'}
+                      className={`w-full justify-start gap-3 h-12 ${isLastUsed && needsReconnect ? 'ring-2 ring-primary' : ''}`}
+                      disabled={isConnecting}
+                      onClick={() => connectWallet(wallet.id)}
+                    >
+                      {isConnecting && isLastUsed ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : wallet.metadata.icon ? (
+                        <img src={wallet.metadata.icon} alt={wallet.metadata.name} className="w-6 h-6 rounded" />
+                      ) : null}
+                      <span className="font-medium">
+                        {isConnecting && isLastUsed ? 'Connecting...' : wallet.metadata.name}
+                      </span>
+                      {isLastUsed && needsReconnect && (
+                        <span className="ml-auto text-xs opacity-75">Last used</span>
+                      )}
+                    </Button>
+                  );
+                })}
                 {!isReady && (
                   <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />

@@ -43,8 +43,21 @@ export function getWalletManager(): WalletManager {
 }
 
 // Key used to track which enterprise ID owns the stored wallet session.
-// Allows same-user auto-reconnect while preventing cross-user session bleed.
 const WALLET_OWNER_KEY = 'cadencia:wallet-session-owner';
+
+// Key that remembers which wallet provider the user last connected with.
+export const LAST_WALLET_KEY = 'cadencia:last-wallet';
+
+export function setLastWalletId(walletId: string): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(LAST_WALLET_KEY, walletId);
+  }
+}
+
+export function getLastWalletId(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(LAST_WALLET_KEY);
+}
 
 /**
  * Purge all wallet localStorage keys unconditionally.
