@@ -54,7 +54,9 @@ export async function signAlgoTxn(encodedTxnB64: string): Promise<string> {
   const algExt = (magic as any).algod ?? (magic as any).algorand ?? _algorandExt;
   if (!algExt) throw new Error('Algorand extension not initialised — check @magic-ext/algorand is loaded');
 
-  const txnBytes = Buffer.from(encodedTxnB64, 'base64');
+  console.log('[magic] signAlgoTxn — ext:', algExt?.name, 'signTransaction:', typeof algExt?.signTransaction);
+
+  const txnBytes = new Uint8Array(Buffer.from(encodedTxnB64, 'base64'));
   const signedBytes: Uint8Array = await algExt.signTransaction(txnBytes);
   return Buffer.from(signedBytes).toString('base64');
 }
@@ -70,17 +72,16 @@ export async function signAlgoTxnGroup(encodedTxnsB64: string[]): Promise<string
   const algExt = (magic as any).algod ?? (magic as any).algorand ?? _algorandExt;
   if (!algExt) throw new Error('Algorand extension not initialised — check @magic-ext/algorand is loaded');
 
-  // If the extension supports signGroupTransaction, use it
-  if (typeof algExt.signGroupTransaction === 'function') {
-    const txnBytesArray = encodedTxnsB64.map(b64 => Buffer.from(b64, 'base64'));
-    const signedArray: Uint8Array[] = await algExt.signGroupTransaction(txnBytesArray);
-    return signedArray.map(b => Buffer.from(b).toString('base64'));
-  }
+  console.log('[magic] signAlgoTxnGroup — ext name:', algExt.name, 'txn count:', encodedTxnsB64.length);
+  console.log('[magic] signGroupTransaction available:', typeof algExt.signGroupTransaction === 'function');
 
-  // Fall back to signing each transaction individually (group ID is embedded in each txn)
+  // Sign each transaction individually (group ID is embedded in each txn by algosdk.assignGroupID).
+  // We do NOT use signGroupTransaction because it returns "user denied" silently in some Magic
+  // configurations — signing one at a time is more reliable and shows a popup per transaction.
   const results: string[] = [];
-  for (const b64 of encodedTxnsB64) {
-    const txnBytes = Buffer.from(b64, 'base64');
+  for (let i = 0; i < encodedTxnsB64.length; i++) {
+    console.log(`[magic] signing txn ${i + 1}/${encodedTxnsB64.length}`);
+    const txnBytes = new Uint8Array(Buffer.from(encodedTxnsB64[i], 'base64'));
     const signedBytes: Uint8Array = await algExt.signTransaction(txnBytes);
     results.push(Buffer.from(signedBytes).toString('base64'));
   }
