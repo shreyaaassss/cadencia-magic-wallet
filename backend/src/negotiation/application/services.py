@@ -318,7 +318,17 @@ class NegotiationService:
         seller_profile: AgentProfile,
     ) -> None:
         """ROUND_LOOP → AGREED: convergence detected."""
-        agreed_price = OfferValue(amount=offer.price.amount, currency="INR")
+        # Agreed price = max(current offer, seller's last offer).
+        # When buyer's offer triggers convergence the offer.price is the buyer's
+        # lower bid, but neutral_engine already sets final_price=max(b,s) AFTER
+        # creating the offer — so the offer.price doesn't reflect the update.
+        # Fix: re-compute here to guarantee seller never settles below their floor.
+        seller_last = session.get_last_seller_offer()
+        agreed_amount = (
+            max(offer.price.amount, seller_last.price.amount)
+            if seller_last else offer.price.amount
+        )
+        agreed_price = OfferValue(amount=agreed_amount, currency="INR")
         event = session.mark_agreed(agreed_price, {})
         await self.session_repo.update(session)  # type: ignore[union-attr]
         await self.event_publisher.publish(event)  # type: ignore[union-attr]
