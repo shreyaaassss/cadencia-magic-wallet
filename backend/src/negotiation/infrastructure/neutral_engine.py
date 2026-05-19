@@ -440,13 +440,32 @@ class NeutralEngine:
             if NegotiationPolicy.check_convergence(b_price, s_price):
                 is_terminal = True
 
-        # Check stall threshold
+        # Terminate only on genuine deadlock or the absolute round ceiling.
+        # - stall_counter >= STALL_ROUNDS: neither side has moved meaningfully
+        #   for 3 consecutive rounds → real deadlock, no point continuing.
+        # - round_count >= MAX_ROUNDS: absolute safety net (20 rounds).
+        #
+        # The old total-rounds >= stall_threshold check was a blunt timer that
+        # killed converging deals at round 10. stall_counter is reset every time
+        # any side makes a meaningful concession (>0.2% move), so it only fires
+        # when negotiation has genuinely ground to a halt.
         if not is_terminal:
-            stall_threshold = current_profile.strategy_weights.stall_threshold
-            if NegotiationPolicy.check_stall(
-                session.round_count.value + 1, stall_threshold
-            ):
+            from src.negotiation.domain.session import MAX_ROUNDS, STALL_ROUNDS
+            if session.stall_counter >= STALL_ROUNDS:
                 is_terminal = True
+                log.info(
+                    "negotiation_stalled_no_concession",
+                    stall_counter=session.stall_counter,
+                    round=session.round_count.value + 1,
+                    session_id=str(session.id),
+                )
+            elif session.round_count.value + 1 >= MAX_ROUNDS:
+                is_terminal = True
+                log.info(
+                    "negotiation_max_rounds_reached",
+                    round=session.round_count.value + 1,
+                    session_id=str(session.id),
+                )
 
         # Update Bayesian belief
         self._update_belief_cache(session, current_role, opponent_prices)
