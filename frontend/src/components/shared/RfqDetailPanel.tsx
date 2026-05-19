@@ -1,7 +1,25 @@
 'use client';
 
 import * as React from 'react';
-import { Loader2, Zap, CheckCircle2, XCircle, Clock, Trophy } from 'lucide-react';
+import { Loader2, Zap, CheckCircle2, XCircle, Clock, Trophy, TrendingDown } from 'lucide-react';
+
+// Mini sparkline for price trajectory
+function Sparkline({ prices, color }: { prices: number[]; color: string }) {
+  if (prices.length < 2) return null;
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min || 1;
+  const w = 60; const h = 20;
+  const pts = prices.map((p, i) =>
+    `${(i / (prices.length - 1)) * w},${h - ((p - min) / range) * h}`
+  ).join(' ');
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="shrink-0">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={(prices.length - 1) / (prices.length - 1) * w} cy={h - ((prices[prices.length - 1] - min) / range) * h} r="2.5" fill={color} />
+    </svg>
+  );
+}
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { AsyncPollingStatus } from '@/components/shared/AsyncPollingStatus';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -86,8 +104,15 @@ export function RfqDetailPanel({
     <div className="space-y-5">
       {/* Header */}
       <div>
-        <div className="flex items-center gap-2 mb-1">
-          <h3 className="text-sm font-semibold text-foreground">RFQ #{rfq.id}</h3>
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <h3 className="text-sm font-semibold text-foreground">
+            {rfq.parsed_fields?.product
+              ? String(rfq.parsed_fields.product).charAt(0).toUpperCase() + String(rfq.parsed_fields.product).slice(1)
+              : `RFQ #${rfq.id.slice(0, 8)}…`}
+            {rfq.parsed_fields?.quantity && (
+              <span className="text-muted-foreground font-normal"> × {rfq.parsed_fields.quantity}</span>
+            )}
+          </h3>
           <StatusBadge status={rfq.status} />
         </div>
         <p className="text-xs text-muted-foreground">{formatDate(rfq.created_at)}</p>
@@ -220,20 +245,33 @@ export function RfqDetailPanel({
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex gap-4">
-                        <span className="text-muted-foreground">
-                          Round: <span className="text-foreground font-medium">{neg?.current_round ?? 0}</span>
+                    <div className="flex items-center justify-between text-xs gap-2">
+                      <div className="flex gap-3 items-center min-w-0">
+                        <span className="text-muted-foreground shrink-0">
+                          R<span className="text-foreground font-mono font-semibold">{neg?.current_round ?? 0}</span>/20
                         </span>
-                        <span className="text-muted-foreground">
-                          Match: <span className="text-foreground font-medium">{m.score}%</span>
+                        {/* Round progress bar */}
+                        <div className="w-12 h-1 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-primary/60 transition-all duration-500"
+                            style={{ width: `${((neg?.current_round ?? 0) / 20) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-muted-foreground shrink-0">
+                          <span className="text-foreground font-medium">{m.score}%</span> match
                         </span>
                       </div>
-                      {isAgreed && neg?.agreed_price && (
-                        <span className="text-green-500 font-semibold text-sm">
-                          {formatCurrency(neg.agreed_price)}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {/* Seller price sparkline */}
+                        {neg?.seller_prices && neg.seller_prices.length >= 2 && (
+                          <Sparkline prices={neg.seller_prices} color="#3b82f6" />
+                        )}
+                        {isAgreed && neg?.agreed_price && (
+                          <span className="text-green-500 font-semibold">
+                            {formatCurrency(neg.agreed_price)}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {isAgreed && (

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import {
   Play, FastForward, UserCog, StopCircle, ArrowLeft, Circle,
   AlertTriangle, CheckCircle2, XCircle, Loader2, ArrowRight,
+  BarChart2, X,
 } from 'lucide-react';
 
 import { AppShell } from '@/components/layout/AppShell';
@@ -17,6 +18,9 @@ import { PriceConvergenceChart } from '@/components/shared/PriceConvergenceChart
 import { HumanOverridePanel } from '@/components/shared/HumanOverridePanel';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useSSE } from '@/hooks/useSSE';
@@ -25,8 +29,47 @@ import { formatCurrency, cn } from '@/lib/utils';
 import { ROUTES } from '@/lib/constants';
 import type { NegotiationSession, NegotiationOffer, SessionStatus } from '@/types';
 
-// Empty initial — real offers come from the session API response
 const INITIAL_OFFERS: NegotiationOffer[] = [];
+
+// ── Gap meter ──────────────────────────────────────────────────────────────
+function GapMeter({ buyerOffers, sellerOffers }: { buyerOffers: number[]; sellerOffers: number[] }) {
+  const lastBuyer = buyerOffers[buyerOffers.length - 1] ?? null;
+  const lastSeller = sellerOffers[sellerOffers.length - 1] ?? null;
+  if (!lastBuyer || !lastSeller) return null;
+
+  const gap = Math.abs(lastSeller - lastBuyer) / Math.min(lastBuyer, lastSeller) * 100;
+  const gapColor = gap <= 2 ? 'text-green-400' : gap <= 5 ? 'text-emerald-400' : gap <= 10 ? 'text-amber-400' : 'text-red-400';
+  const barColor = gap <= 2 ? 'bg-green-500' : gap <= 5 ? 'bg-emerald-500' : gap <= 10 ? 'bg-amber-500' : 'bg-red-500';
+  const fillPct = Math.max(0, 100 - gap * 5);
+
+  return (
+    <div className="flex items-center gap-3 bg-secondary/50 border border-border rounded-lg px-4 py-2.5 mt-3">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0 flex-1">
+        <span className="font-mono font-semibold text-blue-400 shrink-0">{formatCurrency(lastSeller)}</span>
+        <span className="text-muted-foreground/40 shrink-0">Seller</span>
+
+        <div className="flex-1 flex items-center gap-1 min-w-[80px] mx-1">
+          <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+            <div
+              className={cn('h-full rounded-full transition-all duration-700', barColor)}
+              style={{ width: `${fillPct}%`, marginLeft: `${(100 - fillPct) / 2}%` }}
+            />
+          </div>
+        </div>
+
+        <span className="text-muted-foreground/40 shrink-0">Buyer</span>
+        <span className="font-mono font-semibold text-emerald-400 shrink-0">{formatCurrency(lastBuyer)}</span>
+      </div>
+      <div className={cn('shrink-0 font-bold tabular-nums text-sm px-2 py-0.5 rounded border', gapColor,
+        gap <= 2 ? 'bg-green-950/50 border-green-900/40' :
+        gap <= 5 ? 'bg-emerald-950/50 border-emerald-900/40' :
+        gap <= 10 ? 'bg-amber-950/50 border-amber-900/40' : 'bg-red-950/50 border-red-900/40'
+      )}>
+        {gap.toFixed(1)}% gap
+      </div>
+    </div>
+  );
+}
 
 export default function NegotiationRoomPage() {
   const params = useParams();
@@ -37,14 +80,6 @@ export default function NegotiationRoomPage() {
   const { enterprise } = useAuth();
   const enterpriseId = enterprise?.id;
 
-  // ─── Session data ───────────────────────────────────────────────────────────
-  const { data: session } = useQuery<NegotiationSession>({
-    queryKey: ['session', sessionId],
-    queryFn: () => api.get(`/v1/sessions/${sessionId}`).then(r => r.data.data),
-    enabled: !!sessionId,
-  });
-
-  // ─── Local real-time state ──────────────────────────────────────────────────
   const [offers, setOffers] = React.useState<NegotiationOffer[]>(INITIAL_OFFERS);
   const [sessionStatus, setSessionStatus] = React.useState<SessionStatus>('ACTIVE');
   const [stallWarning, setStallWarning] = React.useState(false);
@@ -52,8 +87,17 @@ export default function NegotiationRoomPage() {
   const [showOverride, setShowOverride] = React.useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = React.useState(false);
   const [showEndDialog, setShowEndDialog] = React.useState(false);
+  const [showChart, setShowChart] = React.useState(false);
+  // SSE: suppress "Connecting..." flash — only show after 1.5s delay
+  const [showConnecting, setShowConnecting] = React.useState(false);
 
-  // Sync from fetched session
+  const { data: session } = useQuery<NegotiationSession>({
+    queryKey: ['session', sessionId],
+    queryFn: () => api.get(`/v1/sessions/${sessionId}`).then(r => r.data.data),
+    enabled: !!sessionId,
+  });
+
+  // Sync from fetched session (REST snapshot — no flash)
   React.useEffect(() => {
     if (session) {
       setSessionStatus(session.status);
@@ -64,14 +108,18 @@ export default function NegotiationRoomPage() {
     }
   }, [session]);
 
-  // ─── SSE ────────────────────────────────────────────────────────────────────
   const { isConnected } = useSSE({
     sessionId,
     enabled: sessionStatus === 'ACTIVE',
     onEvent: (event, data: any) => {
       switch (event) {
         case 'new_offer':
-          setOffers(prev => [...prev, data.offer]);
+          setOffers(prev => {
+            // Deduplicate by round+role
+            const key = `${data.offer.round_number}-${data.offer.proposer_role}`;
+            const exists = prev.some(o => `${o.round_number}-${o.proposer_role}` === key);
+            return exists ? prev : [...prev, data.offer];
+          });
           break;
         case 'session_agreed':
           setSessionStatus('AGREED');
@@ -80,20 +128,23 @@ export default function NegotiationRoomPage() {
           break;
         case 'session_failed':
           setSessionStatus('FAILED');
-          toast.error(`Negotiation failed: ${data.reason ?? 'Max rounds reached'}`);
+          toast.error(`Negotiation ended: ${data.reason ?? 'Max rounds reached'}`);
           break;
         case 'stall_detected':
           setStallWarning(true);
-          toast.warning('AI negotiation stalled -- consider manual override');
-          break;
-        case 'round_timeout':
-          toast.warning(`Round ${data.timeout_round} timed out`);
+          toast.warning('Negotiation stalled — consider manual override');
           break;
       }
     },
   });
 
-  // ─── Actions ────────────────────────────────────────────────────────────────
+  // Only show "Connecting..." banner if SSE hasn't connected after 1.5s
+  React.useEffect(() => {
+    if (isConnected) { setShowConnecting(false); return; }
+    const t = setTimeout(() => setShowConnecting(true), 1500);
+    return () => clearTimeout(t);
+  }, [isConnected]);
+
   const nextTurnMutation = useMutation({
     mutationFn: () => api.post(`/v1/sessions/${sessionId}/turn`),
     onSuccess: () => toast.success('Next turn triggered'),
@@ -103,20 +154,13 @@ export default function NegotiationRoomPage() {
   const overrideMutation = useMutation({
     mutationFn: (offer: { price: number; terms: Record<string, string> }) =>
       api.post(`/v1/sessions/${sessionId}/override`, offer),
-    onSuccess: () => {
-      toast.success('Human override submitted');
-      setShowOverride(false);
-    },
+    onSuccess: () => { toast.success('Human override submitted'); setShowOverride(false); },
     onError: () => toast.error('Failed to submit override'),
   });
 
   const terminateMutation = useMutation({
     mutationFn: () => api.post(`/v1/sessions/${sessionId}/terminate`),
-    onSuccess: () => {
-      toast.success('Session terminated');
-      setSessionStatus('TERMINATED');
-      setShowEndDialog(false);
-    },
+    onSuccess: () => { toast.success('Session terminated'); setSessionStatus('TERMINATED'); setShowEndDialog(false); },
     onError: () => toast.error('Failed to terminate session'),
   });
 
@@ -133,7 +177,6 @@ export default function NegotiationRoomPage() {
         setSessionStatus(data.final_status as SessionStatus);
         toast.info(`Negotiation ended: ${data.final_status}`);
       }
-      // Offers arrive via SSE; fallback sync from response
       if (data.offers_this_run?.length && offers.length === 0) {
         setOffers(data.session?.offers ?? []);
       }
@@ -141,7 +184,6 @@ export default function NegotiationRoomPage() {
     onError: () => toast.error('Auto-negotiation encountered an error'),
   });
 
-  // Auto-start negotiation if ?auto=true
   const autoStartedRef = React.useRef(false);
   React.useEffect(() => {
     if (autoStart && session && session.status === 'ACTIVE' && !autoStartedRef.current) {
@@ -150,208 +192,217 @@ export default function NegotiationRoomPage() {
     }
   }, [autoStart, session]);
 
-  // ─── Derived data ──────────────────────────────────────────────────────────
   const buyerOffers = offers.filter(o => o.proposer_role === 'BUYER').map(o => o.price);
   const sellerOffers = offers.filter(o => o.proposer_role === 'SELLER').map(o => o.price);
   const latestRound = offers.length > 0 ? offers[offers.length - 1].round_number : (session?.round_count ?? 0);
   const maxRounds = 20;
   const isActive = sessionStatus === 'ACTIVE';
-  const isEnded = sessionStatus === 'AGREED' || sessionStatus === 'FAILED' || sessionStatus === 'TIMEOUT' || sessionStatus === 'WALK_AWAY' || sessionStatus === 'POLICY_BREACH' || sessionStatus === 'TERMINATED';
+  const isEnded = ['AGREED','FAILED','TIMEOUT','WALK_AWAY','POLICY_BREACH','TERMINATED'].includes(sessionStatus);
 
-  // ─── Party display ──────────────────────────────────────────────────────────
   const isYouBuyer = session?.buyer_enterprise_id === enterpriseId;
   const yourRole = isYouBuyer ? 'Buyer' : 'Seller';
   const opponent = isYouBuyer ? session?.seller_name : session?.buyer_name;
 
   return (
     <AppShell>
-      <div className="p-6">
+      <div className="p-4 md:p-6 max-w-4xl mx-auto">
 
-        {/* Header */}
-        <div className="bg-secondary border border-border rounded-lg p-6 mb-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <h1 className="text-lg font-semibold text-foreground">
-                  Negotiation {sessionId}
+        {/* ── Header ────────────────────────────────────────────────────────── */}
+        <div className="bg-secondary border border-border rounded-xl p-5 mb-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              {/* Title row */}
+              <div className="flex flex-wrap items-center gap-2.5 mb-1">
+                <h1 className="text-sm font-mono text-muted-foreground truncate">
+                  {sessionId?.slice(0, 8)}…
                 </h1>
                 <StatusBadge status={sessionStatus} />
-                {/* Connection indicator */}
                 <div className="flex items-center gap-1.5">
                   {isConnected ? (
-                    <Circle className="h-2 w-2 fill-green-500 text-green-500" />
+                    <><Circle className="h-2 w-2 fill-green-500 text-green-500" /><span className="text-xs text-green-500 font-medium">Live</span></>
                   ) : (
-                    <Loader2 className="h-3 w-3 text-muted-foreground animate-spin" />
+                    <><Circle className="h-2 w-2 fill-amber-500/50 text-amber-500 animate-pulse" /><span className="text-xs text-muted-foreground">Syncing</span></>
                   )}
-                  <span className="text-xs text-muted-foreground">
-                    {isConnected ? 'Live' : 'Connecting...'}
-                  </span>
                 </div>
               </div>
-              <p className="text-sm text-muted-foreground">
-                You ({yourRole})
-                <span className="mx-1">&harr;</span>
-                {opponent ?? 'Loading...'}
+
+              {/* Participants */}
+              <p className="text-sm text-foreground font-medium mb-1">
+                <span className="text-emerald-400">You ({yourRole})</span>
+                <span className="mx-2 text-muted-foreground">↔</span>
+                <span className="text-blue-400">{opponent ?? '—'}</span>
               </p>
-              <div className="flex items-center gap-4 mt-2">
-                <span className="text-sm text-muted-foreground">
-                  Round: <span className="text-primary font-mono">{latestRound}/{maxRounds}</span>
-                </span>
+
+              {/* Round progress */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Round</span>
+                  <span className="text-sm font-mono font-bold text-foreground">{latestRound}</span>
+                  <span className="text-xs text-muted-foreground">/ {maxRounds}</span>
+                </div>
+                <div className="flex-1 max-w-[120px] bg-muted rounded-full h-1.5">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-500"
+                    style={{ width: `${(latestRound / maxRounds) * 100}%` }}
+                  />
+                </div>
                 {agreedPrice && (
-                  <span className="text-sm text-green-400 font-medium">
-                    Agreed: {formatCurrency(agreedPrice)}
+                  <span className="text-sm text-green-400 font-semibold">
+                    ✓ {formatCurrency(agreedPrice)}
                   </span>
                 )}
               </div>
+
+              {/* Gap meter */}
+              <GapMeter buyerOffers={buyerOffers} sellerOffers={sellerOffers} />
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowLeaveDialog(true)}
-              className="text-muted-foreground hover:text-foreground hover:bg-accent"
-            >
-              <ArrowLeft className="h-4 w-4 mr-1.5" />
-              Leave
-            </Button>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Chart toggle button */}
+              {offers.length >= 2 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowChart(true)}
+                  className="text-xs gap-1.5 border-border hover:bg-accent"
+                >
+                  <BarChart2 className="h-3.5 w-3.5" />
+                  Price Chart
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowLeaveDialog(true)}
+                className="text-muted-foreground hover:text-foreground hover:bg-accent"
+              >
+                <ArrowLeft className="h-4 w-4 mr-1.5" />
+                Leave
+              </Button>
+            </div>
           </div>
         </div>
 
-        {/* Negotiation in progress indicator (replaces disconnect warning) */}
-        {!isConnected && isActive && autoNegotiateMutation.isPending && (
-          <div className="flex items-center gap-3 bg-primary/5 border border-primary/20 rounded-lg p-4 mb-6">
-            <Loader2 className="h-5 w-5 text-primary animate-spin shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-foreground">AI Negotiation in Progress</p>
-              <p className="text-xs text-muted-foreground">Buyer and seller agents are exchanging offers. Results will appear shortly.</p>
-            </div>
+        {/* ── Banners ───────────────────────────────────────────────────────── */}
+        {showConnecting && isActive && !autoNegotiateMutation.isPending && (
+          <div className="flex items-center gap-3 bg-muted/30 border border-border rounded-lg p-3 mb-4 text-xs text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+            Connecting to live feed…
           </div>
         )}
-        {!isConnected && isActive && !autoNegotiateMutation.isPending && (
-          <div className="flex items-center gap-3 bg-muted/50 border border-border rounded-lg p-4 mb-6">
-            <Loader2 className="h-5 w-5 text-muted-foreground animate-spin shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-foreground">Connecting to live feed...</p>
-              <p className="text-xs text-muted-foreground">Establishing real-time connection for live negotiation updates.</p>
+
+        {autoNegotiateMutation.isPending && (
+          <div className="flex items-center gap-3 bg-primary/5 border border-primary/20 rounded-lg p-3 mb-4">
+            <Loader2 className="h-4 w-4 text-primary animate-spin shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-foreground">AI Negotiation in Progress</p>
+              <p className="text-xs text-muted-foreground">Agents are exchanging offers — offers appear in real time below.</p>
             </div>
           </div>
         )}
 
-        {/* Banners */}
         {sessionStatus === 'AGREED' && (
-          <div className="flex items-center gap-3 bg-green-950 border border-green-900 rounded-lg p-4 mb-6">
+          <div className="flex items-center gap-3 bg-green-950 border border-green-900 rounded-lg p-4 mb-4">
             <CheckCircle2 className="h-5 w-5 text-green-400 shrink-0" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-green-400">Deal Agreed</p>
-              <p className="text-xs text-muted-foreground">
-                Final price: {formatCurrency(agreedPrice ?? 0)} -- Proceed to escrow to settle.
-              </p>
+              <p className="text-sm font-semibold text-green-400">Deal Agreed</p>
+              <p className="text-xs text-muted-foreground">Final price: {formatCurrency(agreedPrice ?? 0)}</p>
             </div>
-            <Button
-              size="sm"
-              onClick={() => router.push(`/escrow?session=${sessionId}`)}
-              className="bg-primary text-primary-foreground hover:opacity-90 transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_4px_16px_hsl(var(--primary)/0.3)]"
-            >
-              Proceed to Escrow
-              <ArrowRight className="h-4 w-4 ml-1.5" />
+            <Button size="sm" onClick={() => router.push(`/escrow?session=${sessionId}`)}
+              className="bg-green-600 hover:bg-green-700 text-white text-xs">
+              Proceed to Escrow <ArrowRight className="h-3.5 w-3.5 ml-1" />
             </Button>
           </div>
         )}
 
-        {sessionStatus === 'FAILED' && (
-          <div className="flex items-center gap-3 bg-red-950 border border-red-900 rounded-lg p-4 mb-6">
+        {(sessionStatus === 'FAILED' || sessionStatus === 'WALK_AWAY') && (
+          <div className="flex items-center gap-3 bg-red-950 border border-red-900 rounded-lg p-4 mb-4">
             <XCircle className="h-5 w-5 text-destructive shrink-0" />
             <div>
-              <p className="text-sm font-medium text-destructive">Negotiation Failed</p>
-              <p className="text-xs text-muted-foreground">Maximum rounds reached without agreement.</p>
+              <p className="text-sm font-semibold text-destructive">
+                {sessionStatus === 'WALK_AWAY' ? 'Agent Walked Away' : 'Negotiation Failed'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {sessionStatus === 'WALK_AWAY'
+                  ? 'No agreement was reached — prices did not converge.'
+                  : 'Maximum rounds reached without agreement.'}
+              </p>
             </div>
           </div>
         )}
 
         {stallWarning && isActive && (
-          <div className="flex items-center gap-3 bg-amber-950 border border-amber-900 rounded-lg p-4 mb-6">
+          <div className="flex items-center gap-3 bg-amber-950 border border-amber-900 rounded-lg p-4 mb-4">
             <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-amber-400">Stall Detected</p>
-              <p className="text-xs text-muted-foreground">AI negotiation has stalled -- consider using human override.</p>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-amber-400">Stall Detected</p>
+              <p className="text-xs text-muted-foreground">Agents have not made meaningful concessions — consider manual override.</p>
             </div>
-            <Button
-              size="sm"
-              onClick={() => { setShowOverride(true); setStallWarning(false); }}
-              className="ml-auto bg-primary text-primary-foreground hover:bg-primary/90 text-xs"
-            >
+            <Button size="sm" onClick={() => { setShowOverride(true); setStallWarning(false); }}
+              className="ml-auto bg-amber-700 hover:bg-amber-600 text-white text-xs">
               Override
             </Button>
           </div>
         )}
 
-        {/* Timeline */}
-        <div className="bg-card border border-border rounded-lg p-6 mb-6">
-          <SectionHeader title="Negotiation Timeline" description={`${offers.length} offers exchanged`} />
-          <div className="max-h-96 overflow-y-auto pr-2">
+        {/* ── Chat timeline ─────────────────────────────────────────────────── */}
+        <div className="bg-card border border-border rounded-xl p-4 mb-4">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-border">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Live Negotiation</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">{offers.length} offers exchanged</p>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
+                Seller
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block" />
+                Buyer
+              </span>
+            </div>
+          </div>
+          <div className="max-h-[560px] overflow-y-auto pr-1 scroll-smooth">
             <NegotiationTimeline offers={offers} sessionStatus={sessionStatus} />
           </div>
         </div>
 
-        {/* Price Convergence Chart */}
-        <div className="bg-card border border-border rounded-lg p-6 mb-6">
-          <SectionHeader title="Price Convergence" />
-          <PriceConvergenceChart buyerOffers={buyerOffers} sellerOffers={sellerOffers} />
-        </div>
-
-        {/* Actions */}
+        {/* ── Actions ───────────────────────────────────────────────────────── */}
         {!isEnded && (
-          <div className="bg-card border border-border rounded-lg p-6 mb-6">
-            <div className="flex flex-wrap items-center justify-center gap-4">
+          <div className="bg-card border border-border rounded-xl p-4 mb-4">
+            <div className="flex flex-wrap items-center justify-center gap-3">
               <Button
                 onClick={() => autoNegotiateMutation.mutate(20)}
                 disabled={autoNegotiateMutation.isPending || nextTurnMutation.isPending || !isActive}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-3 text-base font-semibold"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 px-6 font-semibold"
               >
                 {autoNegotiateMutation.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Negotiating...
-                  </>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Negotiating...</>
                 ) : (
-                  <>
-                    <FastForward className="h-4 w-4 mr-2" />
-                    Auto-Negotiate
-                  </>
+                  <><FastForward className="h-4 w-4 mr-2" />Auto-Negotiate</>
                 )}
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => nextTurnMutation.mutate()}
+              <Button variant="outline" onClick={() => nextTurnMutation.mutate()}
                 disabled={nextTurnMutation.isPending || autoNegotiateMutation.isPending || !isActive}
-                className="text-foreground border-border hover:bg-accent"
-              >
-                <Play className="h-4 w-4 mr-2" />
-                Next Round
+                className="border-border hover:bg-accent">
+                <Play className="h-4 w-4 mr-2" />Next Round
               </Button>
-              <Button
-                variant="ghost"
-                onClick={() => setShowOverride(!showOverride)}
-                className="text-foreground hover:bg-accent"
-              >
-                <UserCog className="h-4 w-4 mr-2" />
-                Human Override
+              <Button variant="ghost" onClick={() => setShowOverride(!showOverride)} className="hover:bg-accent">
+                <UserCog className="h-4 w-4 mr-2" />Override
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => setShowEndDialog(true)}
-                className="text-destructive border-destructive/40 hover:bg-red-950"
-              >
-                <StopCircle className="h-4 w-4 mr-2" />
-                End Session
+              <Button variant="outline" onClick={() => setShowEndDialog(true)}
+                className="text-destructive border-destructive/40 hover:bg-red-950">
+                <StopCircle className="h-4 w-4 mr-2" />End
               </Button>
             </div>
           </div>
         )}
 
-        {/* Human Override Panel */}
+        {/* ── Human Override ─────────────────────────────────────────────────── */}
         {showOverride && !isEnded && (
-          <div className="bg-muted/50 border border-border rounded-lg p-6 mb-6 animate-in fade-in slide-in-from-top-2 duration-200">
-            <SectionHeader title="Human Override" description="Submit a manual price and terms to override the AI agent" />
+          <div className="bg-muted/50 border border-border rounded-xl p-5 mb-4 animate-in fade-in slide-in-from-top-2 duration-200">
+            <SectionHeader title="Human Override" description="Submit a manual price to override the AI agent" />
             <HumanOverridePanel
               onSubmit={(offer) => overrideMutation.mutate(offer)}
               isSubmitting={overrideMutation.isPending}
@@ -359,24 +410,37 @@ export default function NegotiationRoomPage() {
           </div>
         )}
 
-        {/* Leave Dialog */}
+        {/* ── Price Chart Modal ─────────────────────────────────────────────── */}
+        <Dialog open={showChart} onOpenChange={setShowChart}>
+          <DialogContent className="max-w-3xl w-full bg-card border-border">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-foreground">
+                <BarChart2 className="h-5 w-5 text-primary" />
+                Price Movement — {offers.length} offers
+              </DialogTitle>
+            </DialogHeader>
+            <div className="mt-2">
+              <PriceConvergenceChart buyerOffers={buyerOffers} sellerOffers={sellerOffers} />
+            </div>
+            <p className="text-xs text-muted-foreground text-center mt-2">
+              Shaded region shows Zone of Possible Agreement (ZOPA). Hover dots for exact prices.
+            </p>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── Dialogs ───────────────────────────────────────────────────────── */}
         <ConfirmDialog
-          open={showLeaveDialog}
-          onOpenChange={setShowLeaveDialog}
+          open={showLeaveDialog} onOpenChange={setShowLeaveDialog}
           title="Leave Negotiation Room"
-          description="The negotiation will continue in the background. You can return anytime."
+          description="The negotiation continues in the background. You can return anytime."
           confirmLabel="Leave"
           onConfirm={() => router.push(ROUTES.NEGOTIATIONS)}
         />
-
-        {/* End Session Dialog */}
         <ConfirmDialog
-          open={showEndDialog}
-          onOpenChange={setShowEndDialog}
+          open={showEndDialog} onOpenChange={setShowEndDialog}
           title="End Negotiation Session"
-          description="This will permanently terminate the session. This action cannot be undone."
-          confirmLabel="Terminate"
-          variant="destructive"
+          description="This will permanently terminate the session. Cannot be undone."
+          confirmLabel="Terminate" variant="destructive"
           onConfirm={() => terminateMutation.mutate()}
           isLoading={terminateMutation.isPending}
         />
