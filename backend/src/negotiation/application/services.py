@@ -176,6 +176,7 @@ class NegotiationService:
                 "rfq_catalogue_load_failed",
                 session_id=str(session.id),
                 rfq_id=str(session.rfq_id),
+                exc_info=True,
             )
 
         return rfq_parsed_fields, catalogue_price
