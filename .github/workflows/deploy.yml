@@ -142,8 +142,20 @@ jobs:
             cd $APP_DIR/frontend
             tar -xzf frontend-build.tar.gz --overwrite
             rm -f frontend-build.tar.gz
+            # Sync static assets into standalone bundle (nginx serves them directly)
+            rm -rf .next/standalone/.next/static
             cp -r .next/static .next/standalone/.next/static
             cp -r public .next/standalone/public 2>/dev/null || true
+            # Allow nginx (runs as nginx user) to read these files
+            chmod o+x $APP_DIR $APP_DIR/frontend $APP_DIR/frontend/.next
+            find $APP_DIR/frontend/.next/standalone -type d -exec chmod o+x {} \;
+            find $APP_DIR/frontend/.next/standalone -type f -exec chmod o+r {} \;
+            # Update nginx to serve _next/static directly (idempotent)
+            CONF=$(find /etc/nginx/conf.d/ -name '*.conf' | head -1)
+            if ! grep -q '_next/static' "$CONF" 2>/dev/null; then
+              sudo sed -i 's|location / {|location /_next/static/ {\n        alias '$APP_DIR'/frontend/.next/standalone/.next/static/;\n        expires 1y;\n        add_header Cache-Control "public, immutable";\n        access_log off;\n    }\n\n    location / {|' "$CONF"
+              sudo nginx -t && sudo nginx -s reload
+            fi
 
             cd $APP_DIR/backend
             tar -xzf backend-src.tar.gz --overwrite
