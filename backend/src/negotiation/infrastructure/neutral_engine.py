@@ -488,11 +488,14 @@ class NeutralEngine:
             )
             if NegotiationPolicy.check_convergence(b_price, s_price):
                 is_terminal = True
-                # Override reasoning so the UI shows convergence clearly
-                # instead of the LLM's "I will make a counteroffer..." message.
                 if b_price and s_price:
                     gap_pct = abs(s_price - b_price) / min(b_price, s_price) * 100
-                    agreed_at = min(b_price, s_price) if is_buyer else max(b_price, s_price)
+                    # Agreed price = the HIGHER of the two converging prices
+                    # (always the seller's last offer in normal convergence).
+                    # This ensures the seller never closes below their floor —
+                    # when buyer's bid triggers convergence, the deal settles at
+                    # the seller's ask, not the buyer's lower offer.
+                    final_price = max(b_price, s_price)
                     reasoning = (
                         f"Prices converged — deal reached at "
                         f"\u20b9{float(final_price):,.0f}. "
