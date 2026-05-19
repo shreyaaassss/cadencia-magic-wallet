@@ -205,30 +205,38 @@ export function CadenciaWalletProvider({ children }: { children: React.ReactNode
     setError(null);
 
     try {
+      // Backend pre-encodes the full unsigned atomic group (including algod params)
+      // so we can call signAlgoTxnGroup immediately on the user's click gesture
+      // without any further async work — this prevents the browser from blocking
+      // the Magic signing popup.
       const { data: buildRes } = await api.get(`/v1/escrow/${escrowId}/build-fund-txn`);
       const d = buildRes.data;
 
-      const algod = getAlgod();
-      const sp = await algod.getTransactionParams().do();
+      let signedB64: string[];
 
-      const payTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-        sender: activeAddress,
-        receiver: d.app_address,
-        amount: d.amount_microalgo,
-        suggestedParams: sp,
-      });
-
-      const callTxn = algosdk.makeApplicationCallTxnFromObject({
-        sender: activeAddress,
-        appIndex: d.app_id,
-        onComplete: algosdk.OnApplicationComplete.NoOpOC,
-        appArgs: [b64ToBytes(d.method_selector_b64)],
-        suggestedParams: sp,
-      });
-
-      algosdk.assignGroupID([payTxn, callTxn]);
-
-      const signedB64 = await signTxns([payTxn, callTxn]);
+      if (d.encoded_group_b64 && d.encoded_group_b64.length === 2) {
+        // Fast path: backend returned pre-encoded txns — sign immediately
+        signedB64 = await signAlgoTxnGroup(d.encoded_group_b64);
+      } else {
+        // Fallback: build locally (algod call required)
+        const algod = getAlgod();
+        const sp = await algod.getTransactionParams().do();
+        const payTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+          sender: activeAddress,
+          receiver: d.app_address,
+          amount: d.amount_microalgo,
+          suggestedParams: sp,
+        });
+        const callTxn = algosdk.makeApplicationCallTxnFromObject({
+          sender: activeAddress,
+          appIndex: d.app_id,
+          onComplete: algosdk.OnApplicationComplete.NoOpOC,
+          appArgs: [b64ToBytes(d.method_selector_b64)],
+          suggestedParams: sp,
+        });
+        algosdk.assignGroupID([payTxn, callTxn]);
+        signedB64 = await signTxns([payTxn, callTxn]);
+      }
 
       const { data: submitRes } = await api.post(`/v1/escrow/${escrowId}/submit-signed-fund`, {
         signed_transactions: signedB64,
