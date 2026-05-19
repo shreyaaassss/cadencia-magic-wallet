@@ -155,13 +155,21 @@ class StrategyEngine:
                 )
             return self._strong_anchor(target_price, reservation_price, is_buyer)
 
-        # Below reservation → walk away
+        # Reservation-price guard.
+        # For the SELLER: do NOT walk away just because the buyer's current
+        # offer is below the floor. Low buyer anchors are normal negotiation
+        # strategy — the buyer will concede upward over subsequent rounds.
+        # If they genuinely refuse to move, the stall_counter (3 consecutive
+        # no-concession rounds) will terminate the session naturally.
+        # Walking away here on the first low offer kills deals that a ZOPA
+        # analysis already proved are reachable (e.g. buyer ceiling ₹15L,
+        # seller floor ₹14.85L → deal at ~₹14.9L is perfectly achievable).
         if opponent_last_price is not None:
             if is_buyer and opponent_last_price > reservation_price:
-                # Buyer's reservation is max they'll pay; opponent asking more is normal
+                # Seller is above buyer's ceiling — normal, buyer negotiates down.
                 pass
-            elif not is_buyer and opponent_last_price < reservation_price:
-                return self._walk_away(reservation_price, opponent_last_price, is_buyer)
+            # Seller side: fall through to normal strategy (Boulware / TitForTat).
+            # Stall detection handles the genuine deadlock case.
 
         # Less than 3 rounds remaining → ultimatum
         remaining = self.max_rounds - round_num
