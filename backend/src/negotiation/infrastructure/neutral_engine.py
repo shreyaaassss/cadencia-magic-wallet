@@ -695,8 +695,20 @@ class NeutralEngine:
                         # catalogue_price is per-unit — multiply by order quantity
                         # to get total cost basis comparable to the buyer's budget.
                         quantity_raw_b = rfq_parsed_fields.get("quantity")
-                        if quantity_raw_b is not None and Decimal(str(quantity_raw_b)) > 0:
-                            cost_basis = catalogue_price * Decimal(str(quantity_raw_b))
+                        # Robustly parse quantity: handle None, pure numbers, and
+                        # strings like "45 cameras" (LLM sometimes embeds the unit).
+                        parsed_qty: Decimal | None = None
+                        if quantity_raw_b is not None:
+                            import re as _re
+                            qty_str = str(quantity_raw_b).strip()
+                            m = _re.match(r"^(\d+(?:\.\d+)?)", qty_str)
+                            if m:
+                                try:
+                                    parsed_qty = Decimal(m.group(1))
+                                except Exception:
+                                    pass
+                        if parsed_qty is not None and parsed_qty > 0:
+                            cost_basis = catalogue_price * parsed_qty
                         else:
                             # No usable quantity — derive from budget with match_score heuristic
                             match_score = Decimal(str(rfq_parsed_fields.get("_match_score", 0.5)))
