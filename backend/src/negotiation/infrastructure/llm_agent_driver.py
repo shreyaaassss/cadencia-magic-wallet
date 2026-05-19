@@ -39,15 +39,22 @@ class LLMAgentDriver:
         temperature: float = 0.3,
         max_tokens: int = 512,
         base_url: str | None = None,
+        extra_api_keys: list[str] | None = None,
     ) -> None:
-        import openai  # type: ignore[import-untyped]
-        kwargs: dict = {"api_key": api_key}
-        if base_url:
-            kwargs["base_url"] = base_url
-        self.client = openai.AsyncOpenAI(**kwargs)
+        self._base_url = base_url
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self._api_keys = [api_key] + (extra_api_keys or [])
+        self._clients = [self._make_client(k) for k in self._api_keys]
+        self.client = self._clients[0]  # kept for backwards compatibility
+
+    def _make_client(self, api_key: str):
+        import openai  # type: ignore[import-untyped]
+        kwargs: dict = {"api_key": api_key}
+        if self._base_url:
+            kwargs["base_url"] = self._base_url
+        return openai.AsyncOpenAI(**kwargs)
 
     async def generate_offer(
         self,
@@ -95,38 +102,47 @@ class LLMAgentDriver:
         for attempt, delay in enumerate([0.0] + RETRY_DELAYS):
             if delay > 0:
                 await asyncio.sleep(delay)
-            try:
-                response = await self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
-                    response_format={"type": "json_object"},
-                )
-                raw_content = response.choices[0].message.content or ""
-                result = validate_agent_output(raw_content)
+            # On each attempt, cycle through all API keys so a quota error on one
+            # key doesn't block the request — try the next key immediately.
+            for key_idx, client in enumerate(self._clients):
+                try:
+                    response = await client.chat.completions.create(
+                        model=self.model,
+                        messages=messages,
+                        temperature=self.temperature,
+                        max_tokens=self.max_tokens,
+                        response_format={"type": "json_object"},
+                    )
+                    raw_content = response.choices[0].message.content or ""
+                    result = validate_agent_output(raw_content)
 
-                # Prometheus: record success
-                elapsed = time.monotonic() - start_time
-                LLM_LATENCY_SECONDS.labels(provider=self.model.split("-")[0]).observe(elapsed)
-                LLM_REQUESTS_TOTAL.labels(provider=self.model.split("-")[0], status="success").inc()
+                    # Prometheus: record success
+                    elapsed = time.monotonic() - start_time
+                    LLM_LATENCY_SECONDS.labels(provider=self.model.split("-")[0]).observe(elapsed)
+                    LLM_REQUESTS_TOTAL.labels(provider=self.model.split("-")[0], status="success").inc()
 
-                return result
-            except openai.RateLimitError as e:
-                last_error = e
-                log.warning("llm_rate_limit", attempt=attempt)
-            except openai.APITimeoutError as e:
-                last_error = e
-                log.warning("llm_timeout", attempt=attempt)
-            except openai.APIConnectionError as e:
-                last_error = e
-                log.error("llm_connection_error", attempt=attempt)
-            except ValidationError as e:
-                last_error = e
-                log.warning("llm_invalid_output", attempt=attempt, error=str(e))
-            except Exception as e:
-                last_error = e
-                log.error("llm_unexpected_error", attempt=attempt, error=str(e))
+                    return result
+                except openai.RateLimitError as e:
+                    last_error = e
+                    log.warning("llm_rate_limit", attempt=attempt, key_idx=key_idx, total_keys=len(self._clients))
+                    # Try next key immediately; if this was the last key the outer
+                    # loop will sleep and cycle through all keys again.
+                except openai.APITimeoutError as e:
+                    last_error = e
+                    log.warning("llm_timeout", attempt=attempt, key_idx=key_idx)
+                    break  # transient; wait for next retry delay before retrying
+                except openai.APIConnectionError as e:
+                    last_error = e
+                    log.error("llm_connection_error", attempt=attempt, key_idx=key_idx)
+                    break
+                except ValidationError as e:
+                    last_error = e
+                    log.warning("llm_invalid_output", attempt=attempt, key_idx=key_idx, error=str(e))
+                    break
+                except Exception as e:
+                    last_error = e
+                    log.error("llm_unexpected_error", attempt=attempt, key_idx=key_idx, error=str(e))
+                    break
 
         # Prometheus: record failure
         elapsed = time.monotonic() - start_time
@@ -201,12 +217,21 @@ def get_agent_driver() -> object:
         if not api_key:
             log.warning("groq_api_key_missing_falling_back_to_stub")
             return StubAgentDriver()
+        # Collect additional fallback keys (GROQ_API_KEY_2, _3, _4, ...) so that
+        # if the primary key hits its quota the driver rotates to the next one.
+        extra_keys = [
+            v for k in ("GROQ_API_KEY_2", "GROQ_API_KEY_3", "GROQ_API_KEY_4")
+            if (v := os.environ.get(k, ""))
+        ]
+        if extra_keys:
+            log.info("groq_fallback_keys_loaded", count=len(extra_keys))
         return LLMAgentDriver(
             api_key=api_key,
             model=os.getenv("LLM_MODEL", "llama-3.3-70b-versatile"),
             temperature=temperature,
             max_tokens=max_tokens,
             base_url="https://api.groq.com/openai/v1",
+            extra_api_keys=extra_keys,
         )
 
     if provider == "gemini":
