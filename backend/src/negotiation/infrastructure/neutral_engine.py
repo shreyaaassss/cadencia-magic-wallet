@@ -133,13 +133,20 @@ class NeutralEngine:
                 seller_profile, False, rfq_parsed_fields, catalogue_price
             )
             if buyer_val.reservation_price < seller_val.reservation_price:
+                gap = seller_val.reservation_price - buyer_val.reservation_price
                 log.warning(
                     "no_zopa_detected",
-                    buyer_reservation=float(buyer_val.reservation_price),
-                    seller_reservation=float(seller_val.reservation_price),
+                    buyer_ceiling=float(buyer_val.reservation_price),
+                    seller_floor=float(seller_val.reservation_price),
+                    gap=float(gap),
                     session_id=str(session.id),
                 )
-                return self._create_no_zopa_offer(session, current_role), True
+                return self._create_no_zopa_offer(
+                    session, current_role,
+                    seller_target=seller_val.target_price,
+                    buyer_ceiling=buyer_val.reservation_price,
+                    seller_floor=seller_val.reservation_price,
+                ), True
 
         # ── LAYER 1: VALUATION ──
         valuation = self._compute_valuation(
@@ -248,6 +255,13 @@ class NeutralEngine:
             "strategy_suggestion": strategy_rec.strategy.value,
             "suggested_price": float(strategy_rec.suggested_price),
             "suggested_price_basis": "INR total order value (NOT per-unit)",
+            # Explicit valuation bounds so the LLM doesn't have to guess its own limits.
+            # reservation_price = absolute walk-away point (buyer: max to pay; seller: min to accept).
+            # target_price      = ideal outcome (buyer: ideal low; seller: ideal high).
+            # BUYER rule: if opponent's price <= your_target_price_inr → ACCEPT immediately.
+            # SELLER rule: if opponent's price >= your_target_price_inr → ACCEPT immediately.
+            "your_reservation_price_inr": float(valuation.reservation_price),
+            "your_target_price_inr": float(valuation.target_price),
             "opponent_belief": belief.to_dict(),
             "concession_modifier": float(adjusted_concession),
         }
@@ -797,22 +811,45 @@ class NeutralEngine:
             return None
 
     def _create_no_zopa_offer(
-        self, session: NegotiationSession, role: ProposerRole
+        self,
+        session: NegotiationSession,
+        role: ProposerRole,
+        seller_target: Decimal | None = None,
+        buyer_ceiling: Decimal | None = None,
+        seller_floor: Decimal | None = None,
     ) -> Offer:
-        """Create a REJECT offer when no Zone of Possible Agreement exists at round 0."""
+        """Create a REJECT offer when no Zone of Possible Agreement exists at round 0.
+
+        Uses the seller's actual asking price so judges can see the gap clearly
+        instead of a meaningless ₹1 placeholder.
+        """
+        # Show seller's real catalog price so the rejection is self-explanatory.
+        display_price = seller_target if seller_target is not None else Decimal("1")
+
+        if buyer_ceiling is not None and seller_floor is not None:
+            gap = seller_floor - buyer_ceiling
+            gap_pct = float(gap / seller_floor * 100) if seller_floor > 0 else 0
+            reasoning = (
+                f"NO DEAL — Seller's minimum ₹{float(seller_floor):,.0f} "
+                f"exceeds Buyer's budget ₹{float(buyer_ceiling):,.0f}. "
+                f"Gap: ₹{float(gap):,.0f} ({gap_pct:.1f}%) — no agreement possible."
+            )
+        else:
+            reasoning = (
+                "REJECTED: No Zone of Possible Agreement detected. "
+                "Buyer's maximum price is below seller's minimum acceptable price. "
+                "Walking away rather than forcing an uneconomical deal."
+            )
+
         return Offer.create_agent_offer(
             session_id=session.id,
             round_number=session.round_count.value + 1,
             proposer_role=role,
-            price=Decimal("1"),
+            price=display_price,
             currency="INR",
             terms={},
             confidence=1.0,
-            agent_reasoning=(
-                "REJECTED: No Zone of Possible Agreement detected. "
-                "Buyer's maximum price is below seller's minimum acceptable price. "
-                "Walking away rather than forcing an uneconomical deal."
-            ),
+            agent_reasoning=reasoning,
         )
 
     def _create_timeout_offer(
