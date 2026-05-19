@@ -57,12 +57,11 @@ jobs:
       # appleboy/ssh-action envs — they get mangled in the SSH transport.
 
       - name: Write backend .env
-        env:
-          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
-          MAGIC_SECRET_KEY: ${{ secrets.MAGIC_SECRET_KEY }}
         run: |
-          printf '%s\n' "$BACKEND_ENV" > backend.env
-          printf 'MAGIC_SECRET_KEY=%s\n' "$MAGIC_SECRET_KEY" >> backend.env
+          # BACKEND_ENV_B64 is the base64-encoded .env — single-line secret
+          # that survives GitHub Actions env var transport without mangling.
+          echo "${{ secrets.BACKEND_ENV_B64 }}" | base64 -d > backend.env
+          printf 'MAGIC_SECRET_KEY=%s\n' "${{ secrets.MAGIC_SECRET_KEY }}" >> backend.env
 
       - name: Create PM2 ecosystem config
         run: |
