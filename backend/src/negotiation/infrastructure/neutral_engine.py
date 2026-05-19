@@ -453,6 +453,16 @@ class NeutralEngine:
             )
             if NegotiationPolicy.check_convergence(b_price, s_price):
                 is_terminal = True
+                # Override reasoning so the UI shows convergence clearly
+                # instead of the LLM's "I will make a counteroffer..." message.
+                if b_price and s_price:
+                    gap_pct = abs(s_price - b_price) / min(b_price, s_price) * 100
+                    agreed_at = min(b_price, s_price) if is_buyer else max(b_price, s_price)
+                    reasoning = (
+                        f"Prices converged — deal reached at "
+                        f"\u20b9{float(final_price):,.0f}. "
+                        f"Gap closed to {float(gap_pct):.1f}% (within 2% threshold)."
+                    )
 
         # Terminate only on genuine deadlock or the absolute round ceiling.
         # - stall_counter >= STALL_ROUNDS: neither side has moved meaningfully
