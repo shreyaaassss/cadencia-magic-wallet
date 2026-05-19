@@ -1,25 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Loader2, Zap, CheckCircle2, XCircle, Clock, Trophy, TrendingDown } from 'lucide-react';
-
-// Mini sparkline for price trajectory
-function Sparkline({ prices, color }: { prices: number[]; color: string }) {
-  if (prices.length < 2) return null;
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
-  const range = max - min || 1;
-  const w = 60; const h = 20;
-  const pts = prices.map((p, i) =>
-    `${(i / (prices.length - 1)) * w},${h - ((p - min) / range) * h}`
-  ).join(' ');
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="shrink-0">
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx={(prices.length - 1) / (prices.length - 1) * w} cy={h - ((prices[prices.length - 1] - min) / range) * h} r="2.5" fill={color} />
-    </svg>
-  );
-}
+import { Loader2, Zap, CheckCircle2, XCircle, Clock, Trophy } from 'lucide-react';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { AsyncPollingStatus } from '@/components/shared/AsyncPollingStatus';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -262,10 +244,6 @@ export function RfqDetailPanel({
                         </span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        {/* Seller price sparkline */}
-                        {neg?.seller_prices && neg.seller_prices.length >= 2 && (
-                          <Sparkline prices={neg.seller_prices} color="#3b82f6" />
-                        )}
                         {isAgreed && neg?.agreed_price && (
                           <span className="text-green-500 font-semibold">
                             {formatCurrency(neg.agreed_price)}
