@@ -228,7 +228,10 @@ class NeutralEngine:
                 "product": rfq_parsed_fields.get("product") or rfq_parsed_fields.get("commodity_code"),
                 "quantity": rfq_parsed_fields.get("quantity"),
                 "quantity_unit": rfq_parsed_fields.get("quantity_unit", "units"),
-                "total_budget_inr": rfq_parsed_fields.get("budget_max"),
+                # Only expose buyer's budget to the BUYER agent.
+                # Sellers must not see buyer's budget — they anchor to their own
+                # catalog price, not to what the buyer is willing to pay.
+                "total_budget_inr": rfq_parsed_fields.get("budget_max") if is_buyer else None,
             }
             # For the seller agent: expose per-unit price and total cost basis so the
             # LLM anchors correctly and never negotiates below its own cost floor.
@@ -364,9 +367,30 @@ class NeutralEngine:
                         final_price, effective_budget_ceiling
                     )
                 except Exception:
-                    final_price = min(
-                        final_price, effective_budget_ceiling
+                    final_price = min(final_price, effective_budget_ceiling)
+
+            # Monotonicity guard: buyer prices must never decrease, seller prices
+            # must never increase. If the LLM goes the wrong direction, clamp to
+            # the last price so the negotiation doesn't regress.
+            my_prices = (
+                session.get_buyer_prices() if is_buyer else session.get_seller_prices()
+            )
+            if my_prices:
+                last_my_price = my_prices[-1]
+                if is_buyer and final_price < last_my_price:
+                    log.warning(
+                        "monotonicity_clamp_buyer",
+                        llm_price=float(final_price),
+                        last_price=float(last_my_price),
                     )
+                    final_price = last_my_price
+                elif not is_buyer and final_price > last_my_price:
+                    log.warning(
+                        "monotonicity_clamp_seller",
+                        llm_price=float(final_price),
+                        last_price=float(last_my_price),
+                    )
+                    final_price = last_my_price
 
         elif action == "ACCEPT":
             # Accept the last counter from other side
