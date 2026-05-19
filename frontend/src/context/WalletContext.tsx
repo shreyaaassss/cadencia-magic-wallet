@@ -17,7 +17,7 @@ import { toast } from 'sonner';
 import algosdk from 'algosdk';
 import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { magic, signAlgoTxn } from '@/lib/magic';
+import { magic, signAlgoTxn, signAlgoTxnGroup } from '@/lib/magic';
 import type { WalletBalance } from '@/types';
 
 interface CadenciaWalletContextValue {
@@ -73,16 +73,18 @@ export function CadenciaWalletProvider({ children }: { children: React.ReactNode
 
   /**
    * Sign one or more transactions via Magic and return base64-encoded results.
-   * Signs each transaction individually (Magic signs one at a time).
+   * For atomic groups (multiple txns), uses signAlgoTxnGroup which will use
+   * Magic's signGroupTransaction if available, otherwise signs individually.
    */
   const signTxns = useCallback(async (txns: algosdk.Transaction[]): Promise<string[]> => {
-    const results: string[] = [];
-    for (const txn of txns) {
-      const encodedB64 = Buffer.from(algosdk.encodeUnsignedTransaction(txn)).toString('base64');
-      const signedB64 = await signAlgoTxn(encodedB64);
-      results.push(signedB64);
+    if (txns.length === 1) {
+      const encodedB64 = Buffer.from(algosdk.encodeUnsignedTransaction(txns[0])).toString('base64');
+      return [await signAlgoTxn(encodedB64)];
     }
-    return results;
+    const encodedGroup = txns.map(t =>
+      Buffer.from(algosdk.encodeUnsignedTransaction(t)).toString('base64')
+    );
+    return signAlgoTxnGroup(encodedGroup);
   }, []);
 
   // connectWallet / disconnectWallet are no-ops — Magic manages the wallet automatically
