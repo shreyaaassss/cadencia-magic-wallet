@@ -49,9 +49,10 @@ export async function getMagicAddress(): Promise<string> {
 export async function signAlgoTxn(encodedTxnB64: string): Promise<string> {
   if (!magic) throw new Error('Magic SDK not available');
 
-  // Prefer magic.algorand (standard), fall back to stored extension reference
-  const algExt = (magic as any).algorand ?? _algorandExt;
-  if (!algExt) throw new Error('Algorand extension not initialised — cannot sign transaction');
+  // Extension name is 'algod' (not 'algorand') in @magic-ext/algorand@24.4.2
+  // Fall back to stored extension reference when the property isn't registered
+  const algExt = (magic as any).algod ?? (magic as any).algorand ?? _algorandExt;
+  if (!algExt) throw new Error('Algorand extension not initialised — check @magic-ext/algorand is loaded');
 
   const txnBytes = Buffer.from(encodedTxnB64, 'base64');
   const signedBytes: Uint8Array = await algExt.signTransaction(txnBytes);
@@ -66,8 +67,8 @@ export async function signAlgoTxn(encodedTxnB64: string): Promise<string> {
 export async function signAlgoTxnGroup(encodedTxnsB64: string[]): Promise<string[]> {
   if (!magic) throw new Error('Magic SDK not available');
 
-  const algExt = (magic as any).algorand ?? _algorandExt;
-  if (!algExt) throw new Error('Algorand extension not initialised');
+  const algExt = (magic as any).algod ?? (magic as any).algorand ?? _algorandExt;
+  if (!algExt) throw new Error('Algorand extension not initialised — check @magic-ext/algorand is loaded');
 
   // If the extension supports signGroupTransaction, use it
   if (typeof algExt.signGroupTransaction === 'function') {

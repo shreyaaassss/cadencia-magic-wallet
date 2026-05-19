@@ -30,6 +30,7 @@ const nextConfig: NextConfig = {
       '@magic-sdk/provider': path.join(nm, '@magic-sdk/provider/dist/cjs/index.js'),
       '@magic-sdk/commons': path.join(nm, '@magic-sdk/commons/dist/cjs/index.js'),
       '@magic-sdk/types': path.join(nm, '@magic-sdk/types/dist/cjs/index.js'),
+      '@magic-ext/algorand': path.join(nm, '@magic-ext/algorand/dist/cjs/index.js'),
     };
     return config;
   },
