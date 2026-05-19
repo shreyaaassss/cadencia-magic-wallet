@@ -52,7 +52,18 @@ jobs:
             alembic \
             alembic.ini
 
-      # Create ecosystem.config.js locally — avoids SSH heredoc injection bug
+      # Write all files locally in the Actions runner (where secrets expand
+      # correctly) then SCP them up. Never pass multiline secrets through
+      # appleboy/ssh-action envs — they get mangled in the SSH transport.
+
+      - name: Write backend .env
+        env:
+          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
+          MAGIC_SECRET_KEY: ${{ secrets.MAGIC_SECRET_KEY }}
+        run: |
+          printf '%s\n' "$BACKEND_ENV" > backend.env
+          printf 'MAGIC_SECRET_KEY=%s\n' "$MAGIC_SECRET_KEY" >> backend.env
+
       - name: Create PM2 ecosystem config
         run: |
           cat > ecosystem.config.js << 'EOF'
@@ -114,6 +125,15 @@ jobs:
           source: backend-src.tar.gz
           target: /home/ec2-user/cadencia/backend/
 
+      - name: Upload backend .env
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          source: backend.env
+          target: /home/ec2-user/cadencia/backend/
+
       - name: Upload PM2 ecosystem config
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -125,49 +145,52 @@ jobs:
 
       - name: Deploy & restart services
         uses: appleboy/ssh-action@v1.0.3
-        env:
-          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
-          MAGIC_SECRET_KEY: ${{ secrets.MAGIC_SECRET_KEY }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
-          envs: BACKEND_ENV,MAGIC_SECRET_KEY
           script_stop: true
           timeout: 600s
           script: |
             set -e
             APP_DIR="/home/ec2-user/cadencia"
 
+            # ── Frontend ────────────────────────────────────────────────────
             cd $APP_DIR/frontend
             tar -xzf frontend-build.tar.gz --overwrite
             rm -f frontend-build.tar.gz
-            # Sync static assets into standalone bundle (nginx serves them directly)
             rm -rf .next/standalone/.next/static
             cp -r .next/static .next/standalone/.next/static
             cp -r public .next/standalone/public 2>/dev/null || true
-            # Allow nginx (runs as nginx user) to read these files
             chmod o+x $APP_DIR $APP_DIR/frontend $APP_DIR/frontend/.next
             find $APP_DIR/frontend/.next/standalone -type d -exec chmod o+x {} \;
             find $APP_DIR/frontend/.next/standalone -type f -exec chmod o+r {} \;
-            # Update nginx to serve _next/static directly (idempotent)
             CONF=$(find /etc/nginx/conf.d/ -name '*.conf' | head -1)
             if ! grep -q '_next/static' "$CONF" 2>/dev/null; then
               sudo sed -i 's|location / {|location /_next/static/ {\n        alias '$APP_DIR'/frontend/.next/standalone/.next/static/;\n        expires 1y;\n        add_header Cache-Control "public, immutable";\n        access_log off;\n    }\n\n    location / {|' "$CONF"
               sudo nginx -t && sudo nginx -s reload
             fi
 
+            # ── Backend ─────────────────────────────────────────────────────
             cd $APP_DIR/backend
             tar -xzf backend-src.tar.gz --overwrite
             rm -f backend-src.tar.gz
-            printf '%s\n' "$BACKEND_ENV" > .env
-            printf 'MAGIC_SECRET_KEY=%s\n' "$MAGIC_SECRET_KEY" >> .env
+            # .env was SCP'd as backend.env — move it into place
+            mv backend.env .env
 
-            python3.12 -m pip install -e ".[standard]" --quiet 2>/dev/null || python3.12 -m pip install fastapi uvicorn pydantic pydantic-settings sqlalchemy asyncpg alembic pgvector redis structlog py-algorand-sdk algokit-utils PyNaCl python-jose passlib bcrypt cryptography httpx prometheus-client prometheus-fastapi-instrumentator openai groq magic-admin python-dotenv --quiet
+            python3.12 -m pip install -e ".[standard]" --quiet 2>/dev/null || \
+              python3.12 -m pip install \
+                fastapi uvicorn pydantic pydantic-settings sqlalchemy asyncpg \
+                alembic pgvector redis structlog py-algorand-sdk algokit-utils \
+                PyNaCl python-jose passlib bcrypt cryptography httpx \
+                prometheus-client prometheus-fastapi-instrumentator \
+                openai groq magic-admin python-dotenv --quiet
+
             ~/.local/bin/alembic upgrade head
 
+            # ── PM2 ─────────────────────────────────────────────────────────
             pm2 delete cadencia-frontend 2>/dev/null || true
-            pm2 delete cadencia-backend 2>/dev/null || true
+            pm2 delete cadencia-backend  2>/dev/null || true
             pm2 start $APP_DIR/ecosystem.config.js
             pm2 save
             echo "Deploy complete"
