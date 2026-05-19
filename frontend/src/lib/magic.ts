@@ -54,11 +54,14 @@ export async function signAlgoTxn(encodedTxnB64: string): Promise<string> {
   const algExt = (magic as any).algod ?? (magic as any).algorand ?? _algorandExt;
   if (!algExt) throw new Error('Algorand extension not initialised — check @magic-ext/algorand is loaded');
 
-  console.log('[magic] signAlgoTxn — ext:', algExt?.name, 'signTransaction:', typeof algExt?.signTransaction);
-
-  const txnBytes = new Uint8Array(Buffer.from(encodedTxnB64, 'base64'));
+  console.log('[magic] signAlgoTxn — ext:', algExt?.name);
+  const binary = atob(encodedTxnB64);
+  const txnBytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) txnBytes[i] = binary.charCodeAt(i);
   const signedBytes: Uint8Array = await algExt.signTransaction(txnBytes);
-  return Buffer.from(signedBytes).toString('base64');
+  let signedBinary = '';
+  for (let i = 0; i < signedBytes.length; i++) signedBinary += String.fromCharCode(signedBytes[i]);
+  return btoa(signedBinary);
 }
 
 /**
@@ -73,17 +76,32 @@ export async function signAlgoTxnGroup(encodedTxnsB64: string[]): Promise<string
   if (!algExt) throw new Error('Algorand extension not initialised — check @magic-ext/algorand is loaded');
 
   console.log('[magic] signAlgoTxnGroup — ext name:', algExt.name, 'txn count:', encodedTxnsB64.length);
-  console.log('[magic] signGroupTransaction available:', typeof algExt.signGroupTransaction === 'function');
 
-  // Sign each transaction individually (group ID is embedded in each txn by algosdk.assignGroupID).
-  // We do NOT use signGroupTransaction because it returns "user denied" silently in some Magic
-  // configurations — signing one at a time is more reliable and shows a popup per transaction.
+  // Use atob() (native browser API) instead of Buffer.from() to avoid the Buffer polyfill
+  // failing with "received type object" in browser environments.
+  function b64ToUint8Array(b64: string): Uint8Array {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let j = 0; j < binary.length; j++) {
+      bytes[j] = binary.charCodeAt(j);
+    }
+    return bytes;
+  }
+
+  function uint8ArrayToB64(bytes: Uint8Array): string {
+    let binary = '';
+    for (let j = 0; j < bytes.length; j++) {
+      binary += String.fromCharCode(bytes[j]);
+    }
+    return btoa(binary);
+  }
+
   const results: string[] = [];
   for (let i = 0; i < encodedTxnsB64.length; i++) {
-    console.log(`[magic] signing txn ${i + 1}/${encodedTxnsB64.length}`);
-    const txnBytes = new Uint8Array(Buffer.from(encodedTxnsB64[i], 'base64'));
+    console.log(`[magic] signing txn ${i + 1}/${encodedTxnsB64.length}, type:`, typeof encodedTxnsB64[i]);
+    const txnBytes = b64ToUint8Array(encodedTxnsB64[i]);
     const signedBytes: Uint8Array = await algExt.signTransaction(txnBytes);
-    results.push(Buffer.from(signedBytes).toString('base64'));
+    results.push(uint8ArrayToB64(signedBytes));
   }
   return results;
 }
