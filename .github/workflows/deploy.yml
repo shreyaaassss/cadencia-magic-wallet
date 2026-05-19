@@ -164,9 +164,7 @@ jobs:
             printf 'MAGIC_SECRET_KEY=%s\n' "$MAGIC_SECRET_KEY" >> .env
 
             python3.12 -m pip install -e ".[standard]" --quiet 2>/dev/null || python3.12 -m pip install fastapi uvicorn pydantic pydantic-settings sqlalchemy asyncpg alembic pgvector redis structlog py-algorand-sdk algokit-utils PyNaCl python-jose passlib bcrypt cryptography httpx prometheus-client prometheus-fastapi-instrumentator openai groq magic-admin python-dotenv --quiet
-            DATABASE_URL=$(grep '^DATABASE_URL=' .env | cut -d= -f2-) \
-              DATABASE_DIRECT_URL='' \
-              ~/.local/bin/alembic upgrade head
+            ~/.local/bin/alembic upgrade head
 
             pm2 delete cadencia-frontend 2>/dev/null || true
             pm2 delete cadencia-backend 2>/dev/null || true

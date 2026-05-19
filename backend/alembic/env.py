@@ -21,6 +21,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
+# Load .env so DATABASE_URL is available whether alembic is called manually
+# or via the CI deploy script (which writes .env then calls alembic directly).
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env", override=False)
+except ImportError:
+    pass
+
 # Import shared Base — all ORM models must be registered on it.
 from src.shared.infrastructure.db.base import Base
 
