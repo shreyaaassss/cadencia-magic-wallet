@@ -369,9 +369,10 @@ class NeutralEngine:
                 except Exception:
                     final_price = min(final_price, effective_budget_ceiling)
 
-            # Monotonicity guard: buyer prices must never decrease, seller prices
-            # must never increase. If the LLM goes the wrong direction, clamp to
-            # the last price so the negotiation doesn't regress.
+            # Monotonicity + floor/ceiling guard.
+            # Buyer prices must never decrease; seller prices must never increase.
+            # Additionally the seller must never go below their reservation price
+            # (floor) — the LLM sometimes ignores the margin floor rule.
             my_prices = (
                 session.get_buyer_prices() if is_buyer else session.get_seller_prices()
             )
@@ -391,6 +392,16 @@ class NeutralEngine:
                         last_price=float(last_my_price),
                     )
                     final_price = last_my_price
+
+            # Hard floor for seller: never accept below reservation_price.
+            # This prevents the LLM from conceding past the seller's minimum.
+            if not is_buyer and final_price < valuation.reservation_price:
+                log.warning(
+                    "seller_floor_clamp",
+                    llm_price=float(final_price),
+                    floor=float(valuation.reservation_price),
+                )
+                final_price = valuation.reservation_price
 
         elif action == "ACCEPT":
             # Accept the last counter from other side

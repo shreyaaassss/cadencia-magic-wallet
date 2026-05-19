@@ -50,7 +50,8 @@ jobs:
             main.py \
             pyproject.toml \
             alembic \
-            alembic.ini
+            alembic.ini \
+            artifacts
 
       # Write all files locally in the Actions runner (where secrets expand
       # correctly) then SCP them up. Never pass multiline secrets through
