@@ -128,8 +128,31 @@ class StrategyEngine:
         Returns a StrategyRecommendation with the selected strategy,
         concession fraction, suggested price, and rationale.
         """
-        # Round 0: Always anchor strongly
+        # Round 0 / buyer's first response (seller-first flow)
         if round_num == 0 or (round_num == 1 and my_last_price is None):
+            # In seller-first flow the buyer responds to a known seller anchor.
+            # If the seller opened above the buyer's ceiling, opening at 76% of
+            # budget (the old formula) creates a 40-50% gap that never converges.
+            # Instead, open at the midpoint of target and reservation so the gap
+            # is ~20-25% and reachable within the round budget.
+            if (
+                is_buyer
+                and opponent_last_price is not None
+                and opponent_last_price > reservation_price
+            ):
+                responsive = (
+                    (target_price + reservation_price) / Decimal("2")
+                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                return StrategyRecommendation(
+                    strategy=StrategyType.STRONG_ANCHOR,
+                    concession_fraction=Decimal("0"),
+                    suggested_price=max(responsive, Decimal("0.01")),
+                    rationale=(
+                        "Seller anchored above budget ceiling — opening at midpoint "
+                        "of target and budget to create a convergeable gap."
+                    ),
+                    action="OFFER",
+                )
             return self._strong_anchor(target_price, reservation_price, is_buyer)
 
         # Below reservation → walk away
