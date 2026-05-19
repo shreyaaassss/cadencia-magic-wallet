@@ -1,7 +1,8 @@
 # context.md §3 — Hexagonal Architecture: zero framework imports in domain layer.
 # NegotiationSession aggregate root — enforces DANP state machine invariants.
-# DANP FSM: INIT → BUYER_ANCHOR → SELLER_RESPONSE → ROUND_LOOP → AGREED
+# DANP FSM: INIT → SELLER_ANCHOR → BUYER_RESPONSE → ROUND_LOOP → AGREED
 #            ROUND_LOOP → WALK_AWAY | STALLED | TIMEOUT | POLICY_BREACH
+# Legacy path (in-flight sessions): BUYER_ANCHOR → SELLER_RESPONSE → ROUND_LOOP
 
 from __future__ import annotations
 
@@ -32,11 +33,13 @@ class SessionStatus(str, Enum):
     Full DANP FSM states (9 states per spec).
 
     Transitions:
-        INIT → BUYER_ANCHOR               (CreateSession)
-        BUYER_ANCHOR → SELLER_RESPONSE     (Valid anchor offer from buyer)
-        SELLER_RESPONSE → ROUND_LOOP       (Counter from seller)
+        INIT → SELLER_ANCHOR               (CreateSession — seller quotes first)
+        SELLER_ANCHOR → BUYER_RESPONSE     (Seller's catalog anchor posted)
+        BUYER_RESPONSE → ROUND_LOOP        (Buyer's counter)
         ROUND_LOOP → ROUND_LOOP            (Counter)
-        ROUND_LOOP → AGREED                (Gap <= 2%)
+        ROUND_LOOP → AGREED                (Gap <= 2% or prices crossed)
+    Legacy (in-flight sessions only):
+        BUYER_ANCHOR → SELLER_RESPONSE → ROUND_LOOP
         ROUND_LOOP → STALLED              (No concession x3)
         ROUND_LOOP → WALK_AWAY             (Reject)
         ROUND_LOOP → TIMEOUT               (TTL expired)
@@ -45,7 +48,7 @@ class SessionStatus(str, Enum):
         HUMAN_REVIEW → ACTIVE (resume)     (Admin resumes)
 
     Legacy mapping for backward compatibility:
-        ACTIVE = covers INIT, BUYER_ANCHOR, SELLER_RESPONSE, ROUND_LOOP
+        ACTIVE = covers INIT, SELLER_ANCHOR, BUYER_RESPONSE, BUYER_ANCHOR, SELLER_RESPONSE, ROUND_LOOP
         AGREED = AGREED
         FAILED = WALK_AWAY, POLICY_BREACH
         EXPIRED = TIMEOUT
@@ -54,8 +57,10 @@ class SessionStatus(str, Enum):
 
     # === DANP States ===
     INIT = "INIT"
-    BUYER_ANCHOR = "BUYER_ANCHOR"
-    SELLER_RESPONSE = "SELLER_RESPONSE"
+    SELLER_ANCHOR = "SELLER_ANCHOR"    # New: seller quotes catalog price first
+    BUYER_RESPONSE = "BUYER_RESPONSE"  # New: buyer counters seller's anchor
+    BUYER_ANCHOR = "BUYER_ANCHOR"      # Legacy: kept for in-flight sessions
+    SELLER_RESPONSE = "SELLER_RESPONSE"  # Legacy: kept for in-flight sessions
     ROUND_LOOP = "ROUND_LOOP"
     AGREED = "AGREED"
     WALK_AWAY = "WALK_AWAY"
@@ -83,8 +88,10 @@ class SessionStatus(str, Enum):
 # Active states: session accepts offers
 _ACTIVE_STATES = {
     SessionStatus.INIT,
-    SessionStatus.BUYER_ANCHOR,
-    SessionStatus.SELLER_RESPONSE,
+    SessionStatus.SELLER_ANCHOR,
+    SessionStatus.BUYER_RESPONSE,
+    SessionStatus.BUYER_ANCHOR,      # legacy
+    SessionStatus.SELLER_RESPONSE,   # legacy
     SessionStatus.ROUND_LOOP,
     SessionStatus.ACTIVE,
 }
@@ -133,7 +140,7 @@ class NegotiationSession(BaseEntity):
     # ── DANP State Transitions ─────────────────────────────────────────────────
 
     def activate(self) -> "SessionCreated":
-        """INIT → BUYER_ANCHOR (session activated, waiting for buyer's anchor)."""
+        """INIT → SELLER_ANCHOR (session activated, waiting for seller's catalog anchor)."""
         from src.negotiation.domain.events import SessionCreated
 
         if self.status not in (SessionStatus.INIT, SessionStatus.ACTIVE):
@@ -141,7 +148,7 @@ class NegotiationSession(BaseEntity):
                 f"Cannot activate session {self.id}: "
                 f"status is '{self.status.value}', expected INIT."
             )
-        self.status = SessionStatus.BUYER_ANCHOR
+        self.status = SessionStatus.SELLER_ANCHOR
         self.touch()
         return SessionCreated(
             aggregate_id=self.id,
@@ -159,7 +166,15 @@ class NegotiationSession(BaseEntity):
 
         Returns the new status after transition.
         """
-        if self.status == SessionStatus.BUYER_ANCHOR:
+        # New FSM path: seller anchors first
+        if self.status == SessionStatus.SELLER_ANCHOR:
+            if offer.proposer_role == ProposerRole.SELLER:
+                self.status = SessionStatus.BUYER_RESPONSE
+        elif self.status == SessionStatus.BUYER_RESPONSE:
+            if offer.proposer_role == ProposerRole.BUYER:
+                self.status = SessionStatus.ROUND_LOOP
+        # Legacy FSM path: buyer anchored first (in-flight sessions)
+        elif self.status == SessionStatus.BUYER_ANCHOR:
             if offer.proposer_role == ProposerRole.BUYER:
                 self.status = SessionStatus.SELLER_RESPONSE
         elif self.status == SessionStatus.SELLER_RESPONSE:
@@ -171,9 +186,9 @@ class NegotiationSession(BaseEntity):
             if len(self.offers) >= 2:
                 self.status = SessionStatus.ROUND_LOOP
             elif len(self.offers) == 0:
-                self.status = SessionStatus.BUYER_ANCHOR
+                self.status = SessionStatus.SELLER_ANCHOR
             elif len(self.offers) == 1:
-                self.status = SessionStatus.SELLER_RESPONSE
+                self.status = SessionStatus.BUYER_RESPONSE
 
         self.touch()
         return self.status
@@ -490,9 +505,18 @@ class NegotiationSession(BaseEntity):
 
     @property
     def next_proposer(self) -> ProposerRole:
-        """Determine whose turn it is next."""
+        """
+        Determine whose turn it is next.
+
+        New sessions (SELLER_ANCHOR): seller goes first.
+        Legacy in-flight sessions (BUYER_ANCHOR): buyer goes first.
+        All subsequent rounds: strict alternation.
+        """
         if not self.offers:
-            return ProposerRole.BUYER
+            # Legacy sessions activated before the FSM flip keep buyer-first
+            if self.status == SessionStatus.BUYER_ANCHOR:
+                return ProposerRole.BUYER
+            return ProposerRole.SELLER
         last = self.offers[-1].proposer_role
         return ProposerRole.SELLER if last == ProposerRole.BUYER else ProposerRole.BUYER
 

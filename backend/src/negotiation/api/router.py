@@ -35,7 +35,12 @@ from src.shared.api.responses import success_response
 router = APIRouter(prefix="/v1/sessions", tags=["negotiation"])
 
 # FSM states the frontend sees as "ACTIVE"
-_FRONTEND_ACTIVE_STATES = {"INIT", "BUYER_ANCHOR", "SELLER_RESPONSE", "ROUND_LOOP", "ACTIVE"}
+_FRONTEND_ACTIVE_STATES = {
+    "INIT",
+    "SELLER_ANCHOR", "BUYER_RESPONSE",   # new FSM
+    "BUYER_ANCHOR", "SELLER_RESPONSE",   # legacy
+    "ROUND_LOOP", "ACTIVE",
+}
 
 
 def _simplify_status(raw: str) -> str:

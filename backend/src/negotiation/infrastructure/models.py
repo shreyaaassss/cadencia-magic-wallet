@@ -43,7 +43,8 @@ class NegotiationSessionModel(Base):
     __table_args__ = (
         CheckConstraint(
             "status IN ('ACTIVE','AGREED','FAILED','EXPIRED','HUMAN_REVIEW',"
-            "'INIT','BUYER_ANCHOR','SELLER_RESPONSE','ROUND_LOOP',"
+            "'INIT','SELLER_ANCHOR','BUYER_RESPONSE',"
+            "'BUYER_ANCHOR','SELLER_RESPONSE','ROUND_LOOP',"
             "'WALK_AWAY','STALLED','TIMEOUT','POLICY_BREACH')",
             name="ck_negotiation_sessions_status",
         ),

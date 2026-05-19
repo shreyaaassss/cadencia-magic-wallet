@@ -374,6 +374,43 @@ class NeutralEngine:
             # Unknown action — treat as counter
             action = "COUNTER"
 
+        # ── CROSSED ZOPA CHECK ───────────────────────────────────────────────────
+        # If the current side's price has crossed the opponent's last price,
+        # settle immediately at the opponent's price — no point continuing.
+        #
+        # Cases:
+        #   Buyer bids ₹8.5L when seller already quoted ₹3.5L → buyer overpays;
+        #   settle at ₹3.5L and save the buyer money.
+        #
+        #   Seller quotes ₹3.5L when buyer last bid ₹8.5L → seller undercuts;
+        #   settle at ₹3.5L (seller's own price).
+        if action in ("OFFER", "COUNTER") and not is_terminal:
+            other_last = (
+                session.get_last_seller_offer() if is_buyer
+                else session.get_last_buyer_offer()
+            )
+            if other_last is not None:
+                other_price = other_last.price.amount
+                if (is_buyer and final_price >= other_price) or \
+                   (not is_buyer and final_price <= other_price):
+                    settle_price = other_price if is_buyer else final_price
+                    final_price = settle_price
+                    action = "ACCEPT"
+                    is_terminal = True
+                    reasoning = (
+                        f"Prices crossed — instant agreement at "
+                        f"\u20b9{float(settle_price):,.0f}. "
+                        + ("Buyer offer exceeds seller ask."
+                           if is_buyer else "Seller price is below buyer bid.")
+                    )
+                    log.info(
+                        "crossed_zopa_instant_agreement",
+                        settled_price=float(settle_price),
+                        buyer_price=float(final_price if is_buyer else other_price),
+                        seller_price=float(other_price if is_buyer else final_price),
+                        session_id=str(session.id),
+                    )
+
         # Create the offer
         offer = Offer.create_agent_offer(
             session_id=session.id,

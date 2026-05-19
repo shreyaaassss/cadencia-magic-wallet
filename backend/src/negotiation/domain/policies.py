@@ -53,10 +53,9 @@ class NegotiationPolicy:
         offers: list,  # list[Offer] — avoid circular import
         proposer_role_value: str,
     ) -> None:
-        from src.negotiation.domain.offer import ProposerRole
+        # First offer: no constraint — seller or buyer can anchor first
+        # (FSM flipped to seller-first; legacy sessions retain buyer-first via next_proposer)
         if not offers:
-            if proposer_role_value != ProposerRole.BUYER.value:
-                raise PolicyViolation("First offer must come from BUYER")
             return
         last_role = offers[-1].proposer_role.value
         if last_role == proposer_role_value:

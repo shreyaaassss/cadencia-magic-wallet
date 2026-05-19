@@ -221,7 +221,10 @@ class PostgresSessionRepository:
             select(NegotiationSessionModel)
             .options(selectinload(NegotiationSessionModel.offers))
             .where(NegotiationSessionModel.status.in_([
-                "ACTIVE", "INIT", "BUYER_ANCHOR", "SELLER_RESPONSE", "ROUND_LOOP",
+                "ACTIVE", "INIT",
+                "SELLER_ANCHOR", "BUYER_RESPONSE",
+                "BUYER_ANCHOR", "SELLER_RESPONSE",
+                "ROUND_LOOP",
             ]))
             .limit(limit)
             .offset(offset)
@@ -234,8 +237,10 @@ class PostgresSessionRepository:
             select(NegotiationSessionModel)
             .where(
                 NegotiationSessionModel.status.in_([
-                    "ACTIVE", "HUMAN_REVIEW", "INIT", "BUYER_ANCHOR",
-                    "SELLER_RESPONSE", "ROUND_LOOP",
+                    "ACTIVE", "HUMAN_REVIEW", "INIT",
+                    "SELLER_ANCHOR", "BUYER_RESPONSE",
+                    "BUYER_ANCHOR", "SELLER_RESPONSE",
+                    "ROUND_LOOP",
                 ]),
                 NegotiationSessionModel.created_at < cutoff,
             )
