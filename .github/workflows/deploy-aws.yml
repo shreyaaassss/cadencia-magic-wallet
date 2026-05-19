@@ -4,11 +4,12 @@
 # Builds Docker images, pushes to ECR, then deploys to EC2 via SSH.
 #
 # Required GitHub Secrets:
-#   AWS_ACCESS_KEY_ID       — IAM user with ECR push + EC2 describe permissions
-#   AWS_SECRET_ACCESS_KEY   — IAM secret key
-#   EC2_HOST                — EC2 public IP address
-#   EC2_SSH_KEY             — Contents of cadencia-deploy.pem
-#   BACKEND_ENV             — Full contents of .env.production for the backend
+#   AWS_ACCESS_KEY_ID                — IAM user with ECR push + EC2 describe permissions
+#   AWS_SECRET_ACCESS_KEY            — IAM secret key
+#   EC2_HOST                         — EC2 public IP address
+#   EC2_SSH_KEY                      — Contents of cadencia-deploy.pem
+#   BACKEND_ENV                      — Full contents of .env.production for the backend
+#   NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY — Magic.link publishable key (baked into frontend bundle)
 # ═══════════════════════════════════════════════════════════════════════════
 
 name: Deploy to AWS
@@ -75,9 +76,9 @@ jobs:
             NEXT_PUBLIC_ENABLE_MOCKS=false
             NEXT_PUBLIC_ALGORAND_NETWORK=testnet
             NEXT_PUBLIC_ALGOD_SERVER=https://testnet-api.4160.nodely.dev
-            NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=${{ secrets.WALLETCONNECT_PROJECT_ID }}
             NEXT_PUBLIC_ALGORAND_NODE_URL=https://testnet-api.algonode.cloud
             NEXT_PUBLIC_X402_ENABLED=true
+            NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
