@@ -100,8 +100,56 @@ export async function signAlgoTxnGroup(encodedTxnsB64: string[]): Promise<string
   for (let i = 0; i < encodedTxnsB64.length; i++) {
     console.log(`[magic] signing txn ${i + 1}/${encodedTxnsB64.length}, type:`, typeof encodedTxnsB64[i]);
     const txnBytes = b64ToUint8Array(encodedTxnsB64[i]);
-    const signedBytes: Uint8Array = await algExt.signTransaction(txnBytes);
-    results.push(uint8ArrayToB64(signedBytes));
+    const signedResult: any = await algExt.signTransaction(txnBytes);
+
+    // Log the FULL structure so we can see exactly what Magic returns
+    console.log('[magic] signedResult FULL:', JSON.stringify(signedResult));
+    console.log('[magic] signedResult keys:', Object.keys(signedResult ?? {}));
+
+    let signedB64: string;
+    if (typeof signedResult === 'string') {
+      signedB64 = signedResult;
+    } else if (signedResult instanceof Uint8Array) {
+      signedB64 = uint8ArrayToB64(signedResult);
+    } else if (signedResult?.buffer instanceof ArrayBuffer) {
+      signedB64 = uint8ArrayToB64(new Uint8Array(signedResult.buffer));
+    } else if (signedResult && typeof signedResult === 'object') {
+      // Magic relay returns a plain object — check common keys
+      const keys = Object.keys(signedResult);
+      console.log('[magic] object keys:', keys);
+      if ('blob' in signedResult) {
+        // Magic returns { txID: "...", blob: Uint8Array }
+        // blob is a Uint8Array in memory (JSON.stringify shows it as {"0":n,"1":n,...})
+        const blob = (signedResult as any).blob;
+        if (typeof blob === 'string') {
+          signedB64 = blob;
+        } else {
+          // blob is Uint8Array or Uint8Array-like object with numeric keys
+          const bytes = (blob instanceof Uint8Array || blob?.buffer instanceof ArrayBuffer)
+            ? blob
+            : new Uint8Array(Object.values(blob) as number[]);
+          signedB64 = uint8ArrayToB64(bytes);
+        }
+      } else if ('signedTransaction' in signedResult) {
+        signedB64 = (signedResult as any).signedTransaction;
+      } else if ('txn' in signedResult) {
+        signedB64 = (signedResult as any).txn;
+      } else {
+        // Might be a Uint8Array-like {0: byte, 1: byte, ...}
+        const vals = Object.values(signedResult) as number[];
+        if (vals.length > 0 && typeof vals[0] === 'number') {
+          signedB64 = uint8ArrayToB64(new Uint8Array(vals));
+        } else {
+          console.error('[magic] Unknown signedResult structure:', signedResult);
+          signedB64 = '';
+        }
+      }
+    } else {
+      signedB64 = '';
+    }
+
+    console.log('[magic] signedB64 length:', signedB64.length, 'preview:', signedB64.slice(0, 30));
+    results.push(signedB64);
   }
   return results;
 }
