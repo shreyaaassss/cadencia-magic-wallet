@@ -829,14 +829,16 @@ class NeutralEngine:
         if buyer_ceiling is not None and seller_floor is not None:
             gap = seller_floor - buyer_ceiling
             gap_pct = float(gap / seller_floor * 100) if seller_floor > 0 else 0
+            # Prefix with WALK_AWAY so NegotiationService routes this to _handle_walk_away
             reasoning = (
-                f"NO DEAL — Seller's minimum ₹{float(seller_floor):,.0f} "
-                f"exceeds Buyer's budget ₹{float(buyer_ceiling):,.0f}. "
-                f"Gap: ₹{float(gap):,.0f} ({gap_pct:.1f}%) — no agreement possible."
+                f"WALK_AWAY: No deal possible — Seller's minimum "
+                f"\u20b9{float(seller_floor):,.0f} exceeds Buyer's budget "
+                f"\u20b9{float(buyer_ceiling):,.0f}. "
+                f"Gap: \u20b9{float(gap):,.0f} ({gap_pct:.1f}%) — walking away."
             )
         else:
             reasoning = (
-                "REJECTED: No Zone of Possible Agreement detected. "
+                "WALK_AWAY: No Zone of Possible Agreement detected. "
                 "Buyer's maximum price is below seller's minimum acceptable price. "
                 "Walking away rather than forcing an uneconomical deal."
             )
