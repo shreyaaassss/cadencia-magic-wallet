@@ -520,6 +520,24 @@ class NeutralEngine:
                 if session.record_schema_failure():
                     return self._create_policy_breach_offer(session, current_role), True
 
+            # ── Price band enforcement ──────────────────────────────────────
+            # The strategy engine computes a math-determined price; the LLM
+            # must stay within ±3%.  The band was already communicated as a
+            # prompt instruction but the LLM sometimes ignores it.
+            # Enforce it in code so the negotiation follows the computed
+            # concession curves instead of the LLM's ad-hoc price picks.
+            band_min = (strategy_rec.suggested_price * Decimal("0.97")).quantize(Decimal("0.01"))
+            band_max = (strategy_rec.suggested_price * Decimal("1.03")).quantize(Decimal("0.01"))
+            if final_price < band_min or final_price > band_max:
+                log.warning(
+                    "price_band_override",
+                    llm_price=float(final_price),
+                    band_min=float(band_min),
+                    band_max=float(band_max),
+                    strategy_price=float(strategy_rec.suggested_price),
+                )
+                final_price = strategy_rec.suggested_price
+
             # Budget guard for buyer — use RFQ budget if available, else profile default
             if is_buyer:
                 try:
@@ -528,6 +546,18 @@ class NeutralEngine:
                     )
                 except Exception:
                     final_price = min(final_price, effective_budget_ceiling)
+
+            # Hard floor for buyer: never offer below target_price.
+            # Symmetric with the seller floor clamp below. Without this,
+            # the LLM can open far below target (e.g. ₹10L vs target ₹12L)
+            # creating an unbridgeable gap that wastes all rounds.
+            if is_buyer and final_price < valuation.target_price:
+                log.warning(
+                    "buyer_target_floor_clamp",
+                    llm_price=float(final_price),
+                    target=float(valuation.target_price),
+                )
+                final_price = valuation.target_price
 
             # Monotonicity + floor/ceiling guard.
             # Buyer prices must never decrease; seller prices must never increase.
