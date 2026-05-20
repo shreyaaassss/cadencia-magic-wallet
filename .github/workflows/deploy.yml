@@ -16,12 +16,12 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         env:
           MAGIC_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY }}
-          BACKEND_ENV_CONTENT: ${{ secrets.BACKEND_ENV }}
+          BACKEND_ENV_B64: ${{ secrets.BACKEND_ENV_B64 }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: MAGIC_PUBLISHABLE_KEY,BACKEND_ENV_CONTENT
+          envs: MAGIC_PUBLISHABLE_KEY,BACKEND_ENV_B64
           command_timeout: 40m
           script: |
             set -e
@@ -37,8 +37,8 @@ jobs:
             mkdir -p ~/app
             cp docker-compose.prod.yml ~/app/
             cp Caddyfile ~/app/
-            # Write .env.production from the BACKEND_ENV GitHub secret
-            printf '%s' "${BACKEND_ENV_CONTENT}" > ~/app/.env.production
+            # Write .env.production from base64-encoded secret (safe for multi-line content)
+            echo "${BACKEND_ENV_B64}" | base64 -d > ~/app/.env.production
             echo "Deployment config synced to ~/app"
 
             # ── Free disk space (t3.small has limited storage) ───────────────
