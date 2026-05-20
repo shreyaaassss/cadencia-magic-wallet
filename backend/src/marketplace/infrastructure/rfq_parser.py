@@ -19,12 +19,12 @@ log = get_logger(__name__)
 # Output: list[float] of length 384 ready for pgvector cosine_similarity.
 
 async def _gemini_embed(text: str) -> list[float]:
-    """Generate 384-dim semantic embedding via Google text-embedding-004.
+    """Generate 384-dim semantic embedding via Google gemini-embedding-2.
 
-    Model: text-embedding-004 (FREE tier, no billing required).
+    Model: gemini-embedding-2 — confirmed available on this key.
     - output_dimensionality=384 matches the existing pgvector DB column
       (migration 012) — no schema migration needed.
-    - Rate limit on free tier: 1,500 requests/day, 1 req/sec.
+    - Matryoshka Representation Learning: reduces from 3072 to 384 dims.
     - Uses asyncio.to_thread so the sync client doesn't block the event loop.
     """
     api_key = os.environ.get("GEMINI_API_KEY", "")
@@ -37,7 +37,7 @@ async def _gemini_embed(text: str) -> list[float]:
 
         client = genai.Client(api_key=api_key)
         result = client.models.embed_content(
-            model="text-embedding-004",          # FREE — no billing needed
+            model="gemini-embedding-2",
             contents=text,
             config=EmbedContentConfig(output_dimensionality=384),
         )
