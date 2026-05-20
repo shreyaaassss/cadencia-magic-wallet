@@ -41,6 +41,11 @@ jobs:
             printf '%s' "${BACKEND_ENV_CONTENT}" > ~/app/.env.production
             echo "Deployment config synced to ~/app"
 
+            # ── Free disk space (t3.small has limited storage) ───────────────
+            docker system prune -af --volumes 2>/dev/null || true
+            docker builder prune -af 2>/dev/null || true
+            echo "Docker cache cleared: $(df -h / | tail -1 | awk '{print $4}') free"
+
             # ── Build backend image (--no-cache ensures code changes deploy) ──
             cd backend
             docker build \
