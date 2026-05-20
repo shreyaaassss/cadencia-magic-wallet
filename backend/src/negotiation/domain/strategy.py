@@ -212,6 +212,28 @@ class StrategyEngine:
                 is_buyer=is_buyer,
             )
 
+        # BUG-05 FIX: WALK_AWAY — opponent is persistently 10%+ below the seller's
+        # reservation price for 3+ consecutive rounds with no movement.
+        # Only trigger on the seller side (buyer WALK_AWAY uses REJECT action from LLM).
+        if (
+            opponent_last_price is not None
+            and not is_buyer
+            and opponent_last_price < reservation_price * Decimal("0.90")
+            and rounds_since_concession >= 3
+        ):
+            return self._walk_away(reservation_price, opponent_last_price, is_buyer)
+
+        # BUG-05 FIX: CONDITIONAL — large gap remains but opponent is cooperative.
+        # Suggest bundling terms (payment speed, delivery, volume commitment, etc.)
+        # to unlock value when pure price concession has stalled.
+        if (
+            opponent_flexibility > 0.4
+            and my_last_price is not None
+            and opponent_last_price is not None
+            and abs(opponent_last_price - my_last_price) / max(my_last_price, Decimal("1")) > Decimal("0.20")
+        ):
+            return self._conditional(my_last_price, reservation_price, target_price, is_buyer)
+
         # Default: Boulware (slow concession)
         return self._boulware(
             round_num,
@@ -417,6 +439,46 @@ class StrategyEngine:
             concession_fraction=fraction.quantize(Decimal("0.01")),
             suggested_price=suggested,
             rationale="Deadline pressure: accelerated concession near timeout.",
+            action="COUNTER",
+        )
+
+    def _conditional(
+        self,
+        my_last_price: Decimal,
+        reservation_price: Decimal,
+        target_price: Decimal,
+        is_buyer: bool,
+    ) -> StrategyRecommendation:
+        """
+        Conditional/terms-bundling strategy.
+
+        Used when a large gap remains but the opponent is cooperative —
+        suggest adding non-price terms (payment schedule, delivery timeline,
+        volume commitment, warranty, etc.) to unlock value without pure concession.
+        The suggested price stays at target (no price movement in this round).
+        """
+        # Hold price at target — terms will compensate for the gap
+        suggested = target_price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        suggested = max(suggested, Decimal("0.01"))
+
+        if is_buyer:
+            rationale = (
+                "CONDITIONAL: Large gap remains but opponent is cooperative — "
+                "propose bundling faster payment terms or volume commitments to "
+                "bridge the difference without further price concessions."
+            )
+        else:
+            rationale = (
+                "CONDITIONAL: Large gap remains but opponent is cooperative — "
+                "propose bundling extended warranty, preferred delivery scheduling, "
+                "or phased delivery to add value without lowering price further."
+            )
+
+        return StrategyRecommendation(
+            strategy=StrategyType.CONDITIONAL,
+            concession_fraction=Decimal("0"),
+            suggested_price=suggested,
+            rationale=rationale,
             action="COUNTER",
         )
 

@@ -77,11 +77,21 @@ def validate_agent_output(raw: str) -> dict:
     """
     try:
         parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValidationError(
-            f"Agent output is not valid JSON: {exc}",
-            field="agent_output",
-        ) from exc
+    except json.JSONDecodeError:
+        # BUG-09 FIX: Attempt truncation recovery.
+        # Groq's Llama model occasionally produces verbose reasoning that gets
+        # cut off mid-JSON when LLM_MAX_TOKENS is too low, leaving a missing
+        # closing brace. Strip trailing incomplete chars and try to close the object.
+        truncated = raw.rstrip().rstrip(",")
+        if not truncated.endswith("}"):
+            truncated += "}"
+        try:
+            parsed = json.loads(truncated)
+        except json.JSONDecodeError as exc:
+            raise ValidationError(
+                f"Agent output is not valid JSON (recovery failed): {raw[:200]}",
+                field="agent_output",
+            ) from exc
 
     if not isinstance(parsed, dict):
         raise ValidationError(

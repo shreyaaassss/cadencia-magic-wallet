@@ -136,6 +136,9 @@ class NegotiationSession(BaseEntity):
     )
     schema_failure_count: int = 0
     stall_counter: int = 0  # Consecutive rounds without concession
+    # BUG-12 FIX: Persist Bayesian opponent beliefs across process restarts.
+    # Stored as {"buyer": {...}, "seller": {...}} JSONB in the DB.
+    opponent_beliefs: dict | None = None
 
     # ── DANP State Transitions ─────────────────────────────────────────────────
 

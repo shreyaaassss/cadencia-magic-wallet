@@ -221,6 +221,12 @@ async def run_auto_negotiation(
     import structlog
     _auto_log = structlog.get_logger("negotiation.run_auto")
 
+    import os as _os
+    # BUG-11 FIX: rate-limit between turns so rapid-fire auto-negotiation doesn't
+    # exhaust all Groq API keys simultaneously. Default 1.5s lets ~40 RPM budget
+    # be spread across keys. Set AUTO_TURN_DELAY_SECONDS=0 to disable in tests.
+    _inter_turn_delay = float(_os.getenv("AUTO_TURN_DELAY_SECONDS", "1.5"))
+
     for round_num in range(max_rounds):
         # Check if session is still active before each turn
         session = await svc.session_repo.get_by_id(session_id)  # type: ignore[union-attr]
@@ -262,6 +268,10 @@ async def run_auto_negotiation(
         if session and not session.status.is_active:
             terminal = True
             break
+
+        # Apply inter-turn delay (skip after last iteration)
+        if _inter_turn_delay > 0 and round_num < max_rounds - 1:
+            await asyncio.sleep(_inter_turn_delay)
 
     # Reload final session state
     session = await svc.session_repo.get_by_id(session_id)  # type: ignore[union-attr]

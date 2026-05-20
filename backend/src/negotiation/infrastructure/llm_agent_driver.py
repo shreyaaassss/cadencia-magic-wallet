@@ -127,22 +127,29 @@ class LLMAgentDriver:
                     log.warning("llm_rate_limit", attempt=attempt, key_idx=key_idx, total_keys=len(self._clients))
                     # Try next key immediately; if this was the last key the outer
                     # loop will sleep and cycle through all keys again.
+                    continue
                 except openai.APITimeoutError as e:
+                    # BUG-01 FIX: `continue` instead of `break` so remaining keys
+                    # are tried before waiting RETRY_DELAY seconds.
                     last_error = e
                     log.warning("llm_timeout", attempt=attempt, key_idx=key_idx)
-                    break  # transient; wait for next retry delay before retrying
+                    continue  # try next key before sleeping
                 except openai.APIConnectionError as e:
+                    # BUG-01 FIX: same — try all keys before sleeping.
                     last_error = e
                     log.error("llm_connection_error", attempt=attempt, key_idx=key_idx)
-                    break
+                    continue  # try next key
                 except ValidationError as e:
+                    # Content-related error: retrying the same model with the same
+                    # input won't help — break inner loop and let outer loop sleep.
                     last_error = e
                     log.warning("llm_invalid_output", attempt=attempt, key_idx=key_idx, error=str(e))
                     break
                 except Exception as e:
+                    # BUG-01 FIX: unknown errors should also try remaining keys.
                     last_error = e
                     log.error("llm_unexpected_error", attempt=attempt, key_idx=key_idx, error=str(e))
-                    break
+                    continue  # try next key
 
         # Prometheus: record failure
         elapsed = time.monotonic() - start_time
@@ -217,14 +224,19 @@ def get_agent_driver() -> object:
         if not api_key:
             log.warning("groq_api_key_missing_falling_back_to_stub")
             return StubAgentDriver()
-        # Collect additional fallback keys (GROQ_API_KEY_2, _3, _4, ...) so that
-        # if the primary key hits its quota the driver rotates to the next one.
-        extra_keys = [
-            v for k in ("GROQ_API_KEY_2", "GROQ_API_KEY_3", "GROQ_API_KEY_4")
-            if (v := os.environ.get(k, ""))
-        ]
-        if extra_keys:
-            log.info("groq_fallback_keys_loaded", count=len(extra_keys))
+        # BUG-02 FIX: collect additional fallback keys with strip() and deduplication.
+        # The walrus-operator list-comp was fragile: it didn't strip whitespace and
+        # didn't filter duplicates (if the same key was set under two env var names).
+        extra_keys: list[str] = []
+        for k in ("GROQ_API_KEY_2", "GROQ_API_KEY_3", "GROQ_API_KEY_4", "GROQ_API_KEY_5"):
+            v = os.environ.get(k, "").strip()
+            if v and v != api_key and v not in extra_keys:
+                extra_keys.append(v)
+        log.info(
+            "groq_driver_initialized",
+            primary_key_prefix=api_key[:12],
+            total_keys=1 + len(extra_keys),
+        )
         return LLMAgentDriver(
             api_key=api_key,
             model=os.getenv("LLM_MODEL", "llama-3.3-70b-versatile"),
@@ -239,11 +251,14 @@ def get_agent_driver() -> object:
         if not api_key:
             log.warning("gemini_api_key_missing_falling_back_to_stub")
             return StubAgentDriver()
+        # BUG-14 FIX: Gemini has an OpenAI-compatible endpoint — must specify
+        # base_url or calls will hit OpenAI's endpoint with a Gemini key (→ 401).
         return LLMAgentDriver(
             api_key=api_key,
-            model=os.getenv("LLM_MODEL", "gemini-1.5-pro"),
+            model=os.getenv("LLM_MODEL", "gemini-2.0-flash"),
             temperature=temperature,
             max_tokens=max_tokens,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
         )
 
     if provider != "stub":

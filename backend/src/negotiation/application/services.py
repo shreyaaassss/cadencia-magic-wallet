@@ -343,7 +343,9 @@ class NegotiationService:
         if self.sse_publisher:
             await self.sse_publisher.publish_terminal(  # type: ignore[union-attr]
                 session.id,
-                {"event": "session_agreed", "agreed_price": float(offer.price.amount), "session_id": str(session.id)},
+                # BUG-04 FIX: use agreed_amount (max of buyer bid / seller ask),
+                # NOT offer.price.amount which is only the buyer's lower bid.
+                {"event": "session_agreed", "agreed_price": float(agreed_amount), "session_id": str(session.id)},
             )
 
         # Update profiles (learning via EMA)
@@ -449,12 +451,20 @@ class NegotiationService:
         elif not session.status.is_active:
             raise ConflictError(f"Session {cmd.session_id} is {session.status.value}")
 
-        # Determine role — human overrides are always from the buyer's side
+        # BUG-08 FIX: Determine the correct role from the user's enterprise ID.
+        # Previously hardcoded to BUYER, preventing sellers from submitting overrides.
+        if cmd.enterprise_id == session.buyer_enterprise_id:
+            override_role = ProposerRole.BUYER
+        elif cmd.enterprise_id == session.seller_enterprise_id:
+            override_role = ProposerRole.SELLER
+        else:
+            raise ConflictError("User's enterprise is not a party to this session")
+
         current_round = session.round_count.value + 1
         offer = Offer.create_human_offer(
             session_id=session.id,
             round_number=current_round,
-            proposer_role=ProposerRole.BUYER,
+            proposer_role=override_role,
             price=cmd.price,
             currency=cmd.currency,
             terms=cmd.terms,

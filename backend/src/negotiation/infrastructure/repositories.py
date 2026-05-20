@@ -86,6 +86,8 @@ def _session_model_to_domain(m: NegotiationSessionModel) -> NegotiationSession:
         expires_at=getattr(m, "expires_at", None) or (m.created_at + _timedelta(hours=24)),
         schema_failure_count=getattr(m, "schema_failure_count", 0) or 0,
         stall_counter=getattr(m, "stall_counter", 0) or 0,
+        # BUG-12 FIX: restore persisted Bayesian beliefs
+        opponent_beliefs=getattr(m, "opponent_beliefs", None),
     )
 
 
@@ -135,6 +137,15 @@ class PostgresSessionRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    def get_db_session(self) -> AsyncSession:
+        """
+        BUG-07 FIX: Expose the underlying AsyncSession via a public method.
+        External callers (service layer, router) should use this instead of
+        directly accessing `_session` to avoid DIP violation and fragile coupling.
+        """
+        return self._session
+
+
     async def save(self, session: NegotiationSession) -> None:
         model = NegotiationSessionModel(
             id=session.id,
@@ -149,6 +160,7 @@ class PostgresSessionRepository:
             completed_at=session.completed_at,
             schema_failure_count=session.schema_failure_count,
             stall_counter=session.stall_counter,
+            opponent_beliefs=session.opponent_beliefs,  # BUG-12 FIX
         )
         self._session.add(model)
         await self._session.flush()
@@ -185,6 +197,7 @@ class PostgresSessionRepository:
                 completed_at=session.completed_at,
                 schema_failure_count=session.schema_failure_count,
                 stall_counter=session.stall_counter,
+                opponent_beliefs=session.opponent_beliefs,  # BUG-12 FIX
             )
         )
         await self._session.execute(stmt)
