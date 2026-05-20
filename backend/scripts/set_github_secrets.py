@@ -7,6 +7,7 @@ import json
 import sys
 import urllib.request
 import urllib.error
+import os
 
 try:
     from nacl import encoding, public
