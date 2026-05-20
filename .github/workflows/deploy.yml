@@ -37,14 +37,15 @@ jobs:
             mkdir -p ~/app
             cp docker-compose.prod.yml ~/app/
             cp Caddyfile ~/app/
-            # Write .env.production from base64-encoded secret (safe for multi-line content)
-            echo "${BACKEND_ENV_B64}" | base64 -d > ~/app/.env.production
+            # Write .env.production from base64-encoded secret
+            # tr -d '\r' strips Windows CRLF that corrupts env values on Linux
+            echo "${BACKEND_ENV_B64}" | base64 -d | tr -d '\r' > ~/app/.env.production
             echo "Deployment config synced to ~/app"
+            echo "GROQ keys loaded: $(grep -c GROQ_API_KEY ~/app/.env.production)"
 
-            # ── Free disk space (t3.small has limited storage) ───────────────
-            docker system prune -af --volumes 2>/dev/null || true
-            docker builder prune -af 2>/dev/null || true
-            echo "Docker cache cleared: $(df -h / | tail -1 | awk '{print $4}') free"
+            # ── Free disk space (only dangling images, preserve cache) ───────
+            docker image prune -f 2>/dev/null || true
+            docker builder prune -f 2>/dev/null || true
 
             # ── Build backend image (--no-cache ensures code changes deploy) ──
             cd backend
