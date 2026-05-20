@@ -14,35 +14,45 @@ from src.shared.infrastructure.logging import get_logger
 log = get_logger(__name__)
 
 # ── Gemini embedding helper ───────────────────────────────────────────────────
-# Uses Google text-embedding-004 at 384 dimensions (matches DB column from
-# migration 012). Falls back to deterministic hash stub when key is absent.
-# Output: list[float] of length 384 ready for pgvector cosine_similarity.
+# Uses gemini-embedding-2 at 1536 dimensions (matches pgvector DB column).
+# Key rotation: tries GEMINI_API_KEY then GEMINI_API_KEY_2.
+# Falls back to deterministic hash stub when no key is set (dev/test only).
 
 async def _gemini_embed(text: str) -> list[float]:
     """Generate 1536-dim semantic embedding via Google gemini-embedding-2.
 
-    Model: gemini-embedding-2 — confirmed available on the project API key.
-    - output_dimensionality=1536 matches the actual pgvector DB column (vector(1536)).
-    - Matryoshka Representation Learning: reduces from 3072 to 1536 dims.
+    Tries GEMINI_API_KEY then GEMINI_API_KEY_2 in order (key rotation).
+    - output_dimensionality=1536 matches the pgvector DB column (vector(1536)).
     - Uses asyncio.to_thread so the sync client doesn't block the event loop.
     """
-    api_key = os.environ.get("GEMINI_API_KEY", "")
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY is not set — cannot generate semantic embedding")
+    keys = [k for k in [
+        os.environ.get("GEMINI_API_KEY", ""),
+        os.environ.get("GEMINI_API_KEY_2", ""),
+    ] if k]
+    if not keys:
+        raise ValueError("No GEMINI_API_KEY set — cannot generate semantic embedding")
 
-    def _sync() -> list[float]:
-        from google import genai  # type: ignore[import-untyped]
-        from google.genai.types import EmbedContentConfig  # type: ignore[import-untyped]
+    last_exc: Exception = ValueError("No keys tried")
+    for api_key in keys:
+        try:
+            def _sync(k: str = api_key) -> list[float]:
+                from google import genai  # type: ignore[import-untyped]
+                from google.genai.types import EmbedContentConfig  # type: ignore[import-untyped]
 
-        client = genai.Client(api_key=api_key)
-        result = client.models.embed_content(
-            model="gemini-embedding-2",
-            contents=text,
-            config=EmbedContentConfig(output_dimensionality=1536),
-        )
-        return list(result.embeddings[0].values)
+                client = genai.Client(api_key=k)
+                result = client.models.embed_content(
+                    model="gemini-embedding-2",
+                    contents=text,
+                    config=EmbedContentConfig(output_dimensionality=1536),
+                )
+                return list(result.embeddings[0].values)
 
-    return await asyncio.to_thread(_sync)
+            return await asyncio.to_thread(_sync)
+        except Exception as exc:
+            log.warning("gemini_embed_key_failed", error=str(exc))
+            last_exc = exc
+
+    raise last_exc
 
 
 def _hash_embed(text: str) -> list[float]:
@@ -206,13 +216,13 @@ class RFQParser:
         return {}
 
     async def generate_embedding(self, text: str) -> list[float]:
-        """Generate 384-dim embedding.
+        """Generate 1536-dim embedding.
 
         Priority:
-          1. Google text-embedding-004 (real semantic, GEMINI_API_KEY required)
+          1. Google gemini-embedding-2 (real semantic, GEMINI_API_KEY required)
           2. Deterministic hash fallback (NOT semantic — for dev/test only)
         """
-        if os.environ.get("GEMINI_API_KEY"):
+        if os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY_2"):
             try:
                 return await _gemini_embed(text)
             except Exception as exc:

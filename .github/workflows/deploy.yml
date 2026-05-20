@@ -7,18 +7,22 @@ on:
 
 jobs:
   deploy:
-    name: Build & Deploy Backend
+    name: Build & Deploy (Backend + Frontend)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
-      - name: SSH into EC2, pull latest code, build & restart
+      - name: SSH into EC2, pull latest code, build & restart all services
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          MAGIC_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY }}
+          BACKEND_ENV_CONTENT: ${{ secrets.BACKEND_ENV }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
-          command_timeout: 25m
+          envs: MAGIC_PUBLISHABLE_KEY,BACKEND_ENV_CONTENT
+          command_timeout: 40m
           script: |
             set -e
 
@@ -26,34 +30,60 @@ jobs:
             cd ~/cadencia-magic-wallet
             git fetch origin main
             git reset --hard origin/main
+            SHORT_SHA=$(git rev-parse --short HEAD)
             echo "Code updated to: $(git log --oneline -1)"
 
-            # ── Build production Docker image ───────────────────────────────
+            # ── Sync deployment config to app directory ─────────────────────
+            mkdir -p ~/app
+            cp docker-compose.prod.yml ~/app/
+            cp Caddyfile ~/app/
+            # Write .env.production from the BACKEND_ENV GitHub secret
+            printf '%s' "${BACKEND_ENV_CONTENT}" > ~/app/.env.production
+            echo "Deployment config synced to ~/app"
+
+            # ── Build backend image ─────────────────────────────────────────
             cd backend
             docker build \
               --platform linux/amd64 \
               --target production \
               --tag cadencia-backend:latest \
-              --tag cadencia-backend:$(git -C .. rev-parse --short HEAD) \
+              --tag cadencia-backend:${SHORT_SHA} \
               .
-            echo "Image built: cadencia-backend:latest"
+            echo "Backend image built: cadencia-backend:latest"
 
-            # ── Restart backend via Docker Compose ──────────────────────────
+            # ── Build frontend image ────────────────────────────────────────
+            cd ../frontend
+            docker build \
+              --platform linux/amd64 \
+              --build-arg NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY="${MAGIC_PUBLISHABLE_KEY}" \
+              --build-arg NEXT_PUBLIC_ALGORAND_NETWORK=testnet \
+              --build-arg NEXT_PUBLIC_ALGOD_SERVER=https://testnet-api.4160.nodely.dev \
+              --build-arg NEXT_PUBLIC_ALGORAND_NODE_URL=https://testnet-api.algonode.cloud \
+              --build-arg NEXT_PUBLIC_X402_ENABLED=true \
+              --build-arg NEXT_PUBLIC_ENABLE_MOCKS=false \
+              --tag cadencia-frontend:latest \
+              --tag cadencia-frontend:${SHORT_SHA} \
+              .
+            echo "Frontend image built: cadencia-frontend:latest"
+
+            # ── Restart all services via Docker Compose ─────────────────────
             cd ~/app
             BACKEND_IMAGE=cadencia-backend:latest \
-              docker compose -f docker-compose.prod.yml up -d backend
+            FRONTEND_IMAGE=cadencia-frontend:latest \
+              docker compose -p app -f docker-compose.prod.yml up -d --remove-orphans
+            echo "All services restarted."
 
             # ── Health check ────────────────────────────────────────────────
             echo "Waiting for backend to become healthy..."
-            for i in $(seq 1 12); do
+            for i in $(seq 1 18); do
               STATUS=$(docker inspect --format='{{.State.Health.Status}}' app-backend-1 2>/dev/null || echo "unknown")
-              echo "  attempt $i/12: $STATUS"
+              echo "  attempt $i/18: $STATUS"
               if [ "$STATUS" = "healthy" ]; then
                 echo "Backend is healthy! Deploy complete."
                 exit 0
               fi
-              sleep 5
+              sleep 10
             done
-            echo "WARNING: backend did not reach healthy state in 60s — check logs"
-            docker logs app-backend-1 --tail 20
+            echo "WARNING: backend did not reach healthy state in 3m — check logs"
+            docker logs app-backend-1 --tail 30
             exit 1

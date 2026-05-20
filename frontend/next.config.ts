@@ -1,9 +1,9 @@
 import type { NextConfig } from "next";
 
 // Hard error: MSW must never be active in production builds
-if (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_API_MOCKING === 'true') {
+if (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_ENABLE_MOCKS === 'true') {
   throw new Error(
-    'NEXT_PUBLIC_API_MOCKING must not be true in production builds. Remove it from your env.'
+    'NEXT_PUBLIC_ENABLE_MOCKS must not be true in production builds. Remove it from your env.'
   );
 }
 
