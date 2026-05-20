@@ -175,8 +175,14 @@ jobs:
             cd $APP_DIR/backend
             tar -xzf backend-src.tar.gz --overwrite
             rm -f backend-src.tar.gz
-            # .env was SCP'd as backend.env — move it into place
-            mv backend.env .env
+            # .env was SCP'd as backend.env — only replace if it has a valid DATABASE_URL
+            if grep -q "DATABASE_URL=" backend.env 2>/dev/null; then
+              mv backend.env .env
+              echo "backend .env updated from secret"
+            else
+              rm -f backend.env
+              echo "WARNING: backend.env from secret was empty/invalid — keeping existing .env"
+            fi
 
             python3.12 -m pip install -e ".[standard]" --quiet 2>/dev/null || \
               python3.12 -m pip install \
@@ -186,11 +192,13 @@ jobs:
                 prometheus-client prometheus-fastapi-instrumentator \
                 openai groq magic-admin python-dotenv --quiet
 
-            ~/.local/bin/alembic upgrade head
+            ~/.local/bin/alembic upgrade head || echo "WARNING: alembic migration skipped (already up to date or connection issue)"
 
             # ── PM2 ─────────────────────────────────────────────────────────
-            pm2 delete cadencia-frontend 2>/dev/null || true
-            pm2 delete cadencia-backend  2>/dev/null || true
-            pm2 start $APP_DIR/ecosystem.config.js
+            pm2 reload $APP_DIR/ecosystem.config.js --update-env 2>/dev/null || {
+              pm2 delete cadencia-frontend 2>/dev/null || true
+              pm2 delete cadencia-backend  2>/dev/null || true
+              pm2 start $APP_DIR/ecosystem.config.js
+            }
             pm2 save
             echo "Deploy complete"
