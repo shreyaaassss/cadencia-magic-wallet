@@ -228,7 +228,7 @@ def get_agent_driver() -> object:
         # The walrus-operator list-comp was fragile: it didn't strip whitespace and
         # didn't filter duplicates (if the same key was set under two env var names).
         extra_keys: list[str] = []
-        for k in ("GROQ_API_KEY_2", "GROQ_API_KEY_3", "GROQ_API_KEY_4", "GROQ_API_KEY_5"):
+        for k in ("GROQ_API_KEY_2", "GROQ_API_KEY_3", "GROQ_API_KEY_4", "GROQ_API_KEY_5", "GROQ_API_KEY_6", "GROQ_API_KEY_7"):
             v = os.environ.get(k, "").strip()
             if v and v != api_key and v not in extra_keys:
                 extra_keys.append(v)

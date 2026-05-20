@@ -156,14 +156,24 @@ class RFQParser:
         provider = os.environ.get("LLM_PROVIDER", "openai")
         if provider == "groq":
             self._api_key = api_key or os.environ.get("GROQ_API_KEY", "")
-            self.client = openai.AsyncOpenAI(
+            self._clients = [openai.AsyncOpenAI(
                 api_key=self._api_key,
                 base_url="https://api.groq.com/openai/v1",
-            )
+            )]
+            # Collect fallback keys for rotation on rate-limit
+            for k in ("GROQ_API_KEY_2", "GROQ_API_KEY_3", "GROQ_API_KEY_4",
+                       "GROQ_API_KEY_5", "GROQ_API_KEY_6", "GROQ_API_KEY_7"):
+                v = os.environ.get(k, "").strip()
+                if v and v != self._api_key:
+                    self._clients.append(openai.AsyncOpenAI(
+                        api_key=v, base_url="https://api.groq.com/openai/v1",
+                    ))
+            self.client = self._clients[0]
             self.extraction_model = extraction_model or os.environ.get("LLM_MODEL", "llama3-70b-8192")
         else:
             self._api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
             self.client = openai.AsyncOpenAI(api_key=self._api_key)
+            self._clients = [self.client]
             self.extraction_model = extraction_model or "gpt-4o"
         self.embedding_model = embedding_model
         self._provider = provider
@@ -182,36 +192,36 @@ class RFQParser:
         for attempt in range(4):
             if attempt > 0:
                 await asyncio.sleep(2 ** (attempt - 1))
-            try:
-                resp = await self.client.chat.completions.create(
-                    model=self.extraction_model,
-                    messages=messages,
-                    temperature=0.1,
-                    max_tokens=512,
-                    response_format={"type": "json_object"},
-                )
-                raw = resp.choices[0].message.content or "{}"
-                parsed = json.loads(raw)
-                if "product" not in parsed or not parsed.get("product"):
-                    log.warning("rfq_extraction_no_product", attempt=attempt)
-                    if attempt == 3:
-                        return {}
-                    continue
-
-                # ── Post-processing: normalize budget_max to TOTAL order budget ──
-                # The LLM might return budget_max as per-unit despite our prompt.
-                # If budget_per_unit AND quantity are present, always compute total.
-                parsed = _normalize_rfq_budget(parsed)
-
-                return parsed
-            except (openai.RateLimitError, openai.APITimeoutError):
-                log.warning("rfq_extraction_retry", attempt=attempt)
+            # Rotate through all API keys on each attempt
+            for key_idx, client in enumerate(self._clients):
+                try:
+                    resp = await client.chat.completions.create(
+                        model=self.extraction_model,
+                        messages=messages,
+                        temperature=0.1,
+                        max_tokens=512,
+                        response_format={"type": "json_object"},
+                    )
+                    raw = resp.choices[0].message.content or "{}"
+                    parsed = json.loads(raw)
+                    if "product" not in parsed or not parsed.get("product"):
+                        log.warning("rfq_extraction_no_product", attempt=attempt)
+                        break  # retry with delay, not next key
+                    parsed = _normalize_rfq_budget(parsed)
+                    return parsed
+                except (openai.RateLimitError, openai.APITimeoutError):
+                    log.warning("rfq_extraction_retry", attempt=attempt, key_idx=key_idx)
+                    continue  # try next key immediately
+                except json.JSONDecodeError:
+                    log.warning("rfq_extraction_json_error", attempt=attempt)
+                    break  # retry with delay, not next key
+            else:
+                # All keys exhausted for this attempt — last attempt raises
                 if attempt == 3:
-                    raise
-            except json.JSONDecodeError:
-                log.warning("rfq_extraction_json_error", attempt=attempt)
-                if attempt == 3:
-                    return {}
+                    raise openai.RateLimitError(
+                        "All Groq API keys exhausted",
+                        response=None, body=None,  # type: ignore[arg-type]
+                    )
 
         return {}
 
