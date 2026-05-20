@@ -17,14 +17,20 @@ class Valuation(BaseValueObject):
     """
     Deterministic valuation thresholds for a negotiation agent.
 
-    reservation_price: Walk-away floor — agent will REJECT below this.
-    target_price:      Ideal outcome — agent anchors here.
-    walkaway_delta:    Convergence band — AGREED if gap <= this.
+    reservation_price:  Walk-away floor  — absolute hard limit (guardrail only).
+                        NEVER revealed to LLM directly.
+    target_price:       Ideal outcome    — agent anchors here on round 0.
+    aspirational_price: Practical hold-firm zone — agent defends this publicly.
+                        Seller: 40% above floor toward ideal (never concedes below
+                        this in normal rounds; deadline pressure may push further).
+                        Buyer:  40% below ceiling toward target (mirror logic).
+    walkaway_delta:     Convergence band — AGREED if gap <= this.
     """
 
     reservation_price: Decimal = Decimal("0")
     target_price: Decimal = Decimal("0")
     walkaway_delta: Decimal = Decimal("0")
+    aspirational_price: Decimal = Decimal("0")
 
     def __post_init__(self) -> None:
         if self.reservation_price <= Decimal("0"):
@@ -56,6 +62,61 @@ class Valuation(BaseValueObject):
         if self.target_price == Decimal("0"):
             return Decimal("1")
         return abs(price - self.target_price) / self.target_price
+
+    def effective_floor(self) -> Decimal:
+        """
+        The price the agent publicly defends.
+
+        Returns aspirational_price if set and > reservation_price,
+        otherwise falls back to reservation_price.
+        This is what the strategy engine uses as the practical lower bound.
+        """
+        if self.aspirational_price > self.reservation_price:
+            return self.aspirational_price
+        return self.reservation_price
+
+
+# ── Aspirational Price Helper ─────────────────────────────────────────────────
+
+# ZOPA-MIDPOINT FIX: fraction of (target - reservation) the agent holds above
+# its true floor. 0.40 = 40% → seller won't publicly concede below
+# reservation + 0.40*(target - reservation) in normal rounds.
+_ASPIRATIONAL_FRACTION = Decimal("0.40")
+
+
+def compute_aspirational_price(
+    reservation_price: Decimal,
+    target_price: Decimal,
+    is_buyer: bool = False,
+) -> Decimal:
+    """
+    Compute the practical hold-firm price.
+
+    Seller: reservation + 40% × (target - reservation)
+      → sits comfortably above floor; conceding here signals firmness.
+    Buyer:  target + 40% × (reservation - target) [symmetric]
+      → slightly above target but well below ceiling.
+
+    The aspirational zone creates credible resistance. An agent never
+    concedes below this in normal rounds — only DEADLINE_PRESSURE or
+    ULTIMATUM strategies may push into the true floor zone.
+    """
+    if is_buyer:
+        # Buyer aspirational: slightly above target toward ceiling
+        gap = reservation_price - target_price  # positive: ceiling > target
+        aspirational = (target_price + _ASPIRATIONAL_FRACTION * gap).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        # Clamp: must be between target and reservation
+        return max(target_price, min(aspirational, reservation_price))
+    else:
+        # Seller aspirational: 40% above floor toward ideal
+        gap = target_price - reservation_price  # positive: ideal > floor
+        aspirational = (reservation_price + _ASPIRATIONAL_FRACTION * gap).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        # Clamp: must be between reservation and target
+        return max(reservation_price, min(aspirational, target_price))
 
 
 def compute_valuation(
@@ -106,14 +167,18 @@ def compute_valuation(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
 
-    # Ensure reservation_price is always positive
     if reservation_price <= Decimal("0"):
         reservation_price = Decimal("0.01")
+    if target_price <= Decimal("0"):
+        target_price = Decimal("0.01")
+
+    aspirational = compute_aspirational_price(reservation_price, target_price)
 
     return Valuation(
         reservation_price=reservation_price,
-        target_price=target_price if target_price > Decimal("0") else Decimal("0.01"),
+        target_price=target_price,
         walkaway_delta=walkaway_delta,
+        aspirational_price=aspirational,
     )
 
 
@@ -128,6 +193,7 @@ def compute_buyer_valuation(
     Buyer wants to MINIMIZE cost:
       - reservation_price = budget_ceiling or fair_price * (1 + risk_factor)
       - target_price      = fair_price * (1 - discount_target)
+      - aspirational_price = target + 40% toward reservation
     """
     risk_map = {"LOW": 0.05, "MEDIUM": 0.10, "HIGH": 0.20}
     margin_map = {"LOW": 0.03, "MEDIUM": 0.05, "HIGH": 0.10}
@@ -141,12 +207,24 @@ def compute_buyer_valuation(
         capped_reservation = min(val.reservation_price, budget_ceiling)
         if capped_reservation <= Decimal("0"):
             capped_reservation = Decimal("0.01")
+        aspirational = compute_aspirational_price(
+            capped_reservation, val.target_price, is_buyer=True
+        )
         return Valuation(
             reservation_price=capped_reservation,
             target_price=val.target_price,
             walkaway_delta=val.walkaway_delta,
+            aspirational_price=aspirational,
         )
-    return val
+    aspirational = compute_aspirational_price(
+        val.reservation_price, val.target_price, is_buyer=True
+    )
+    return Valuation(
+        reservation_price=val.reservation_price,
+        target_price=val.target_price,
+        walkaway_delta=val.walkaway_delta,
+        aspirational_price=aspirational,
+    )
 
 
 def compute_seller_valuation(
@@ -206,8 +284,11 @@ def compute_seller_valuation_from_catalogue(
     the seller will accept from their asking price (e.g. 10% → floor is 90%
     of the catalogue price).
 
-    reservation_price = catalogue_price × (1 - margin_floor/100)
-    target_price      = catalogue_price  (seller aims for their full ask)
+    reservation_price  = catalogue_price × (1 - margin_floor/100) [true floor, private]
+    target_price       = catalogue_price  [seller aims for their full ask]
+    aspirational_price = reservation + 40% × (target - reservation)
+                       = catalogue_price × (1 - 0.6 × margin_floor/100)
+                       → seller publicly holds here; only deadline forces lower
 
     Uses the bulk-tier price if available, otherwise the base catalogue price.
     """
@@ -225,10 +306,13 @@ def compute_seller_valuation_from_catalogue(
     if reservation <= Decimal("0"):
         reservation = Decimal("0.01")
 
+    aspirational = compute_aspirational_price(reservation, target, is_buyer=False)
+
     return Valuation(
         reservation_price=reservation,
         target_price=target,
         walkaway_delta=walkaway_delta,
+        aspirational_price=aspirational,
     )
 
 
@@ -240,8 +324,10 @@ def compute_buyer_valuation_from_rfq(
     """
     Compute buyer valuation from RFQ budget range.
 
-    reservation_price = budget_max — the buyer's hard ceiling (won't pay more).
-    target_price      = budget_max × target_factor — aspirational low price.
+    reservation_price  = budget_max — buyer's hard ceiling (won't pay more).
+    target_price       = budget_max × target_factor — aspirational low price.
+    aspirational_price = target + 40% × (reservation - target)
+                       → buyer publicly pushes toward this; real ceiling is private.
 
     NOTE: compute_valuation() applies (1-risk) which is the seller formula and
     produces a reservation BELOW the fair price. For buyers the reservation is
@@ -257,8 +343,11 @@ def compute_buyer_valuation_from_rfq(
     if target <= Decimal("0"):
         target = Decimal("0.01")
 
+    aspirational = compute_aspirational_price(reservation, target, is_buyer=True)
+
     return Valuation(
         reservation_price=reservation,
         target_price=target,
         walkaway_delta=walkaway_delta,
+        aspirational_price=aspirational,
     )

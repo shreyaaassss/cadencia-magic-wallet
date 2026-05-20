@@ -191,6 +191,13 @@ class MatchModel(Base):
     composite_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     estimated_delivery_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     distance_km: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Fix 1: pointer to the specific catalogue item used during matchmaking.
+    # Nullable for backward compat with existing match rows (SET NULL on item delete).
+    matched_catalogue_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("catalogue_items.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at: Mapped[str] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -246,7 +253,13 @@ _addresses_pincode_idx = Index("ix_addresses_pincode", AddressModel.pincode)
 
 
 class CatalogueItemModel(Base):
-    """Seller product catalogue with pricing tiers, MOQ, and lead times."""
+    """Seller product catalogue with pricing tiers, MOQ, and lead times.
+
+    Fix 3: product_category is now a free-form indexed string (max 100 chars).
+    The previous steel-specific enum CHECK constraint has been dropped so that
+    any industry (cameras, electronics, chemicals, textiles, etc.) can use
+    meaningful category labels instead of being forced into 'CUSTOM'.
+    """
 
     __tablename__ = "catalogue_items"
     __table_args__ = (
@@ -254,10 +267,8 @@ class CatalogueItemModel(Base):
         CheckConstraint("max_order_qty >= moq", name="ck_catalogue_max_gte_moq"),
         CheckConstraint("price_per_unit_inr > 0", name="ck_catalogue_price_positive"),
         CheckConstraint("lead_time_days BETWEEN 1 AND 180", name="ck_catalogue_lead_time"),
-        CheckConstraint(
-            "product_category IN ('HR_COIL','CR_COIL','TMT_BAR','WIRE_ROD','BILLET','SLAB','PLATE','PIPE','SHEET','ANGLE','CHANNEL','BEAM','CUSTOM')",
-            name="ck_catalogue_product_category",
-        ),
+        # NOTE: ck_catalogue_product_category (steel enum) removed in migration 017.
+        # product_category is now free-form — any industry can use descriptive labels.
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

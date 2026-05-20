@@ -140,6 +140,24 @@ class NegotiationSession(BaseEntity):
     # Stored as {"buyer": {...}, "seller": {...}} JSONB in the DB.
     opponent_beliefs: dict | None = None
 
+    # ── Improvement fields (all optional / nullable for backward compat) ─────────
+
+    # Improvement #5 — Stall Recovery
+    # True once the engine has attempted a CONDITIONAL/unfreeze move before
+    # terminating. Prevents the recovery move from firing more than once.
+    stall_recovery_attempted: bool = False
+
+    # Improvement #4 — Reciprocity Ratio
+    # Absolute concession amount from each side on their LAST move (INR).
+    # Used to compute the reciprocity ratio in adaptive_concession().
+    last_buyer_concession: Decimal = Decimal("0")
+    last_seller_concession: Decimal = Decimal("0")
+
+    # Improvement #7 — Deal Quality Score
+    # Populated when session reaches AGREED.
+    # Structure: {score, buyer_surplus_inr, seller_surplus_inr, zopa_position_pct}
+    deal_quality_score: dict | None = None
+
     # ── DANP State Transitions ─────────────────────────────────────────────────
 
     def activate(self) -> "SessionCreated":
@@ -451,6 +469,21 @@ class NegotiationSession(BaseEntity):
     def reset_stall_counter(self) -> None:
         """Reset stall counter when concession is detected."""
         self.stall_counter = 0
+        self.touch()
+
+    def record_concession_amount(
+        self, role: str, concession_amount: Decimal
+    ) -> None:
+        """
+        Track the absolute concession amount per role for reciprocity ratio.
+
+        role: 'buyer' or 'seller'
+        concession_amount: absolute |new_price - last_price| in INR
+        """
+        if role == "buyer":
+            self.last_buyer_concession = concession_amount
+        else:
+            self.last_seller_concession = concession_amount
         self.touch()
 
     # ── Query Helpers ──────────────────────────────────────────────────────────

@@ -42,7 +42,13 @@ from src.negotiation.domain.session import (
     NegotiationSession,
     SessionStatus,
 )
-from src.negotiation.domain.strategy import StrategyEngine, adaptive_concession
+from src.negotiation.domain.strategy import (
+    StrategyEngine,
+    adaptive_concession,
+    apply_negotiation_rounding,
+    compute_dynamic_confidence,
+    compute_reciprocity_ratio,
+)
 from src.negotiation.domain.valuation import (
     Valuation,
     compute_buyer_valuation,
@@ -88,6 +94,10 @@ class NeutralEngine:
         self.personalization_service = personalization_service
         # Per-session belief cache (session_id → {role → belief})
         self._belief_cache: dict[str, dict[str, OpponentBelief]] = {}
+        # Per-session ZOPA cache: stores true seller_reservation for convergence
+        # settlement calculation. Populated at round-0 ZOPA pre-check.
+        # Key: session_id → {"seller_floor": Decimal, "buyer_ceiling": Decimal}
+        self._zopa_cache: dict[str, dict[str, Decimal]] = {}
 
     async def process_turn(
         self,
@@ -125,6 +135,7 @@ class NeutralEngine:
 
         # ── ZOPA PRE-CHECK (round 0 only) ──────────────────────────────────────
         # Detect no Zone of Possible Agreement before running any rounds.
+        # Also caches seller_floor + buyer_ceiling for convergence settlement.
         if session.round_count.value == 0:
             buyer_val = self._compute_valuation(
                 buyer_profile, True, rfq_parsed_fields, catalogue_price
@@ -132,12 +143,6 @@ class NeutralEngine:
             seller_val = self._compute_valuation(
                 seller_profile, False, rfq_parsed_fields, catalogue_price
             )
-            # BUG-10 FIX: Ensure both sides are on the same total-order-value
-            # basis before comparing. The buyer's reservation_price is a total
-            # budget; the seller's might be per-unit if quantity is missing.
-            # We normalize by checking whether the ratio between the two prices
-            # looks physically wrong (< 1/1000 or > 1000x) which signals the
-            # apples-to-oranges comparison problem.
             b_res = buyer_val.reservation_price
             s_res = seller_val.reservation_price
             if b_res > Decimal("0") and s_res > Decimal("0"):
@@ -159,8 +164,20 @@ class NeutralEngine:
                             buyer_ceiling=b_res,
                             seller_floor=s_res,
                         ), True
-                # else: mismatched price basis detected — skip ZOPA check
-                # rather than false-positive-rejecting a reachable deal.
+                    # ZOPA exists — cache floor/ceiling for weighted settlement
+                    sid = str(session.id)
+                    self._zopa_cache[sid] = {
+                        "seller_floor": s_res,
+                        "buyer_ceiling": b_res,
+                    }
+                    log.info(
+                        "zopa_cached",
+                        seller_floor=float(s_res),
+                        buyer_ceiling=float(b_res),
+                        zopa_width=float(b_res - s_res),
+                        midpoint=float((b_res + s_res) / Decimal("2")),
+                        session_id=sid,
+                    )
                 else:
                     log.warning(
                         "zopa_check_skipped_price_basis_mismatch",
@@ -188,6 +205,19 @@ class NeutralEngine:
         # Get Bayesian belief for opponent
         belief = self._get_or_compute_belief(session, current_role, opponent_prices)
 
+        # Compute aspirational price for this agent's valuation.
+        # This is passed to the strategy engine so Boulware stops at the
+        # hold-firm zone rather than conceding all the way to the true floor.
+        from src.negotiation.domain.valuation import compute_aspirational_price
+        aspirational = valuation.aspirational_price
+        if aspirational <= valuation.reservation_price:
+            # Fallback: compute fresh if not populated (e.g. old Valuation path)
+            aspirational = compute_aspirational_price(
+                valuation.reservation_price,
+                valuation.target_price,
+                is_buyer=is_buyer,
+            )
+
         strategy_rec = self.strategy_engine.select_strategy(
             round_num=session.round_count.value,
             my_last_price=my_prices[-1] if my_prices else None,
@@ -198,18 +228,37 @@ class NeutralEngine:
             rounds_since_concession=session.stall_counter,
             time_remaining_pct=self._time_remaining_pct(session),
             is_buyer=is_buyer,
+            aspirational_price=aspirational,   # ZOPA-midpoint fix
         )
 
         # Apply Bayesian modifier to concession
         modifier = self.bayesian_model.strategy_modifier(belief)
         if strategy_rec.concession_fraction > Decimal("0"):
+            # ── Improvement #4: Reciprocity Ratio ──────────────────────────────────
+            # Compute how much I'm giving relative to opponent's last move.
+            # If I'm conceding 3x more than they are, slow down.
+            my_last_concession = (
+                session.last_buyer_concession if is_buyer
+                else session.last_seller_concession
+            )
+            opp_last_concession = (
+                session.last_seller_concession if is_buyer
+                else session.last_buyer_concession
+            )
+            reciprocity_ratio = compute_reciprocity_ratio(
+                my_last_concession, opp_last_concession
+            )
+
             adjusted_concession = adaptive_concession(
-                strategy_rec.concession_fraction,
+                base_concession=strategy_rec.concession_fraction,
                 opponent_flexibility=belief.cooperative,
-                opponent_type=belief.dominant_type.value,
+                opponent_type="cooperative" if belief.cooperative > 0.6 else
+                              "stubborn" if belief.cooperative < 0.3 else "strategic",
+                reciprocity_ratio=reciprocity_ratio,
             )
         else:
             adjusted_concession = Decimal("0")
+            reciprocity_ratio = Decimal("1.0")
 
         # ── LAYER 3: LLM ADVISORY ──
 
@@ -278,22 +327,81 @@ class NeutralEngine:
             "round_count": session.round_count.value,
             "rfq_id": str(session.rfq_id),
             "strategy_suggestion": strategy_rec.strategy.value,
+            # ── Improvement #1: Hard-bind LLM to price band ──────────────────────
+            # Replace the soft "suggested_price" hint with a mandatory price
+            # band. The guardrail enforces that the LLM output stays within
+            # ±3% of the math-computed strategy price. LLM still writes the
+            # reasoning (valuable for UI), but price is math-determined.
+            "offer_price_band": {
+                "min": float(
+                    (strategy_rec.suggested_price * Decimal("0.97")).quantize(
+                        Decimal("0.01")
+                    )
+                ),
+                "max": float(
+                    (strategy_rec.suggested_price * Decimal("1.03")).quantize(
+                        Decimal("0.01")
+                    )
+                ),
+                "recommended": float(strategy_rec.suggested_price),
+                "basis": "INR total order value (NOT per-unit)",
+                "rule": (
+                    "Your offer_value MUST be within this band. "
+                    "Only deviate if opponent explicitly crossed ZOPA boundary."
+                ),
+            },
+            # Keep legacy field for backward compat with older prompt templates
             "suggested_price": float(strategy_rec.suggested_price),
             "suggested_price_basis": "INR total order value (NOT per-unit)",
-            # Explicit valuation bounds so the LLM doesn't have to guess its own limits.
-            # reservation_price = absolute walk-away point (buyer: max to pay; seller: min to accept).
-            # target_price      = ideal outcome (buyer: ideal low; seller: ideal high).
-            # BUYER rule: if opponent's price <= your_target_price_inr → ACCEPT immediately.
-            # SELLER rule: if opponent's price >= your_target_price_inr → ACCEPT immediately.
-            "your_reservation_price_inr": float(valuation.reservation_price),
+            # ZOPA-MIDPOINT FIX: Never reveal the true reservation_price to the
+            # LLM. A real negotiator never discloses their walk-away point.
+            # Instead we expose aspirational_price as the "minimum acceptable"
+            # — the agent can credibly defend this and will resist going below it.
+            # The true floor is still used by guardrails internally.
+            "your_minimum_acceptable_price_inr": float(aspirational),
             "your_target_price_inr": float(valuation.target_price),
+            "your_true_floor_inr": "[PRIVATE — do not disclose or concede to]",
             "opponent_belief": belief.to_dict(),
             "concession_modifier": float(adjusted_concession),
+            "reciprocity_ratio": float(reciprocity_ratio),
         }
 
+        # Inject ZOPA midpoint hint if we have cached data for this session.
+        # This gives both agents a shared reference point to anchor toward.
+        sid = str(session.id)
+        if sid in self._zopa_cache:
+            zopa = self._zopa_cache[sid]
+            zopa_mid = (
+                (zopa["seller_floor"] + zopa["buyer_ceiling"]) / Decimal("2")
+            ).quantize(Decimal("0.01"))
+            session_context["zopa_midpoint_hint_inr"] = float(zopa_mid)
+            session_context["negotiation_note"] = (
+                "A fair agreement lands near the ZOPA midpoint "
+                f"(\u20b9{float(zopa_mid):,.0f}). "
+                "Hold firm at your minimum acceptable price; "
+                "do NOT concede below it unless deadline pressure forces it."
+            )
         # Inject rfq_context into user message as well for full LLM clarity
         if rfq_ctx:
             session_context["rfq_context"] = rfq_ctx
+
+        # Fix 4: inject matched catalogue item identity so LLM cannot drift to
+        # a different product variant. Populated by Fix 2 catalogue selection.
+        if rfq_parsed_fields and rfq_parsed_fields.get("_matched_item_name"):
+            product_ctx: dict = {
+                "name": rfq_parsed_fields["_matched_item_name"],
+                "rule": (
+                    "ALL offers and reasoning must relate to this specific product. "
+                    "Do NOT negotiate any other item, brand, or variant."
+                ),
+            }
+            if rfq_parsed_fields.get("_matched_item_hsn"):
+                product_ctx["hsn_code"] = rfq_parsed_fields["_matched_item_hsn"]
+            if rfq_parsed_fields.get("_matched_item_grade"):
+                product_ctx["grade"] = rfq_parsed_fields["_matched_item_grade"]
+            if rfq_parsed_fields.get("_matched_item_spec"):
+                product_ctx["specification"] = rfq_parsed_fields["_matched_item_spec"]
+            session_context["negotiated_product"] = product_ctx
 
         # ── LOGISTICS CONTEXT (from match scoring) ──
         # BUG-03 FIX: use the async version which actually derives urgency from
@@ -512,6 +620,46 @@ class NeutralEngine:
                         session_id=str(session.id),
                     )
 
+        # ── Improvement #8: Psychological Price Rounding ────────────────────────
+        # Apply rounding post-guardrail so we never round a guardrail-corrected
+        # price back over the boundary. ₹12,87,345 → ₹12,90,000 etc.
+        if action in ("OFFER", "COUNTER") and not is_terminal:
+            final_price = apply_negotiation_rounding(
+                final_price,
+                round_num=session.round_count.value,
+                max_rounds=20,
+            )
+            # Re-clamp after rounding: seller floor / buyer ceiling must hold
+            if not is_buyer:
+                final_price = max(final_price, valuation.reservation_price)
+            else:
+                final_price = min(final_price, effective_budget_ceiling)
+
+        # ── Improvement #3: Dynamic Confidence Scoring ───────────────────────
+        # Replace hardcoded confidence=0.5 with a meaningful score that reflects
+        # ZOPA position, gap to opponent, and time pressure.
+        opp_last_offer = (
+            session.get_last_seller_offer() if is_buyer
+            else session.get_last_buyer_offer()
+        )
+        dynamic_conf = compute_dynamic_confidence(
+            my_price=final_price,
+            opponent_last_price=(
+                opp_last_offer.price.amount if opp_last_offer else None
+            ),
+            aspirational=aspirational,
+            reservation=valuation.reservation_price,
+            is_buyer=is_buyer,
+            rounds_used=session.round_count.value,
+            max_rounds=20,
+        )
+        # Use LLM confidence if it's meaningfully non-default (not 0.5 fallback)
+        if abs(confidence - 0.5) < 0.05:
+            confidence = dynamic_conf
+        else:
+            # Blend: 60% dynamic (math) + 40% LLM (reasoning-based)
+            confidence = round(dynamic_conf * 0.6 + confidence * 0.4, 2)
+
         # Create the offer
         offer = Offer.create_agent_offer(
             session_id=session.id,
@@ -524,8 +672,17 @@ class NeutralEngine:
             agent_reasoning=f"{action}: {reasoning}" if action == "REJECT" else reasoning,
         )
 
-        # Track concession / stall
+        # Track concession / stall + record concession amount for reciprocity
         if not is_terminal and action in ("OFFER", "COUNTER"):
+            prev_my_prices = session.get_buyer_prices() if is_buyer else session.get_seller_prices()
+            concession_amount = Decimal("0")
+            if prev_my_prices:
+                concession_amount = abs(final_price - prev_my_prices[-1])
+            # Improvement #4: track for reciprocity ratio next round
+            session.record_concession_amount(
+                "buyer" if is_buyer else "seller",
+                concession_amount,
+            )
             self._track_concession(session, current_role, final_price)
 
         # Check convergence after non-terminal offers
@@ -542,37 +699,92 @@ class NeutralEngine:
                 is_terminal = True
                 if b_price and s_price:
                     gap_pct = abs(s_price - b_price) / min(b_price, s_price) * 100
-                    # Agreed price = the HIGHER of the two converging prices
-                    # (always the seller's last offer in normal convergence).
-                    # This ensures the seller never closes below their floor —
-                    # when buyer's bid triggers convergence, the deal settles at
-                    # the seller's ask, not the buyer's lower offer.
-                    final_price = max(b_price, s_price)
+
+                    # ZOPA-MIDPOINT FIX: settle at a weighted midpoint instead
+                    # of always max(b,s) = seller's floor.
+                    #
+                    # Weighting rationale (anchoring theory):
+                    #   - Seller opened first (ANCHOR) → gets 60% weight
+                    #   - Buyer's concession pressure → gets 40% weight
+                    #   - Net: settlement = 60% seller + 40% buyer
+                    #
+                    # Guardrail: result must be >= seller's true reservation
+                    # (from ZOPA cache) so the seller never loses money.
+                    weighted = (
+                        s_price * Decimal("0.60") + b_price * Decimal("0.40")
+                    ).quantize(Decimal("0.01"))
+
+                    # Apply true floor guardrail from ZOPA cache
+                    sid = str(session.id)
+                    true_seller_floor = (
+                        self._zopa_cache[sid]["seller_floor"]
+                        if sid in self._zopa_cache
+                        else valuation.reservation_price
+                    )
+                    final_price = max(weighted, true_seller_floor)
+
                     reasoning = (
                         f"Prices converged — deal reached at "
-                        f"\u20b9{float(final_price):,.0f}. "
+                        f"\u20b9{float(final_price):,.0f} "
+                        f"(ZOPA-weighted: 60% seller anchor + 40% buyer pressure). "
                         f"Gap closed to {float(gap_pct):.1f}% (within 2% threshold)."
                     )
 
-        # Terminate only on genuine deadlock or the absolute round ceiling.
-        # - stall_counter >= STALL_ROUNDS: neither side has moved meaningfully
-        #   for 3 consecutive rounds → real deadlock, no point continuing.
-        # - round_count >= MAX_ROUNDS: absolute safety net (20 rounds).
-        #
-        # The old total-rounds >= stall_threshold check was a blunt timer that
-        # killed converging deals at round 10. stall_counter is reset every time
-        # any side makes a meaningful concession (>0.2% move), so it only fires
-        # when negotiation has genuinely ground to a halt.
+        # ── Improvement #5: Stall Recovery ───────────────────────────────────────
+        # Before terminating on stall, attempt a pattern interrupt:
+        # Phase 1 (stall_counter == STALL_ROUNDS - 1): inject CONDITIONAL hint
+        # Phase 2 (stall_counter == STALL_ROUNDS): one "unfreeze" move (50% jump
+        #          toward aspirational), reset stall, only terminate after that.
+        # This saves deals that just need a pattern interrupt.
         if not is_terminal:
             from src.negotiation.domain.session import MAX_ROUNDS, STALL_ROUNDS
             if session.stall_counter >= STALL_ROUNDS:
-                is_terminal = True
-                log.info(
-                    "negotiation_stalled_no_concession",
-                    stall_counter=session.stall_counter,
-                    round=session.round_count.value + 1,
-                    session_id=str(session.id),
-                )
+                if not session.stall_recovery_attempted:
+                    # Phase 2: unfreeze move — jump 50% toward aspirational
+                    my_prices_now = (
+                        session.get_buyer_prices() if is_buyer
+                        else session.get_seller_prices()
+                    )
+                    if my_prices_now:
+                        current_p = my_prices_now[-1]
+                        unfreeze_price = (
+                            current_p + (aspirational - current_p) * Decimal("0.50")
+                        ).quantize(Decimal("0.01"))
+                        # Clamp to valid range
+                        if is_buyer:
+                            unfreeze_price = min(unfreeze_price, effective_budget_ceiling)
+                        else:
+                            unfreeze_price = max(unfreeze_price, valuation.reservation_price)
+                        # Update the offer's price to the unfreeze price
+                        offer = Offer.create_agent_offer(
+                            session_id=session.id,
+                            round_number=offer.round_number,
+                            proposer_role=current_role,
+                            price=unfreeze_price,
+                            currency="INR",
+                            terms={},
+                            confidence=0.55,
+                            agent_reasoning=(
+                                "Stall recovery: making a significant move to "
+                                "restart momentum and signal good faith."
+                            ),
+                        )
+                    session.stall_recovery_attempted = True
+                    session.reset_stall_counter()  # Give one more round
+                    log.info(
+                        "stall_recovery_unfreeze",
+                        session_id=str(session.id),
+                        round=session.round_count.value + 1,
+                    )
+                else:
+                    # Recovery was tried last round — now truly stalled
+                    is_terminal = True
+                    log.info(
+                        "negotiation_stalled_after_recovery",
+                        stall_counter=session.stall_counter,
+                        round=session.round_count.value + 1,
+                        session_id=str(session.id),
+                    )
             elif session.round_count.value + 1 >= MAX_ROUNDS:
                 is_terminal = True
                 log.info(
@@ -580,6 +792,42 @@ class NeutralEngine:
                     round=session.round_count.value + 1,
                     session_id=str(session.id),
                 )
+
+
+        # ── Improvement #7: Deal Quality Score ──────────────────────────────────
+        # On convergence, compute how the settlement sits within the ZOPA
+        # (0.0 = seller got everything, 0.5 = balanced, 1.0 = buyer won).
+        # Stored in session.deal_quality_score for API exposure and RAG memory.
+        if is_terminal and action in ("ACCEPT", "OFFER", "COUNTER") and reasoning and "walk" not in reasoning.lower():
+            sid = str(session.id)
+            if sid in self._zopa_cache:
+                z = self._zopa_cache[sid]
+                seller_floor = z["seller_floor"]
+                buyer_ceiling = z["buyer_ceiling"]
+                zopa_width = buyer_ceiling - seller_floor
+                if zopa_width > Decimal("0"):
+                    buyer_surplus = buyer_ceiling - final_price
+                    seller_surplus = final_price - seller_floor
+                    total_surplus = buyer_surplus + seller_surplus
+                    buyer_share = (
+                        float(buyer_surplus / total_surplus)
+                        if total_surplus > Decimal("0") else 0.5
+                    )
+                    session.deal_quality_score = {
+                        "score": round(buyer_share, 3),
+                        "buyer_surplus_inr": float(buyer_surplus),
+                        "seller_surplus_inr": float(seller_surplus),
+                        "zopa_width_inr": float(zopa_width),
+                        "zopa_position_pct": round(
+                            float((final_price - seller_floor) / zopa_width) * 100, 1
+                        ),
+                        "agreed_price_inr": float(final_price),
+                    }
+                    log.info(
+                        "deal_quality_score",
+                        score=session.deal_quality_score,
+                        session_id=sid,
+                    )
 
         # Update Bayesian belief
         self._update_belief_cache(session, current_role, opponent_prices)

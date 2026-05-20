@@ -308,6 +308,8 @@ class PgvectorMatchmaker:
                 "estimated_delivery_days": estimated_days,
                 "distance_km": distance_km,
                 "score": round(composite * 100, 2),  # 0-100 scale for ranking
+                # Fix 1: record which catalogue item drove the price/delivery scores
+                "matched_catalogue_item_id": str(best_item.id) if best_item else None,
             })
 
         # Sort by composite score descending, take top_n

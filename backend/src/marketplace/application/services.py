@@ -41,6 +41,10 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
+# Fix 6: module-level debounce lock — prevents parallel embedding recomputes
+# for the same enterprise (e.g. seller bulk-uploading 20 catalogue items at once).
+_EMBEDDING_RECOMPUTE_LOCK: dict[str, bool] = {}
+
 
 class MarketplaceService:
     """Orchestrates marketplace use cases."""
@@ -241,6 +245,14 @@ class MarketplaceService:
                                 row.composite_score = m_data.get("composite_score")
                                 row.estimated_delivery_days = m_data.get("estimated_delivery_days")
                                 row.distance_km = m_data.get("distance_km")
+                                # Fix 1: persist which catalogue item was matched
+                                raw_item_id = m_data.get("matched_catalogue_item_id")
+                                if raw_item_id:
+                                    import uuid as _uuid
+                                    try:
+                                        row.matched_catalogue_item_id = _uuid.UUID(raw_item_id)
+                                    except (ValueError, AttributeError):
+                                        pass
 
                         raw_matches = [(m["enterprise_id"], m["composite_score"]) for m in enhanced_results]
                     else:
@@ -697,44 +709,93 @@ class MarketplaceService:
         return profile
 
     async def _recompute_embedding_standalone(self, enterprise_id: uuid.UUID) -> None:
-        """Background: generate embedding for capability profile with its own DB session."""
+        """Background: generate embedding for capability profile with its own DB session.
+
+        Fix 5: embedding text now includes all active catalogue items
+        (product_name, hsn_code, grade, specification_text) so the seller vector
+        reflects their actual product range, not just coarse commodity tags.
+
+        Fix 6: debounce guard prevents N concurrent recomputes when a seller
+        bulk-uploads multiple catalogue items in quick succession.
+        """
         from src.marketplace.infrastructure.repositories import (
             PostgresCapabilityProfileRepository,
         )
         from src.shared.infrastructure.db.session import get_session_factory
 
-        # Wait for the parent request's transaction to commit before we read.
-        await asyncio.sleep(0.5)
+        eid_str = str(enterprise_id)
+        # Fix 6: debounce — if another task already queued for this seller, skip
+        if _EMBEDDING_RECOMPUTE_LOCK.get(eid_str):
+            log.info("embedding_recompute_debounced", enterprise_id=eid_str)
+            return
+        _EMBEDDING_RECOMPUTE_LOCK[eid_str] = True
 
-        factory = get_session_factory()
-        async with factory() as session:
-            try:
-                profile_repo = PostgresCapabilityProfileRepository(session)
-                profile = await profile_repo.get_by_enterprise(enterprise_id)
+        try:
+            # Wait for the parent request's transaction to commit before we read.
+            await asyncio.sleep(0.5)
 
-                # Retry if profile not yet visible (transaction isolation)
-                if profile is None:
-                    for _attempt in range(3):
-                        await asyncio.sleep(0.5)
-                        profile = await profile_repo.get_by_enterprise(enterprise_id)
-                        if profile is not None:
-                            break
-                if profile is None:
-                    log.warning("embedding_profile_not_found", enterprise_id=str(enterprise_id))
-                    return
-                text_parts = [
-                    profile.profile_text or "",
-                    " ".join(profile.product_categories),
-                    " ".join(profile.geography_scope),
-                    profile.industry_vertical or "",
-                ]
-                text = " ".join(p for p in text_parts if p)
-                if not text.strip():
-                    return
-                embedding = await self._parser.generate_embedding(text)
-                profile.set_embedding(embedding)
-                await profile_repo.update(profile)
-                await session.commit()
-                log.info("embedding_recomputed", enterprise_id=str(enterprise_id))
-            except Exception:
-                log.exception("embedding_recompute_failed", enterprise_id=str(enterprise_id))
+            factory = get_session_factory()
+            async with factory() as session:
+                try:
+                    profile_repo = PostgresCapabilityProfileRepository(session)
+                    profile = await profile_repo.get_by_enterprise(enterprise_id)
+
+                    # Retry if profile not yet visible (transaction isolation)
+                    if profile is None:
+                        for _attempt in range(3):
+                            await asyncio.sleep(0.5)
+                            profile = await profile_repo.get_by_enterprise(enterprise_id)
+                            if profile is not None:
+                                break
+                    if profile is None:
+                        log.warning("embedding_profile_not_found", enterprise_id=eid_str)
+                        return
+
+                    text_parts = [
+                        profile.profile_text or "",
+                        " ".join(profile.product_categories),
+                        " ".join(profile.geography_scope),
+                        profile.industry_vertical or "",
+                    ]
+
+                    # Fix 5: fetch all active catalogue items and include in embedding
+                    from src.marketplace.infrastructure.models import CatalogueItemModel
+                    from sqlalchemy import select as _sa_select
+                    cat_result = await session.execute(
+                        _sa_select(CatalogueItemModel).where(
+                            CatalogueItemModel.enterprise_id == enterprise_id,
+                            CatalogueItemModel.is_active == True,  # noqa: E712
+                        )
+                    )
+                    catalogue_items = cat_result.scalars().all()
+                    catalogue_lines = []
+                    for item in catalogue_items:
+                        parts = [
+                            item.product_name,
+                            item.hsn_code,
+                            item.product_category,
+                        ]
+                        if item.grade:
+                            parts.append(item.grade)
+                        if item.specification_text:
+                            parts.append(item.specification_text[:200])
+                        catalogue_lines.append(" | ".join(p for p in parts if p))
+                    if catalogue_lines:
+                        text_parts.append(". ".join(catalogue_lines))
+
+                    text = " ".join(p for p in text_parts if p)
+                    if not text.strip():
+                        return
+                    embedding = await self._parser.generate_embedding(text)
+                    profile.set_embedding(embedding)
+                    await profile_repo.update(profile)
+                    await session.commit()
+                    log.info(
+                        "embedding_recomputed",
+                        enterprise_id=eid_str,
+                        catalogue_items=len(catalogue_items),
+                    )
+                except Exception:
+                    log.exception("embedding_recompute_failed", enterprise_id=eid_str)
+        finally:
+            _EMBEDDING_RECOMPUTE_LOCK.pop(eid_str, None)  # always release

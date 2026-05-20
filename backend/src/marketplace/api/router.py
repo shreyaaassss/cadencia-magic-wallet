@@ -497,6 +497,10 @@ async def create_catalogue_item(
     session.add(item)
     await session.commit()
     await session.refresh(item)
+    # Fix 6: new item added → regenerate seller embedding to include it
+    import asyncio as _asyncio
+    _svc = await _get_marketplace_service(session)
+    _asyncio.create_task(_svc._recompute_embedding_standalone(current_user.enterprise_id))
     return success_response(_catalogue_to_response(item))
 
 
@@ -577,6 +581,10 @@ async def update_catalogue_item(
 
     await session.commit()
     await session.refresh(item)
+    # Fix 6: item changed (price/name/spec) → regenerate seller embedding
+    import asyncio as _asyncio
+    _svc = await _get_marketplace_service(session)
+    _asyncio.create_task(_svc._recompute_embedding_standalone(current_user.enterprise_id))
     return success_response(_catalogue_to_response(item))
 
 
@@ -604,6 +612,10 @@ async def deactivate_catalogue_item(
 
     item.is_active = False
     await session.commit()
+    # Fix 6: item deactivated → regenerate seller embedding to remove it from vector
+    import asyncio as _asyncio
+    _svc = await _get_marketplace_service(session)
+    _asyncio.create_task(_svc._recompute_embedding_standalone(current_user.enterprise_id))
     return success_response({"message": "Catalogue item deactivated"})
 
 

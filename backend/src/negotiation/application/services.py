@@ -136,39 +136,134 @@ class NegotiationService:
             if rfq_row and isinstance(rfq_row, dict):
                 rfq_parsed_fields = rfq_row
 
-            # 2. Load best catalogue price from the seller's active items
-            from src.marketplace.infrastructure.models import CatalogueItemModel
-            cat_result = await db_session.execute(
-                sa_select(CatalogueItemModel.price_per_unit_inr)
-                .where(
-                    CatalogueItemModel.enterprise_id == session.seller_enterprise_id,
-                    CatalogueItemModel.is_active == True,  # noqa: E712
-                )
-                .order_by(CatalogueItemModel.price_per_unit_inr.asc())
-                .limit(1)
+            # 2. Load this seller's match record (contains matched_catalogue_item_id)
+            from src.marketplace.infrastructure.models import MatchModel, CatalogueItemModel
+            match_result = await db_session.execute(
+                sa_select(MatchModel).where(
+                    MatchModel.rfq_id == session.rfq_id,
+                    MatchModel.seller_enterprise_id == session.seller_enterprise_id,
+                ).limit(1)
             )
-            cat_price = cat_result.scalar_one_or_none()
-            if cat_price is not None:
-                catalogue_price = Decimal(str(cat_price))
+            match_row = match_result.scalar_one_or_none()
 
-            # 3. Load this seller's match score from the matches table
-            #    and inject it into rfq_parsed_fields so the valuation layer
-            #    can differentiate pricing per seller.
-            if rfq_parsed_fields is not None:
-                from src.marketplace.infrastructure.models import MatchModel
-                match_result = await db_session.execute(
-                    sa_select(MatchModel.similarity_score, MatchModel.composite_score)
-                    .where(
-                        MatchModel.rfq_id == session.rfq_id,
-                        MatchModel.seller_enterprise_id == session.seller_enterprise_id,
-                    )
-                    .limit(1)
+            # Inject match score into rfq_parsed_fields for valuation layer
+            if rfq_parsed_fields is not None and match_row:
+                rfq_parsed_fields = dict(rfq_parsed_fields)
+                rfq_parsed_fields["_match_score"] = float(
+                    match_row.composite_score or match_row.similarity_score or 0.5
+                    if hasattr(match_row, "similarity_score") else
+                    match_row.composite_score or 0.5
                 )
-                match_row = match_result.first()
-                if match_row:
-                    rfq_parsed_fields = dict(rfq_parsed_fields)  # copy to avoid mutation
-                    rfq_parsed_fields["_match_score"] = float(
-                        match_row.composite_score or match_row.similarity_score or 0.5
+
+            # ── Fix 2: 4-tier priority catalogue selection ────────────────────
+            # Priority 1: exact item recorded during matchmaking (most accurate)
+            selected_item = None
+            if match_row and match_row.matched_catalogue_item_id:
+                item_result = await db_session.execute(
+                    sa_select(CatalogueItemModel).where(
+                        CatalogueItemModel.id == match_row.matched_catalogue_item_id,
+                        CatalogueItemModel.is_active == True,  # noqa: E712
+                    )
+                )
+                selected_item = item_result.scalar_one_or_none()
+                if selected_item:
+                    log.info(
+                        "catalogue_selection_matched_item",
+                        session_id=str(session.id),
+                        item_name=selected_item.product_name,
+                        tier=1,
+                    )
+
+            # Priority 2: fuzzy product name match from RFQ parsed_fields
+            if selected_item is None and rfq_parsed_fields:
+                rfq_product = (
+                    rfq_parsed_fields.get("product") or
+                    rfq_parsed_fields.get("product_name") or ""
+                ).strip()
+                if rfq_product:
+                    name_result = await db_session.execute(
+                        sa_select(CatalogueItemModel).where(
+                            CatalogueItemModel.enterprise_id == session.seller_enterprise_id,
+                            CatalogueItemModel.is_active == True,  # noqa: E712
+                            CatalogueItemModel.product_name.ilike(f"%{rfq_product}%"),
+                        ).order_by(CatalogueItemModel.price_per_unit_inr.asc()).limit(1)
+                    )
+                    selected_item = name_result.scalar_one_or_none()
+                    if selected_item:
+                        log.info(
+                            "catalogue_selection_name_match",
+                            session_id=str(session.id),
+                            item_name=selected_item.product_name,
+                            rfq_product=rfq_product,
+                            tier=2,
+                        )
+
+            # Priority 3: exact HSN code match
+            if selected_item is None and rfq_parsed_fields:
+                rfq_hsn = (rfq_parsed_fields.get("hsn_code") or "").strip()
+                if rfq_hsn:
+                    hsn_result = await db_session.execute(
+                        sa_select(CatalogueItemModel).where(
+                            CatalogueItemModel.enterprise_id == session.seller_enterprise_id,
+                            CatalogueItemModel.is_active == True,  # noqa: E712
+                            CatalogueItemModel.hsn_code == rfq_hsn,
+                        ).order_by(CatalogueItemModel.price_per_unit_inr.asc()).limit(1)
+                    )
+                    selected_item = hsn_result.scalar_one_or_none()
+                    if selected_item:
+                        log.info(
+                            "catalogue_selection_hsn_match",
+                            session_id=str(session.id),
+                            item_name=selected_item.product_name,
+                            hsn=rfq_hsn,
+                            tier=3,
+                        )
+
+            # Priority 4: item closest to buyer's implied unit budget
+            if selected_item is None:
+                budget_max = float(rfq_parsed_fields.get("budget_max") or 0) if rfq_parsed_fields else 0
+                quantity = float(rfq_parsed_fields.get("quantity") or 1) if rfq_parsed_fields else 1
+                all_items_result = await db_session.execute(
+                    sa_select(CatalogueItemModel).where(
+                        CatalogueItemModel.enterprise_id == session.seller_enterprise_id,
+                        CatalogueItemModel.is_active == True,  # noqa: E712
+                    )
+                )
+                all_items = all_items_result.scalars().all()
+                if all_items:
+                    if budget_max and quantity:
+                        target_unit = budget_max / quantity
+                        selected_item = min(
+                            all_items,
+                            key=lambda i: abs(float(i.price_per_unit_inr) - target_unit),
+                        )
+                        log.info(
+                            "catalogue_selection_budget_closest",
+                            session_id=str(session.id),
+                            item_name=selected_item.product_name,
+                            target_unit=target_unit,
+                            tier=4,
+                        )
+                    else:
+                        # Absolute fallback: cheapest (original behaviour)
+                        selected_item = min(all_items, key=lambda i: float(i.price_per_unit_inr))
+                        log.info(
+                            "catalogue_selection_cheapest_fallback",
+                            session_id=str(session.id),
+                            item_name=selected_item.product_name,
+                            tier="fallback",
+                        )
+
+            if selected_item is not None:
+                catalogue_price = Decimal(str(selected_item.price_per_unit_inr))
+                # Inject item identity into rfq_parsed_fields for LLM context (Fix 4)
+                if rfq_parsed_fields is not None:
+                    rfq_parsed_fields["_matched_item_name"] = selected_item.product_name
+                    rfq_parsed_fields["_matched_item_hsn"] = selected_item.hsn_code
+                    rfq_parsed_fields["_matched_item_grade"] = selected_item.grade
+                    rfq_parsed_fields["_matched_item_spec"] = (
+                        selected_item.specification_text[:300]
+                        if selected_item.specification_text else None
                     )
 
         except Exception:
@@ -178,6 +273,7 @@ class NegotiationService:
                 rfq_id=str(session.rfq_id),
                 exc_info=True,
             )
+
 
         return rfq_parsed_fields, catalogue_price
 

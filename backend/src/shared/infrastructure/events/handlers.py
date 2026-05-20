@@ -933,6 +933,8 @@ async def handle_enterprise_registered_create_profile(event: object) -> None:
                 PostgresCapabilityProfileRepository,
             )
             from src.marketplace.infrastructure.document_parser import get_document_parser
+            from src.marketplace.infrastructure.models import CatalogueItemModel
+            from sqlalchemy import select as _sa_select
 
             parser = get_document_parser()
             text_parts = [
@@ -941,13 +943,41 @@ async def handle_enterprise_registered_create_profile(event: object) -> None:
                 geography,
                 industry or "",
             ]
+
+            # Fix 5: include any catalogue items the seller may have already added
+            # before their profile was created (registration order can vary).
+            try:
+                cat_result = await session.execute(
+                    _sa_select(CatalogueItemModel).where(
+                        CatalogueItemModel.enterprise_id == enterprise_id,
+                        CatalogueItemModel.is_active == True,  # noqa: E712
+                    )
+                )
+                cat_items = cat_result.scalars().all()
+                catalogue_lines = []
+                for item in cat_items:
+                    parts = [item.product_name, item.hsn_code, item.product_category]
+                    if item.grade:
+                        parts.append(item.grade)
+                    if item.specification_text:
+                        parts.append(item.specification_text[:200])
+                    catalogue_lines.append(" | ".join(p for p in parts if p))
+                if catalogue_lines:
+                    text_parts.append(". ".join(catalogue_lines))
+            except Exception:
+                log.warning("seller_profile_catalogue_fetch_failed", enterprise_id=str(enterprise_id))
+
             text = " ".join(p for p in text_parts if p)
             if text.strip():
                 try:
                     embedding = await parser.generate_embedding(text)
                     profile.embedding = embedding
                     await session.commit()
-                    log.info("seller_profile_embedding_generated", enterprise_id=str(enterprise_id))
+                    log.info(
+                        "seller_profile_embedding_generated",
+                        enterprise_id=str(enterprise_id),
+                        catalogue_items=len(cat_items) if "cat_items" in dir() else 0,
+                    )
                 except Exception:
                     log.exception("seller_profile_embedding_failed", enterprise_id=str(enterprise_id))
 
