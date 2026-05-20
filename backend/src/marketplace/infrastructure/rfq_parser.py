@@ -170,6 +170,20 @@ class RFQParser:
                     ))
             self.client = self._clients[0]
             self.extraction_model = extraction_model or os.environ.get("LLM_MODEL", "llama3-70b-8192")
+        elif provider == "gemini":
+            self._api_key = api_key or os.environ.get("GEMINI_API_KEY", "")
+            self._clients = [openai.AsyncOpenAI(
+                api_key=self._api_key,
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            )]
+            gk2 = os.environ.get("GEMINI_API_KEY_2", "").strip()
+            if gk2 and gk2 != self._api_key:
+                self._clients.append(openai.AsyncOpenAI(
+                    api_key=gk2,
+                    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                ))
+            self.client = self._clients[0]
+            self.extraction_model = extraction_model or os.environ.get("LLM_MODEL", "gemini-2.0-flash")
         else:
             self._api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
             self.client = openai.AsyncOpenAI(api_key=self._api_key)

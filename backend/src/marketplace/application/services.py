@@ -510,9 +510,15 @@ class MarketplaceService:
             match_count=len(pending_matches),
         )
 
-        # Auto-run negotiations in the background for each session
-        for sid in session_ids:
-            asyncio.create_task(self._run_auto_negotiation_standalone(uuid.UUID(sid)))
+        # Auto-run negotiations in the background for each session.
+        # Stagger starts by 8s to avoid exhausting Groq free-tier rate limits
+        # (30 RPM per key) when multiple sessions fire LLM calls concurrently.
+        for i, sid in enumerate(session_ids):
+            async def _delayed_start(s_id: uuid.UUID, delay: float) -> None:
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                await self._run_auto_negotiation_standalone(s_id)
+            asyncio.create_task(_delayed_start(uuid.UUID(sid), i * 8.0))
 
         return {
             "message": f"Started {len(session_ids)} negotiation sessions — auto-negotiating",
