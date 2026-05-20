@@ -53,6 +53,7 @@ dependencies = [
     # ── LLM providers ────────────────────────────────────────────────────────
     "openai>=1.30",
     "groq>=0.9",
+    "google-genai>=1.0",              # text-embedding-004 (384-dim semantic embeddings)
 ]
 
 [project.optional-dependencies]

@@ -13,6 +13,48 @@ from src.shared.infrastructure.logging import get_logger
 
 log = get_logger(__name__)
 
+# ── Gemini embedding helper ───────────────────────────────────────────────────
+# Uses Google text-embedding-004 at 384 dimensions (matches DB column from
+# migration 012). Falls back to deterministic hash stub when key is absent.
+# Output: list[float] of length 384 ready for pgvector cosine_similarity.
+
+async def _gemini_embed(text: str) -> list[float]:
+    """Generate 384-dim semantic embedding via Google text-embedding-004.
+
+    Model: text-embedding-004 (FREE tier, no billing required).
+    - output_dimensionality=384 matches the existing pgvector DB column
+      (migration 012) — no schema migration needed.
+    - Rate limit on free tier: 1,500 requests/day, 1 req/sec.
+    - Uses asyncio.to_thread so the sync client doesn't block the event loop.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY is not set — cannot generate semantic embedding")
+
+    def _sync() -> list[float]:
+        from google import genai  # type: ignore[import-untyped]
+        from google.genai.types import EmbedContentConfig  # type: ignore[import-untyped]
+
+        client = genai.Client(api_key=api_key)
+        result = client.models.embed_content(
+            model="text-embedding-004",          # FREE — no billing needed
+            contents=text,
+            config=EmbedContentConfig(output_dimensionality=384),
+        )
+        return list(result.embeddings[0].values)
+
+    return await asyncio.to_thread(_sync)
+
+
+def _hash_embed(text: str) -> list[float]:
+    """Deterministic random embedding — used ONLY as last-resort fallback.
+    NOT semantically meaningful; will produce poor matching quality.
+    Set GEMINI_API_KEY to enable real embeddings."""
+    log.warning("embedding_hash_fallback", reason="GEMINI_API_KEY not set")
+    seed = int(hashlib.md5(text.encode()).hexdigest(), 16) % (2 ** 32)
+    rng = random.Random(seed)
+    return [rng.uniform(-1, 1) for _ in range(384)]  # 384-dim to match DB
+
 RFQ_EXTRACTION_SCHEMA = {
     "product": "string — commodity/product name ONLY, no quantities (e.g. 'camera', 'steel', 'cotton fabric')",
     "hsn_code": "string — 4-8 digit HSN tariff code or null",
@@ -114,24 +156,18 @@ class RFQParser:
         return {}
 
     async def generate_embedding(self, text: str) -> list[float]:
-        """Generate 1536-dim embedding. Falls back to deterministic hash for providers without embedding support."""
-        if self._provider in ("groq",):
-            # Groq doesn't offer an embedding endpoint — use deterministic stub
-            seed = int(hashlib.md5(text.encode()).hexdigest(), 16) % (2**32)
-            rng = random.Random(seed)
-            return [rng.uniform(-1, 1) for _ in range(1536)]
+        """Generate 384-dim embedding.
 
-        from src.shared.api.llm_sanitizer import sanitize_llm_input
-
-        sanitized = sanitize_llm_input(text)
-        resp = await self.client.embeddings.create(
-            model=self.embedding_model,
-            input=sanitized,
-            dimensions=1536,
-        )
-        embedding = resp.data[0].embedding
-        assert len(embedding) == 1536, f"Expected 1536 dims, got {len(embedding)}"
-        return embedding
+        Priority:
+          1. Google text-embedding-004 (real semantic, GEMINI_API_KEY required)
+          2. Deterministic hash fallback (NOT semantic — for dev/test only)
+        """
+        if os.environ.get("GEMINI_API_KEY"):
+            try:
+                return await _gemini_embed(text)
+            except Exception as exc:
+                log.warning("gemini_embed_failed", error=str(exc))
+        return _hash_embed(text)
 
 
 class StubDocumentParser:
@@ -364,9 +400,18 @@ class StubDocumentParser:
         return None
 
     async def generate_embedding(self, text: str) -> list[float]:
-        seed = int(hashlib.md5(text.encode()).hexdigest(), 16) % (2**32)
-        rng = random.Random(seed)
-        return [rng.uniform(-1, 1) for _ in range(1536)]
+        """Generate 384-dim embedding (same priority as RFQParser).
+
+        Priority:
+          1. Google text-embedding-004 (real semantic, GEMINI_API_KEY required)
+          2. Deterministic hash fallback (NOT semantic — for dev/test only)
+        """
+        if os.environ.get("GEMINI_API_KEY"):
+            try:
+                return await _gemini_embed(text)
+            except Exception as exc:
+                log.warning("gemini_embed_failed_stub", error=str(exc))
+        return _hash_embed(text)
 
 
 def get_document_parser() -> RFQParser | StubDocumentParser:
