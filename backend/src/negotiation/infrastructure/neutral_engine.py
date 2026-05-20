@@ -929,6 +929,35 @@ class NeutralEngine:
             budget_max = rfq_parsed_fields.get("budget_max")
 
             if budget_max is not None:
+                # Safety: if budget_per_unit is stored alongside budget_max,
+                # check whether budget_max is per-unit (old RFQs before parser fix).
+                # If budget_max ≈ budget_per_unit (not ≈ budget_per_unit × qty),
+                # scale it up so the buyer ceiling is the correct TOTAL.
+                budget_per_unit_raw = rfq_parsed_fields.get("budget_per_unit")
+                quantity_raw = rfq_parsed_fields.get("quantity")
+                if budget_per_unit_raw is not None and quantity_raw is not None:
+                    try:
+                        per_unit = Decimal(str(budget_per_unit_raw))
+                        qty = Decimal(str(quantity_raw))
+                        if per_unit > 0 and qty > 1:
+                            computed_total = per_unit * qty
+                            budget_decimal = Decimal(str(budget_max))
+                            # If budget_max is close to per_unit (within 5%) rather
+                            # than close to the total, it was stored as per-unit.
+                            diff_from_unit = abs(budget_decimal - per_unit)
+                            diff_from_total = abs(budget_decimal - computed_total)
+                            if diff_from_unit < diff_from_total:
+                                log.warning(
+                                    "budget_max_scaled_from_per_unit",
+                                    original=str(budget_decimal),
+                                    per_unit=str(per_unit),
+                                    qty=str(qty),
+                                    corrected_total=str(computed_total),
+                                )
+                                budget_max = float(computed_total)
+                    except (TypeError, ValueError, Exception):
+                        pass  # leave budget_max as-is on any error
+
                 # Use RFQ budget directly — this is the buyer's stated constraint
                 if budget_min is None:
                     budget_min = Decimal(str(budget_max)) * Decimal("0.80")
