@@ -19,12 +19,11 @@ log = get_logger(__name__)
 # Output: list[float] of length 384 ready for pgvector cosine_similarity.
 
 async def _gemini_embed(text: str) -> list[float]:
-    """Generate 384-dim semantic embedding via Google gemini-embedding-2.
+    """Generate 1536-dim semantic embedding via Google gemini-embedding-2.
 
-    Model: gemini-embedding-2 — confirmed available on this key.
-    - output_dimensionality=384 matches the existing pgvector DB column
-      (migration 012) — no schema migration needed.
-    - Matryoshka Representation Learning: reduces from 3072 to 384 dims.
+    Model: gemini-embedding-2 — confirmed available on the project API key.
+    - output_dimensionality=1536 matches the actual pgvector DB column (vector(1536)).
+    - Matryoshka Representation Learning: reduces from 3072 to 1536 dims.
     - Uses asyncio.to_thread so the sync client doesn't block the event loop.
     """
     api_key = os.environ.get("GEMINI_API_KEY", "")
@@ -39,7 +38,7 @@ async def _gemini_embed(text: str) -> list[float]:
         result = client.models.embed_content(
             model="gemini-embedding-2",
             contents=text,
-            config=EmbedContentConfig(output_dimensionality=384),
+            config=EmbedContentConfig(output_dimensionality=1536),
         )
         return list(result.embeddings[0].values)
 
@@ -53,7 +52,7 @@ def _hash_embed(text: str) -> list[float]:
     log.warning("embedding_hash_fallback", reason="GEMINI_API_KEY not set")
     seed = int(hashlib.md5(text.encode()).hexdigest(), 16) % (2 ** 32)
     rng = random.Random(seed)
-    return [rng.uniform(-1, 1) for _ in range(384)]  # 384-dim to match DB
+    return [rng.uniform(-1, 1) for _ in range(1536)]  # 1536-dim to match DB column
 
 RFQ_EXTRACTION_SCHEMA = {
     "product": "string — commodity/product name ONLY, no quantities (e.g. 'camera', 'steel', 'cotton fabric')",
