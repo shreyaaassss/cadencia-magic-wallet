@@ -1,4 +1,4 @@
-name: Deploy to AWS
+name: Deploy to EC2
 
 on:
   push:
@@ -7,198 +7,53 @@ on:
 
 jobs:
   deploy:
-    name: Build & Deploy
+    name: Build & Deploy Backend
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Build frontend
-        working-directory: frontend
-        env:
-          NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY }}
-          NEXT_PUBLIC_ALGORAND_NODE_URL: https://testnet-api.algonode.cloud
-          NEXT_PUBLIC_ALGOD_SERVER: https://testnet-api.4160.nodely.dev
-          NEXT_PUBLIC_X402_ENABLED: 'true'
-          NEXT_PUBLIC_ENABLE_MOCKS: 'false'
-          NEXT_PUBLIC_ALGORAND_NETWORK: testnet
-        run: |
-          npm ci --legacy-peer-deps
-          npm run build
-
-      - name: Package artifacts
-        run: |
-          tar -czf frontend-build.tar.gz \
-            -C frontend \
-            .next/standalone \
-            .next/static \
-            public \
-            package.json
-
-          tar -czf backend-src.tar.gz \
-            -C backend \
-            src \
-            main.py \
-            pyproject.toml \
-            alembic \
-            alembic.ini \
-            artifacts
-
-      # Write all files locally in the Actions runner (where secrets expand
-      # correctly) then SCP them up. Never pass multiline secrets through
-      # appleboy/ssh-action envs — they get mangled in the SSH transport.
-
-      - name: Write backend .env
-        run: |
-          # BACKEND_ENV_B64 is the base64-encoded .env — single-line secret
-          # that survives GitHub Actions env var transport without mangling.
-          echo "${{ secrets.BACKEND_ENV_B64 }}" | base64 -d > backend.env
-          printf 'MAGIC_SECRET_KEY=%s\n' "${{ secrets.MAGIC_SECRET_KEY }}" >> backend.env
-
-      - name: Create PM2 ecosystem config
-        run: |
-          cat > ecosystem.config.js << 'EOF'
-          module.exports = {
-            apps: [
-              {
-                name: 'cadencia-frontend',
-                script: '/home/ec2-user/cadencia/frontend/.next/standalone/server.js',
-                interpreter: 'node',
-                env: {
-                  NODE_ENV: 'production',
-                  PORT: '3000',
-                  HOSTNAME: '0.0.0.0',
-                  NEXT_INTERNAL_BACKEND_URL: 'http://localhost:8000',
-                },
-                out_file: '/home/ec2-user/cadencia/logs/frontend-out.log',
-                error_file: '/home/ec2-user/cadencia/logs/frontend-err.log',
-                merge_logs: true,
-              },
-              {
-                name: 'cadencia-backend',
-                script: 'python3.12',
-                args: '-m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2',
-                cwd: '/home/ec2-user/cadencia/backend',
-                interpreter: 'none',
-                out_file: '/home/ec2-user/cadencia/logs/backend-out.log',
-                error_file: '/home/ec2-user/cadencia/logs/backend-err.log',
-                merge_logs: true,
-              },
-            ],
-          };
-          EOF
-
-      - name: Ensure deploy directories exist
+      - name: SSH into EC2, pull latest code, build & restart
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
-          script_stop: true
-          timeout: 60s
-          script: mkdir -p /home/ec2-user/cadencia/{frontend,backend,logs}
-
-      - name: Upload frontend build
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_KEY }}
-          source: frontend-build.tar.gz
-          target: /home/ec2-user/cadencia/frontend/
-
-      - name: Upload backend source
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_KEY }}
-          source: backend-src.tar.gz
-          target: /home/ec2-user/cadencia/backend/
-
-      - name: Upload backend .env
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_KEY }}
-          source: backend.env
-          target: /home/ec2-user/cadencia/backend/
-
-      - name: Upload PM2 ecosystem config
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_KEY }}
-          source: ecosystem.config.js
-          target: /home/ec2-user/cadencia/
-
-      - name: Deploy & restart services
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_KEY }}
-          script_stop: true
-          timeout: 600s
+          command_timeout: 25m
           script: |
             set -e
-            APP_DIR="/home/ec2-user/cadencia"
 
-            # ── Frontend ────────────────────────────────────────────────────
-            cd $APP_DIR/frontend
-            tar -xzf frontend-build.tar.gz --overwrite
-            rm -f frontend-build.tar.gz
-            rm -rf .next/standalone/.next/static
-            cp -r .next/static .next/standalone/.next/static
-            cp -r public .next/standalone/public 2>/dev/null || true
-            chmod o+x $APP_DIR $APP_DIR/frontend $APP_DIR/frontend/.next
-            find $APP_DIR/frontend/.next/standalone -type d -exec chmod o+x {} \;
-            find $APP_DIR/frontend/.next/standalone -type f -exec chmod o+r {} \;
-            CONF=$(find /etc/nginx/conf.d/ -name '*.conf' | head -1)
-            if ! grep -q '_next/static' "$CONF" 2>/dev/null; then
-              sudo sed -i 's|location / {|location /_next/static/ {\n        alias '$APP_DIR'/frontend/.next/standalone/.next/static/;\n        expires 1y;\n        add_header Cache-Control "public, immutable";\n        access_log off;\n    }\n\n    location / {|' "$CONF"
-              sudo nginx -t && sudo nginx -s reload
-            fi
+            # ── Pull latest code ────────────────────────────────────────────
+            cd ~/cadencia-magic-wallet
+            git fetch origin main
+            git reset --hard origin/main
+            echo "Code updated to: $(git log --oneline -1)"
 
-            # ── Backend ─────────────────────────────────────────────────────
-            cd $APP_DIR/backend
-            tar -xzf backend-src.tar.gz --overwrite
-            rm -f backend-src.tar.gz
-            # .env was SCP'd as backend.env — only replace if it has a valid DATABASE_URL
-            if grep -q "DATABASE_URL=" backend.env 2>/dev/null; then
-              mv backend.env .env
-              echo "backend .env updated from secret"
-            else
-              rm -f backend.env
-              echo "WARNING: backend.env from secret was empty/invalid — keeping existing .env"
-            fi
+            # ── Build production Docker image ───────────────────────────────
+            cd backend
+            docker build \
+              --platform linux/amd64 \
+              --target production \
+              --tag cadencia-backend:latest \
+              --tag cadencia-backend:$(git -C .. rev-parse --short HEAD) \
+              .
+            echo "Image built: cadencia-backend:latest"
 
-            python3.12 -m pip install -e ".[standard]" --quiet 2>/dev/null || \
-              python3.12 -m pip install \
-                fastapi uvicorn pydantic pydantic-settings sqlalchemy asyncpg \
-                alembic pgvector redis structlog py-algorand-sdk algokit-utils \
-                PyNaCl python-jose passlib bcrypt cryptography httpx \
-                prometheus-client prometheus-fastapi-instrumentator \
-                openai groq magic-admin python-dotenv --quiet
+            # ── Restart backend via Docker Compose ──────────────────────────
+            cd ~/app
+            BACKEND_IMAGE=cadencia-backend:latest \
+              docker compose -f docker-compose.prod.yml up -d backend
 
-            ~/.local/bin/alembic upgrade head || echo "WARNING: alembic migration skipped (already up to date or connection issue)"
-
-            # ── PM2 ─────────────────────────────────────────────────────────
-            pm2 reload $APP_DIR/ecosystem.config.js --update-env 2>/dev/null || {
-              pm2 delete cadencia-frontend 2>/dev/null || true
-              pm2 delete cadencia-backend  2>/dev/null || true
-              pm2 start $APP_DIR/ecosystem.config.js
-            }
-            pm2 save
-            echo "Deploy complete"
+            # ── Health check ────────────────────────────────────────────────
+            echo "Waiting for backend to become healthy..."
+            for i in $(seq 1 12); do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' app-backend-1 2>/dev/null || echo "unknown")
+              echo "  attempt $i/12: $STATUS"
+              if [ "$STATUS" = "healthy" ]; then
+                echo "Backend is healthy! Deploy complete."
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "WARNING: backend did not reach healthy state in 60s — check logs"
+            docker logs app-backend-1 --tail 20
+            exit 1
