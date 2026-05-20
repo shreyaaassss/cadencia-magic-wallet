@@ -41,9 +41,10 @@ jobs:
             printf '%s' "${BACKEND_ENV_CONTENT}" > ~/app/.env.production
             echo "Deployment config synced to ~/app"
 
-            # ── Build backend image ─────────────────────────────────────────
+            # ── Build backend image (--no-cache ensures code changes deploy) ──
             cd backend
             docker build \
+              --no-cache \
               --platform linux/amd64 \
               --target production \
               --tag cadencia-backend:latest \
@@ -54,6 +55,7 @@ jobs:
             # ── Build frontend image ────────────────────────────────────────
             cd ../frontend
             docker build \
+              --no-cache \
               --platform linux/amd64 \
               --build-arg NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY="${MAGIC_PUBLISHABLE_KEY}" \
               --build-arg NEXT_PUBLIC_ALGORAND_NETWORK=testnet \
