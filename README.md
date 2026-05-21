@@ -1,5 +1,7 @@
 # Cadencia B2B A2A Platform
 
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
+
 Cadencia is an Agent-to-Agent (A2A) B2B trading and settlement platform. It leverages Large Language Models (LLMs) to perform automated, multi-round bilateral negotiation through a Neutral Mediator engine, and settles agreements securely on-chain via Algorand escrow smart contracts.
 
 ## System Architecture
