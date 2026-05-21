@@ -1,6 +1,4 @@
-# Cadencia -- Testing Guide for Judges
-
-**Platform:** [https://cadenciaa.duckdns.org](https://cadenciaa.duckdns.org)
+# Cadencia -- Testing Guide
 
 ---
 
