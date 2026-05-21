@@ -53,7 +53,10 @@ backend_logs.txt
 simulation_output.txt
 
 # ── AWS deploy keys ──────────────────────────────────────────
+# Block AWS/SSH key files but NOT supabase-root-ca.pem (required by Dockerfile)
 *.pem
+!supabase-root-ca.pem
+!backend/supabase-root-ca.pem
 
 # ── Terraform state ──────────────────────────────────────────
 *.tfstate

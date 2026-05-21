@@ -130,7 +130,7 @@ export default function EscrowPage() {
     },
   });
 
-  // ─── Buyer Fund via Pera Wallet (no silent fallback) ────────────────────
+  // ─── Buyer Fund via Magic embedded wallet (no silent fallback) ─────────
   const fundMutation = useMutation({
     mutationFn: async (escrowId: string) => {
       // Require wallet LINKED to Cadencia platform (not just connected to Pera).
@@ -144,7 +144,7 @@ export default function EscrowPage() {
       }
       if (!isWalletConnected || !activeAddress) {
         throw new Error(
-          'Your Pera wallet is not connected. Go to Settings → Wallet and connect your wallet first.'
+          'Your Magic wallet is not ready. Log in again or open Settings → Wallet.'
         );
       }
       // Hard address check: connected wallet MUST match the enterprise-linked wallet.
@@ -152,7 +152,7 @@ export default function EscrowPage() {
       if (activeAddress !== linkedAddress) {
         throw new Error(
           `Wrong wallet connected. Your enterprise is linked to ${linkedAddress.slice(0, 8)}... — ` +
-          'disconnect Pera and reconnect with the correct account.'
+          'log out and sign in again with the correct email.'
         );
       }
       return signAndSubmitFundTxn(escrowId);
@@ -318,7 +318,7 @@ export default function EscrowPage() {
                           </div>
                         )}
 
-                        {/* Buyer: Fund Escrow — requires Pera wallet connected */}
+                        {/* Buyer: Fund Escrow — requires Magic wallet linked */}
                         {escrow.status === 'DEPLOYED' && isBuyer && (
                           isWalletConnected ? (
                             <Button
@@ -327,7 +327,7 @@ export default function EscrowPage() {
                               className="bg-primary hover:bg-primary/90 text-primary-foreground"
                             >
                               {fundMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wallet className="mr-2 h-4 w-4" />}
-                              Fund via Pera Wallet
+                              Fund via Magic Wallet
                             </Button>
                           ) : (
                             <div className="flex flex-col items-center gap-2">

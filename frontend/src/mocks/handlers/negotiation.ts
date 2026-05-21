@@ -54,11 +54,11 @@ const ALL_SESSIONS = [
 const MOCK_SESSION_DETAIL = {
   ...ALL_SESSIONS[0],
   offers: [
-    { offer_id: 'off-001', session_id: 'sess-001', round_number: 1, proposer_role: 'BUYER', price: 38000, currency: 'INR', terms: { delivery: '30 days' }, confidence: 0.65, is_human_override: false, created_at: '2026-04-01T12:01:00Z' },
-    { offer_id: 'off-002', session_id: 'sess-001', round_number: 2, proposer_role: 'SELLER', price: 44000, currency: 'INR', terms: { delivery: '45 days' }, confidence: 0.7, is_human_override: false, created_at: '2026-04-01T12:02:00Z' },
-    { offer_id: 'off-003', session_id: 'sess-001', round_number: 3, proposer_role: 'BUYER', price: 39500, currency: 'INR', terms: { delivery: '30 days' }, confidence: 0.72, is_human_override: false, created_at: '2026-04-01T12:03:00Z' },
-    { offer_id: 'off-004', session_id: 'sess-001', round_number: 4, proposer_role: 'SELLER', price: 42800, currency: 'INR', terms: { delivery: '40 days' }, confidence: 0.68, is_human_override: false, created_at: '2026-04-01T12:04:00Z' },
-    { offer_id: 'off-005', session_id: 'sess-001', round_number: 5, proposer_role: 'BUYER', price: 40200, currency: 'INR', terms: { delivery: '35 days' }, confidence: 0.78, is_human_override: false, created_at: '2026-04-01T12:05:00Z' },
+    { offer_id: 'off-001', session_id: 'sess-001', round_number: 1, proposer_role: 'SELLER', price: 44000, currency: 'INR', terms: { delivery: '45 days' }, confidence: 0.7, is_human_override: false, created_at: '2026-04-01T12:01:00Z' },
+    { offer_id: 'off-002', session_id: 'sess-001', round_number: 2, proposer_role: 'BUYER', price: 38000, currency: 'INR', terms: { delivery: '30 days' }, confidence: 0.65, is_human_override: false, created_at: '2026-04-01T12:02:00Z' },
+    { offer_id: 'off-003', session_id: 'sess-001', round_number: 3, proposer_role: 'SELLER', price: 42800, currency: 'INR', terms: { delivery: '40 days' }, confidence: 0.68, is_human_override: false, created_at: '2026-04-01T12:03:00Z' },
+    { offer_id: 'off-004', session_id: 'sess-001', round_number: 4, proposer_role: 'BUYER', price: 39500, currency: 'INR', terms: { delivery: '30 days' }, confidence: 0.72, is_human_override: false, created_at: '2026-04-01T12:04:00Z' },
+    { offer_id: 'off-005', session_id: 'sess-001', round_number: 5, proposer_role: 'SELLER', price: 41500, currency: 'INR', terms: { delivery: '35 days' }, confidence: 0.78, is_human_override: false, created_at: '2026-04-01T12:05:00Z' },
   ],
 };
 

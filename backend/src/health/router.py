@@ -131,11 +131,33 @@ async def _check_llm_api() -> CheckResult:
 
     try:
         import openai
-        api_key = os.environ.get("OPENAI_API_KEY", "")
-        client = openai.AsyncOpenAI(api_key=api_key)
+        if provider == "groq":
+            api_key = os.environ.get("GROQ_API_KEY", "").strip()
+            base_url = "https://api.groq.com/openai/v1"
+            model = os.environ.get("LLM_MODEL", "llama-3.3-70b-versatile")
+        elif provider == "gemini":
+            api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+            base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+            model = os.environ.get("LLM_MODEL", "gemini-2.0-flash")
+        else:
+            api_key = os.environ.get("OPENAI_API_KEY", "")
+            base_url = None
+            model = os.environ.get("LLM_MODEL", "gpt-4o")
+        if not api_key:
+            latency = (time.monotonic() - start) * 1000
+            return CheckResult(
+                status="error",
+                latency_ms=round(latency, 2),
+                detail=f"no_api_key_for_{provider}",
+            )
+        client = (
+            openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
+            if base_url
+            else openai.AsyncOpenAI(api_key=api_key)
+        )
         await asyncio.wait_for(
             client.chat.completions.create(
-                model=os.environ.get("LLM_MODEL", "gpt-4o"),
+                model=model,
                 messages=[{"role": "user", "content": "ping"}],
                 max_tokens=1,
             ),

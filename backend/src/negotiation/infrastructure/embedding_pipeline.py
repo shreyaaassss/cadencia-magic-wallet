@@ -161,16 +161,21 @@ class GeminiEmbedder:
         api_key: str | None = None,
         model: str = "models/text-embedding-004",
     ) -> None:
-        self._api_key = api_key or os.getenv("GEMINI_API_KEY", "")
+        primary = (api_key or os.getenv("GEMINI_API_KEY", "")).strip()
+        self._api_keys = [primary] if primary else []
+        gk2 = os.getenv("GEMINI_API_KEY_2", "").strip()
+        if gk2 and gk2 not in self._api_keys:
+            self._api_keys.append(gk2)
         self._model = model
         self._client: object | None = None
+        self._active_key_index = 0
 
     def _ensure_client(self) -> None:
-        """Lazy-init Gemini client."""
-        if self._client is None:
+        """Lazy-init Gemini client with current API key."""
+        if self._client is None and self._api_keys:
             import google.generativeai as genai  # Infrastructure-only
 
-            genai.configure(api_key=self._api_key)
+            genai.configure(api_key=self._api_keys[self._active_key_index])
             self._client = genai
 
     async def embed_documents(
@@ -197,10 +202,13 @@ class GeminiEmbedder:
                 else:
                     embeddings.append(result["embedding"])
             except Exception as e:
-                log.error("gemini_embed_failed", error=str(e), batch_size=len(batch))
-                # Return zero vectors for failed batch
-                for _ in batch:
-                    embeddings.append([0.0] * _EMBEDDING_DIM)
+                log.warning("gemini_embed_failed", error=str(e), batch_size=len(batch))
+                if self._active_key_index + 1 < len(self._api_keys):
+                    self._active_key_index += 1
+                    self._client = None
+                    self._ensure_client()
+                    return await self.embed_documents(texts)
+                raise
 
         log.info("gemini_embedded", count=len(texts), dim=_EMBEDDING_DIM)
         return embeddings
@@ -216,8 +224,13 @@ class GeminiEmbedder:
             )
             return result["embedding"]
         except Exception as e:
-            log.error("gemini_query_embed_failed", error=str(e))
-            return [0.0] * _EMBEDDING_DIM
+            log.warning("gemini_query_embed_failed", error=str(e))
+            if self._active_key_index + 1 < len(self._api_keys):
+                self._active_key_index += 1
+                self._client = None
+                self._ensure_client()
+                return await self.embed_query(text)
+            raise
 
 
 class StubEmbedder:

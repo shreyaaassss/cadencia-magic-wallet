@@ -932,7 +932,7 @@ async def handle_enterprise_registered_create_profile(event: object) -> None:
             from src.marketplace.infrastructure.repositories import (
                 PostgresCapabilityProfileRepository,
             )
-            from src.marketplace.infrastructure.document_parser import get_document_parser
+            from src.marketplace.infrastructure.rfq_parser import get_document_parser
             from src.marketplace.infrastructure.models import CatalogueItemModel
             from sqlalchemy import select as _sa_select
 

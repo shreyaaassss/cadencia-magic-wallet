@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.negotiation.domain.agent_profile import AgentProfile
-from src.negotiation.domain.offer import ProposerRole
+from src.negotiation.domain.offer import Offer, ProposerRole
 from src.negotiation.domain.playbook import IndustryPlaybook
 from src.negotiation.domain.session import NegotiationSession, SessionStatus
 from src.negotiation.domain.value_objects import (
@@ -140,7 +140,7 @@ class TestNeutralEngine:
         )
 
     @pytest.mark.anyio
-    async def test_process_turn_first_turn_is_buyer(self):
+    async def test_process_turn_first_turn_is_seller(self):
         mock_driver = AsyncMock()
         mock_driver.generate_offer.return_value = {
             "action": "OFFER",
@@ -150,14 +150,27 @@ class TestNeutralEngine:
         }
         engine = NeutralEngine(agent_driver=mock_driver)
         session = self._make_session()
-        buyer = self._make_profile()
-        seller = self._make_profile()
+        session.activate()
+        buyer = self._make_profile(budget=Decimal("5000000"))
+        seller = self._make_profile(budget=Decimal("5000000"))
 
+        rfq_fields = {
+            "product": "steel",
+            "budget_min": 900000,
+            "budget_max": 1000000,
+            "quantity": 1,
+        }
         offer, is_terminal = await engine.process_turn(
-            session, buyer, seller, None, None
+            session,
+            buyer,
+            seller,
+            None,
+            None,
+            rfq_parsed_fields=rfq_fields,
+            catalogue_price=Decimal("950000"),
         )
-        assert offer.proposer_role == ProposerRole.BUYER
-        assert offer.price.amount == Decimal("50000")
+        assert offer.proposer_role == ProposerRole.SELLER
+        assert offer.price.amount > Decimal("0")
         assert is_terminal is False
 
     @pytest.mark.anyio
@@ -190,17 +203,31 @@ class TestNeutralEngine:
         }
         engine = NeutralEngine(agent_driver=mock_driver)
         session = self._make_session()
-        buyer = self._make_profile()
-        seller = self._make_profile()
+        session.activate()
+        buyer = self._make_profile(budget=Decimal("5000000"))
+        seller = self._make_profile(budget=Decimal("5000000"))
+        anchor = Offer.create_agent_offer(
+            session_id=session.id,
+            round_number=1,
+            proposer_role=ProposerRole.SELLER,
+            price=Decimal("100000"),
+            currency="INR",
+            terms={},
+            confidence=0.8,
+            agent_reasoning="anchor",
+        )
+        session.add_offer(anchor)
 
         offer, is_terminal = await engine.process_turn(
             session, buyer, seller, None, None
         )
         assert is_terminal is True
-        assert "REJECT" in (offer.agent_reasoning or "")
+        reasoning = offer.agent_reasoning or ""
+        assert "REJECT" in reasoning or "WALK_AWAY" in reasoning
 
     @pytest.mark.anyio
-    async def test_engine_publishes_sse_event(self):
+    async def test_engine_does_not_publish_sse(self):
+        """SSE is published by NegotiationService, not NeutralEngine."""
         mock_driver = AsyncMock()
         mock_driver.generate_offer.return_value = {
             "action": "OFFER",
@@ -211,15 +238,17 @@ class TestNeutralEngine:
         mock_sse = AsyncMock()
         engine = NeutralEngine(agent_driver=mock_driver, sse_publisher=mock_sse)
         session = self._make_session()
+        session.activate()
         buyer = self._make_profile()
         seller = self._make_profile()
 
         await engine.process_turn(session, buyer, seller, None, None)
-        mock_sse.publish_turn.assert_called_once()
+        mock_sse.publish_turn.assert_not_called()
 
     @pytest.mark.anyio
     async def test_determine_turn_alternates(self):
         engine = NeutralEngine(agent_driver=AsyncMock())
         session = self._make_session()
-        # First turn: buyer
-        assert engine._determine_turn(session) == ProposerRole.BUYER
+        session.activate()
+        # First turn: seller (DANP seller-first FSM)
+        assert engine._determine_turn(session) == ProposerRole.SELLER

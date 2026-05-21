@@ -128,6 +128,19 @@ class LLMAgentDriver:
                     # Try next key immediately; if this was the last key the outer
                     # loop will sleep and cycle through all keys again.
                     continue
+                except openai.APIStatusError as e:
+                    if e.status_code in (429, 403):
+                        last_error = e
+                        log.warning(
+                            "llm_quota_status",
+                            status_code=e.status_code,
+                            attempt=attempt,
+                            key_idx=key_idx,
+                        )
+                        continue
+                    last_error = e
+                    log.error("llm_api_status_error", status_code=e.status_code, error=str(e))
+                    continue
                 except openai.APITimeoutError as e:
                     # BUG-01 FIX: `continue` instead of `break` so remaining keys
                     # are tried before waiting RETRY_DELAY seconds.
@@ -220,7 +233,7 @@ def get_agent_driver() -> object:
         )
 
     if provider == "groq":
-        api_key = os.environ.get("GROQ_API_KEY", "")
+        api_key = os.environ.get("GROQ_API_KEY", "").strip()
         if not api_key:
             log.warning("groq_api_key_missing_falling_back_to_stub")
             return StubAgentDriver()
@@ -247,10 +260,19 @@ def get_agent_driver() -> object:
         )
 
     if provider == "gemini":
-        api_key = os.environ.get("GEMINI_API_KEY", "")
+        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
         if not api_key:
             log.warning("gemini_api_key_missing_falling_back_to_stub")
             return StubAgentDriver()
+        extra_keys: list[str] = []
+        gk2 = os.environ.get("GEMINI_API_KEY_2", "").strip()
+        if gk2 and gk2 != api_key:
+            extra_keys.append(gk2)
+        log.info(
+            "gemini_driver_initialized",
+            primary_key_prefix=api_key[:12],
+            total_keys=1 + len(extra_keys),
+        )
         # BUG-14 FIX: Gemini has an OpenAI-compatible endpoint — must specify
         # base_url or calls will hit OpenAI's endpoint with a Gemini key (→ 401).
         return LLMAgentDriver(
@@ -259,6 +281,7 @@ def get_agent_driver() -> object:
             temperature=temperature,
             max_tokens=max_tokens,
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            extra_api_keys=extra_keys,
         )
 
     if provider != "stub":

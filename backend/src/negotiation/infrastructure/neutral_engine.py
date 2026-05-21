@@ -130,6 +130,16 @@ class NeutralEngine:
         )
         is_buyer = current_role == ProposerRole.BUYER
 
+        # Restore ZOPA cache from persisted session JSONB (survives restarts)
+        sid = str(session.id)
+        if sid not in self._zopa_cache and session.opponent_beliefs:
+            zopa_persisted = (session.opponent_beliefs or {}).get("_zopa")
+            if zopa_persisted:
+                self._zopa_cache[sid] = {
+                    "seller_floor": Decimal(str(zopa_persisted["seller_floor"])),
+                    "buyer_ceiling": Decimal(str(zopa_persisted["buyer_ceiling"])),
+                }
+
         # 2. Check turn order
         NegotiationPolicy.check_turn_order(session.offers, current_role.value)
 
@@ -166,9 +176,17 @@ class NeutralEngine:
                         ), True
                     # ZOPA exists — cache floor/ceiling for weighted settlement
                     sid = str(session.id)
+                    zopa_data = {
+                        "seller_floor": str(s_res),
+                        "buyer_ceiling": str(b_res),
+                    }
                     self._zopa_cache[sid] = {
                         "seller_floor": s_res,
                         "buyer_ceiling": b_res,
+                    }
+                    session.opponent_beliefs = {
+                        **(session.opponent_beliefs or {}),
+                        "_zopa": zopa_data,
                     }
                     log.info(
                         "zopa_cached",
@@ -516,10 +534,6 @@ class NeutralEngine:
                 final_price = strategy_rec.suggested_price
                 reasoning = f"Guardrail override: {reasoning}"
 
-                # Record schema failure if needed
-                if session.record_schema_failure():
-                    return self._create_policy_breach_offer(session, current_role), True
-
             # ── Price band enforcement ──────────────────────────────────────
             # The strategy engine computes a math-determined price; the LLM
             # must stay within ±3%.  The band was already communicated as a
@@ -809,6 +823,9 @@ class NeutralEngine:
                 else:
                     # Recovery was tried last round — now truly stalled
                     is_terminal = True
+                    offer.agent_reasoning = (
+                        f"STALL_TERMINAL: {offer.agent_reasoning or 'No concession after stall recovery.'}"
+                    )
                     log.info(
                         "negotiation_stalled_after_recovery",
                         stall_counter=session.stall_counter,
@@ -817,6 +834,9 @@ class NeutralEngine:
                     )
             elif session.round_count.value + 1 >= MAX_ROUNDS:
                 is_terminal = True
+                offer.agent_reasoning = (
+                    f"MAX_ROUNDS: {offer.agent_reasoning or 'Maximum rounds reached without agreement.'}"
+                )
                 log.info(
                     "negotiation_max_rounds_reached",
                     round=session.round_count.value + 1,

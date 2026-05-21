@@ -1288,6 +1288,39 @@ async def submit_signed_fund(
             detail=f"Escrow cannot be funded in state: {escrow.status.value}",
         )
 
+    # Verify signed tx sender matches escrow buyer / enterprise linked wallet
+    import base64
+    from algosdk import encoding
+
+    allowed_senders = {escrow.buyer_address}
+    if current_user.enterprise_id:
+        from src.identity.infrastructure.repositories import PostgresEnterpriseRepository
+        from src.shared.infrastructure.db.session import get_session_factory
+
+        async with get_session_factory()() as db:
+            ent_repo = PostgresEnterpriseRepository(db)
+            enterprise = await ent_repo.get_by_id(current_user.enterprise_id)
+            if enterprise and enterprise.algorand_wallet:
+                allowed_senders.add(enterprise.algorand_wallet)
+
+    for b64_txn in request_body.signed_transactions:
+        try:
+            raw = base64.b64decode(b64_txn)
+            decoded = encoding.msgpack_decode(raw)
+            snd = decoded.get("txn", {}).get("snd")
+            if snd is None:
+                raise HTTPException(status_code=400, detail="Cannot read transaction sender")
+            sender_addr = encoding.encode_address(snd)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid signed transaction: {exc}") from exc
+        if sender_addr not in allowed_senders:
+            raise HTTPException(
+                status_code=403,
+                detail="Signed transaction sender must be the linked buyer wallet",
+            )
+
     # Submit signed transactions
     from src.settlement.infrastructure.algorand_gateway import AlgorandGateway
     gateway = AlgorandGateway()

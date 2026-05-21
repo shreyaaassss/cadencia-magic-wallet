@@ -227,10 +227,10 @@ class TestNegotiationSession:
 
     # ── DANP State Transitions ────────────────────────────────────────────────
 
-    def test_activate_init_to_buyer_anchor(self):
+    def test_activate_init_to_seller_anchor(self):
         session = self._make_session()
         event = session.activate()
-        assert session.status == SessionStatus.BUYER_ANCHOR
+        assert session.status == SessionStatus.SELLER_ANCHOR
         assert event.event_type == "SessionCreated"
 
     def test_activate_rejects_terminal_state(self):
@@ -419,9 +419,10 @@ class TestNegotiationSession:
 
     def test_next_proposer(self):
         session = self._make_session()
-        assert session.next_proposer == ProposerRole.BUYER
-        session.offers = [self._make_offer(session.id, ProposerRole.BUYER)]
+        session.activate()
         assert session.next_proposer == ProposerRole.SELLER
+        session.offers = [self._make_offer(session.id, ProposerRole.SELLER)]
+        assert session.next_proposer == ProposerRole.BUYER
 
     def test_check_convergence(self):
         session = self._make_session(SessionStatus.ROUND_LOOP)
@@ -1024,9 +1025,9 @@ class TestNegotiationPolicy:
     def test_convergence_none_prices(self):
         assert NegotiationPolicy.check_convergence(None, Decimal("100")) is False
 
-    def test_turn_order_first_must_be_buyer(self):
-        with pytest.raises(PolicyViolation, match="First offer"):
-            NegotiationPolicy.check_turn_order([], "SELLER")
+    def test_turn_order_allows_seller_first(self):
+        """DANP FSM: seller may post the opening anchor offer."""
+        NegotiationPolicy.check_turn_order([], "SELLER")
 
     def test_turn_order_no_consecutive(self):
         offer = Offer.create_agent_offer(

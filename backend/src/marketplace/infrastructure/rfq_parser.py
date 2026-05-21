@@ -97,6 +97,67 @@ def _normalize_rfq_budget(fields: dict) -> dict:
     return fields
 
 
+def _normalize_rfq_delivery(fields: dict) -> dict:
+    """Derive delivery_window_days and product_category when the LLM omits them."""
+    if not fields.get("delivery_window_days"):
+        start = fields.get("delivery_window_start")
+        end = fields.get("delivery_window_end")
+        if start and end:
+            try:
+                from datetime import datetime
+
+                d0 = datetime.fromisoformat(str(start)[:10])
+                d1 = datetime.fromisoformat(str(end)[:10])
+                days = (d1 - d0).days
+                if days > 0:
+                    fields["delivery_window_days"] = days
+            except (ValueError, TypeError):
+                pass
+    if not fields.get("product_category") and fields.get("product"):
+        fields["product_category"] = str(fields["product"])[:50]
+    return fields
+
+
+def normalize_rfq_parsed_fields(fields: dict) -> dict:
+    """Post-process LLM extraction: budget, delivery, category."""
+    fields = _normalize_rfq_budget(fields)
+    return _normalize_rfq_delivery(fields)
+
+
+def build_parsed_variants(parsed: dict) -> list[dict]:
+    """Primary parsed fields plus one variant per multi-product line item."""
+    variants: list[dict] = [parsed]
+    items = parsed.get("items")
+    if not isinstance(items, list):
+        return variants
+    for item in items:
+        if not isinstance(item, dict) or not item.get("product"):
+            continue
+        v = {**parsed, "product": item["product"], "items": None}
+        if item.get("hsn_code"):
+            v["hsn_code"] = item["hsn_code"]
+        if item.get("quantity") is not None:
+            v["quantity"] = item["quantity"]
+        bt = item.get("budget_total")
+        bpu = item.get("budget_per_unit")
+        qty = item.get("quantity")
+        if bt is not None:
+            try:
+                v["budget_max"] = float(bt)
+                v["budget_min"] = round(float(bt) * 0.80, 2)
+            except (TypeError, ValueError):
+                pass
+        elif bpu is not None and qty is not None:
+            v["budget_per_unit"] = bpu
+            v = _normalize_rfq_budget(v)
+        if item.get("product_category"):
+            v["product_category"] = item["product_category"]
+        else:
+            v["product_category"] = str(item["product"])[:50]
+        variants.append(v)
+    return variants
+
+
 RFQ_EXTRACTION_SCHEMA = {
     "product": "string — primary commodity/product name ONLY, no quantities (e.g. 'camera', 'steel', 'cotton fabric')",
     "hsn_code": "string — 4-8 digit HSN tariff code or null",
@@ -106,6 +167,8 @@ RFQ_EXTRACTION_SCHEMA = {
     "budget_max": "number — TOTAL maximum order budget in INR (= budget_per_unit × quantity). ALWAYS multiply unit price by quantity. Example: 5 units at ₹30,000/unit → budget_max=150000 NOT 30000.",
     "delivery_window_start": "date string YYYY-MM-DD or null",
     "delivery_window_end": "date string YYYY-MM-DD or null",
+    "delivery_window_days": "integer — total delivery window in days, or null (derive from start/end if possible)",
+    "product_category": "string — product category label for catalogue matching (e.g. 'HR Coil', 'camera') or null",
     "geography": "string — delivery location or 'IN' default",
     "items": "array or null — ONLY if the RFQ requests multiple DISTINCT products. Each element: {\"product\": str, \"hsn_code\": str|null, \"quantity\": number, \"budget_per_unit\": number|null, \"budget_total\": number|null}. null for single-product RFQs.",
 }
@@ -155,33 +218,46 @@ class RFQParser:
 
         provider = os.environ.get("LLM_PROVIDER", "openai")
         if provider == "groq":
-            self._api_key = api_key or os.environ.get("GROQ_API_KEY", "")
-            self._clients = [openai.AsyncOpenAI(
-                api_key=self._api_key,
-                base_url="https://api.groq.com/openai/v1",
-            )]
-            # Collect fallback keys for rotation on rate-limit
+            self._api_key = (api_key or os.environ.get("GROQ_API_KEY", "")).strip()
+            seen_keys: set[str] = set()
+            self._clients = []
+            if self._api_key:
+                seen_keys.add(self._api_key)
+                self._clients.append(openai.AsyncOpenAI(
+                    api_key=self._api_key,
+                    base_url="https://api.groq.com/openai/v1",
+                ))
             for k in ("GROQ_API_KEY_2", "GROQ_API_KEY_3", "GROQ_API_KEY_4",
                        "GROQ_API_KEY_5", "GROQ_API_KEY_6", "GROQ_API_KEY_7"):
                 v = os.environ.get(k, "").strip()
-                if v and v != self._api_key:
+                if v and v not in seen_keys:
+                    seen_keys.add(v)
                     self._clients.append(openai.AsyncOpenAI(
                         api_key=v, base_url="https://api.groq.com/openai/v1",
                     ))
+            if not self._clients:
+                raise ValueError("GROQ_API_KEY is required when LLM_PROVIDER=groq")
             self.client = self._clients[0]
             self.extraction_model = extraction_model or os.environ.get("LLM_MODEL", "llama3-70b-8192")
         elif provider == "gemini":
-            self._api_key = api_key or os.environ.get("GEMINI_API_KEY", "")
-            self._clients = [openai.AsyncOpenAI(
-                api_key=self._api_key,
-                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-            )]
+            self._api_key = (api_key or os.environ.get("GEMINI_API_KEY", "")).strip()
+            seen_keys = set()
+            self._clients = []
+            if self._api_key:
+                seen_keys.add(self._api_key)
+                self._clients.append(openai.AsyncOpenAI(
+                    api_key=self._api_key,
+                    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                ))
             gk2 = os.environ.get("GEMINI_API_KEY_2", "").strip()
-            if gk2 and gk2 != self._api_key:
+            if gk2 and gk2 not in seen_keys:
+                seen_keys.add(gk2)
                 self._clients.append(openai.AsyncOpenAI(
                     api_key=gk2,
                     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
                 ))
+            if not self._clients:
+                raise ValueError("GEMINI_API_KEY is required when LLM_PROVIDER=gemini")
             self.client = self._clients[0]
             self.extraction_model = extraction_model or os.environ.get("LLM_MODEL", "gemini-2.0-flash")
         else:
@@ -221,7 +297,7 @@ class RFQParser:
                     if "product" not in parsed or not parsed.get("product"):
                         log.warning("rfq_extraction_no_product", attempt=attempt)
                         break  # retry with delay, not next key
-                    parsed = _normalize_rfq_budget(parsed)
+                    parsed = normalize_rfq_parsed_fields(parsed)
                     return parsed
                 except (openai.RateLimitError, openai.APITimeoutError):
                     log.warning("rfq_extraction_retry", attempt=attempt, key_idx=key_idx)

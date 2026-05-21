@@ -24,6 +24,54 @@ log = get_logger(__name__)
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
 
+def _metadata_field(metadata: object, *names: str) -> str | None:
+    """Read email or address from Magic admin metadata (object or dict)."""
+    for name in names:
+        if isinstance(metadata, dict):
+            val = metadata.get(name)
+        else:
+            val = getattr(metadata, name, None)
+        if val:
+            return str(val).strip()
+    data = metadata.get("data") if isinstance(metadata, dict) else getattr(metadata, "data", None)
+    if data is not None:
+        for name in names:
+            if isinstance(data, dict):
+                val = data.get(name)
+            else:
+                val = getattr(data, name, None)
+            if val:
+                return str(val).strip()
+    return None
+
+
+def _verify_magic_did_token(did_token: str) -> tuple[str, str]:
+    """Validate DID and return (email, algorand_address) from Magic metadata."""
+    magic_secret = os.environ.get("MAGIC_SECRET_KEY")
+    if not magic_secret:
+        raise HTTPException(status_code=500, detail="MAGIC_SECRET_KEY not configured")
+    try:
+        from magic_admin import Magic as MagicAdmin
+        magic_client = MagicAdmin(api_secret_key=magic_secret)
+        metadata = magic_client.User.get_metadata_by_token(did_token)
+    except Exception as exc:
+        log.warning("magic_did_token_invalid", error=str(exc))
+        raise HTTPException(status_code=401, detail="Invalid or expired Magic token")
+
+    magic_email = _metadata_field(metadata, "email")
+    magic_address = _metadata_field(
+        metadata, "public_address", "publicAddress", "issuer"
+    )
+    if not magic_email or not magic_address:
+        log.warning(
+            "magic_metadata_incomplete",
+            has_email=bool(magic_email),
+            has_address=bool(magic_address),
+        )
+        raise HTTPException(status_code=401, detail="Magic token missing email or wallet address")
+    return magic_email.lower(), magic_address
+
+
 class MagicLoginRequest(BaseModel):
     did_token: str       # DID token from magic.user.getIdToken()
     email: str           # User's email — for find-or-create lookup
@@ -53,26 +101,15 @@ async def magic_login(
     3. Auto-link their Magic Algorand address if enterprise has no wallet yet
     4. Return Cadencia JWT (same RS256 system as /v1/auth/login)
     """
-    magic_secret = os.environ.get("MAGIC_SECRET_KEY")
-    if not magic_secret:
-        raise HTTPException(status_code=500, detail="MAGIC_SECRET_KEY not configured")
+    magic_email, magic_address = _verify_magic_did_token(body.did_token)
+    if body.email.strip().lower() != magic_email:
+        raise HTTPException(status_code=401, detail="Email does not match Magic session")
+    if body.algo_address.strip() != magic_address:
+        raise HTTPException(status_code=401, detail="Wallet address does not match Magic session")
 
-    # Verify DID token using magic-admin v2.x API.
-    # Magic(api_secret_key=...) — note: v2.x uses api_secret_key, not secret_key.
-    # User.get_metadata_by_token() validates the token AND returns user metadata.
-    # It raises if the token is invalid, expired, or from a different app.
-    try:
-        from magic_admin import Magic as MagicAdmin
-        magic_client = MagicAdmin(api_secret_key=magic_secret)
-        magic_client.User.get_metadata_by_token(body.did_token)
-    except Exception as exc:
-        log.warning("magic_did_token_invalid", error=str(exc))
-        raise HTTPException(status_code=401, detail="Invalid or expired Magic token")
-
-    # Find the user by email
     result = await svc.magic_login(
-        email=body.email,
-        algo_address=body.algo_address,
+        email=magic_email,
+        algo_address=magic_address,
     )
 
     _set_refresh_cookie(response, result["refresh_token"])
@@ -121,23 +158,17 @@ async def magic_register(
     3. Auto-link Magic publicAddress as enterprise wallet
     4. Return Cadencia JWT
     """
-    magic_secret = os.environ.get("MAGIC_SECRET_KEY")
-    if not magic_secret:
-        raise HTTPException(status_code=500, detail="MAGIC_SECRET_KEY not configured")
-
-    try:
-        from magic_admin import Magic as MagicAdmin
-        magic_client = MagicAdmin(api_secret_key=magic_secret)
-        magic_client.User.get_metadata_by_token(body.did_token)
-    except Exception as exc:
-        log.warning("magic_did_token_invalid_register", error=str(exc))
-        raise HTTPException(status_code=401, detail="Invalid or expired Magic token")
+    magic_email, magic_address = _verify_magic_did_token(body.did_token)
+    if body.algo_address.strip() != magic_address:
+        raise HTTPException(status_code=401, detail="Wallet address does not match Magic session")
 
     from decimal import Decimal
     from src.identity.application.commands import RegisterEnterpriseCommand
 
     ent = body.enterprise
     user_data = body.user
+    if user_data.get("email", "").strip().lower() != magic_email:
+        raise HTTPException(status_code=401, detail="Email does not match Magic session")
 
     # Generate a strong random password — user will never use it (Magic is auth)
     import secrets
@@ -148,7 +179,7 @@ async def magic_register(
         pan=ent.get("pan", "").upper(),
         gstin=ent.get("gstin", "").upper(),
         trade_role=ent.get("trade_role", "BUYER"),
-        email=user_data.get("email", ""),
+        email=magic_email,
         password=random_password,
         full_name=user_data.get("full_name", ""),
         role=user_data.get("role", "MEMBER"),
@@ -171,14 +202,14 @@ async def magic_register(
     result = await svc.register_enterprise(cmd)
 
     # Auto-link the Magic Algorand address to the newly created enterprise
-    if body.algo_address:
+    if magic_address:
         try:
             from src.identity.application.commands import LinkWalletCommand
             await svc.link_wallet(
                 LinkWalletCommand(
                     enterprise_id=result["enterprise_id"],
                     requesting_user_id=result["user_id"],
-                    algorand_address=body.algo_address,
+                    algorand_address=magic_address,
                 )
             )
             log.info(

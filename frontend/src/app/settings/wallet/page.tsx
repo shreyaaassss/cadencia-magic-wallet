@@ -146,6 +146,22 @@ export default function WalletPage() {
               ) : (
                 <p className="text-sm text-muted-foreground">Click refresh to load balance</p>
               )}
+
+              <div className="pt-4 border-t border-border">
+                <p className="text-xs text-muted-foreground mb-2">
+                  Add ALGO by sending to your address above, or use the TestNet faucet for development.
+                </p>
+                <a
+                  href="https://bank.testnet.algorand.network/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Button variant="outline" size="sm" type="button">
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Open TestNet Faucet
+                  </Button>
+                </a>
+              </div>
             </div>
           )}
         </div>

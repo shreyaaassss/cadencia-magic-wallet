@@ -145,6 +145,12 @@ class MarketplaceService:
                     log.warning("rfq_extraction_empty", rfq_id=str(rfq_id))
                     return  # Stay DRAFT — no fields extracted
 
+                from src.marketplace.infrastructure.rfq_parser import (
+                    build_parsed_variants,
+                    normalize_rfq_parsed_fields,
+                )
+                parsed = normalize_rfq_parsed_fields(parsed)
+
                 # 2. Mark parsed
                 event_data = rfq.mark_parsed(parsed)
                 await rfq_repo.update(rfq)
@@ -163,140 +169,145 @@ class MarketplaceService:
                 embedding = await self._parser.generate_embedding(embed_text)
                 rfq.embedding = embedding
 
-                # 4. Find matches — use enhanced matching if RFQ has delivery data
-                has_delivery_data = bool(
-                    parsed.get("delivery_window_days")
-                    or parsed.get("quantity")
-                    or parsed.get("budget_min")
-                )
+                # 4. Find matches — loop variants for multi-product RFQs
+                import re as _re
+                from src.marketplace.infrastructure.models import AddressModel, MatchModel
 
-                # Try to get buyer's delivery pincode from their address
+                parsed_variants = build_parsed_variants(parsed)
+                merged_raw_scores: dict = {}
+                merged_enhanced_by_seller: dict = {}
+
                 buyer_pincode = None
-                buyer_delivery_window = parsed.get("delivery_window_days")
-                # Parse quantity — may be "100 MT" or "100" or 100
-                buyer_qty_raw = parsed.get("quantity")
-                buyer_qty = None
-                if buyer_qty_raw is not None:
-                    import re as _re
-                    qty_match = _re.search(r'[\d.]+', str(buyer_qty_raw))
-                    if qty_match:
-                        try:
-                            buyer_qty = float(qty_match.group())
-                        except ValueError:
-                            buyer_qty = None
-                buyer_budget_min = parsed.get("budget_min")
-                buyer_budget_max = parsed.get("budget_max")
-                product_category = parsed.get("product_category")
+                addr_result = await session.execute(
+                    sa_select(AddressModel).where(
+                        AddressModel.enterprise_id == rfq.buyer_enterprise_id,
+                        AddressModel.is_primary == True,  # noqa: E712
+                    )
+                )
+                buyer_addr = addr_result.scalar_one_or_none()
+                if buyer_addr:
+                    buyer_pincode = buyer_addr.pincode
 
-                if has_delivery_data and hasattr(matchmaker, 'find_enhanced_matches'):
-                    # Fetch buyer address for pincode
-                    from src.marketplace.infrastructure.models import AddressModel
-                    from sqlalchemy import select as sa_select
-                    addr_result = await session.execute(
-                        sa_select(AddressModel).where(
-                            AddressModel.enterprise_id == rfq.buyer_enterprise_id,
-                            AddressModel.is_primary == True,  # noqa: E712
+                for variant in parsed_variants:
+                    rfq.parsed_fields = variant
+                    has_delivery_data = bool(
+                        variant.get("delivery_window_days")
+                        or variant.get("quantity")
+                        or variant.get("budget_min")
+                    )
+                    buyer_delivery_window = variant.get("delivery_window_days")
+                    buyer_qty_raw = variant.get("quantity")
+                    buyer_qty = None
+                    if buyer_qty_raw is not None:
+                        qty_match = _re.search(r"[\d.]+", str(buyer_qty_raw))
+                        if qty_match:
+                            try:
+                                buyer_qty = float(qty_match.group())
+                            except ValueError:
+                                buyer_qty = None
+                    buyer_budget_min = variant.get("budget_min")
+                    buyer_budget_max = variant.get("budget_max")
+                    product_category = variant.get("product_category")
+
+                    if has_delivery_data and hasattr(matchmaker, "find_enhanced_matches"):
+                        enhanced_results = await matchmaker.find_enhanced_matches(
+                            rfq=rfq,
+                            rfq_embedding=embedding,
+                            buyer_pincode=buyer_pincode,
+                            buyer_delivery_window=int(buyer_delivery_window) if buyer_delivery_window else None,
+                            buyer_qty=float(buyer_qty) if buyer_qty else None,
+                            buyer_budget_min=float(buyer_budget_min) if buyer_budget_min else None,
+                            buyer_budget_max=float(buyer_budget_max) if buyer_budget_max else None,
+                            product_category=product_category,
+                            top_n=self._top_n,
                         )
-                    )
-                    buyer_addr = addr_result.scalar_one_or_none()
-                    if buyer_addr:
-                        buyer_pincode = buyer_addr.pincode
-
-                    enhanced_results = await matchmaker.find_enhanced_matches(
-                        rfq=rfq,
-                        rfq_embedding=embedding,
-                        buyer_pincode=buyer_pincode,
-                        buyer_delivery_window=int(buyer_delivery_window) if buyer_delivery_window else None,
-                        buyer_qty=float(buyer_qty) if buyer_qty else None,
-                        buyer_budget_min=float(buyer_budget_min) if buyer_budget_min else None,
-                        buyer_budget_max=float(buyer_budget_max) if buyer_budget_max else None,
-                        product_category=product_category,
-                        top_n=self._top_n,
-                    )
-
-                    if enhanced_results:
-                        matches = [
-                            Match(
-                                rfq_id=rfq.id,
-                                seller_enterprise_id=m["enterprise_id"],
-                                similarity_score=SimilarityScore(value=m["composite_score"]),
-                                rank=m["rank"],
-                            )
-                            for m in enhanced_results
-                        ]
-                        await match_repo.save_bulk(matches)
-
-                        # Store scoring breakdown in match rows
-                        for m_data in enhanced_results:
-                            from src.marketplace.infrastructure.models import MatchModel
-                            match_row = await session.execute(
-                                sa_select(MatchModel).where(
-                                    MatchModel.rfq_id == rfq.id,
-                                    MatchModel.seller_enterprise_id == m_data["enterprise_id"],
-                                )
-                            )
-                            row = match_row.scalar_one_or_none()
-                            if row:
-                                row.semantic_score = m_data.get("semantic_score")
-                                row.delivery_feasibility_score = m_data.get("delivery_feasibility_score")
-                                row.capacity_score = m_data.get("capacity_score")
-                                row.price_score = m_data.get("price_score")
-                                row.proximity_score = m_data.get("proximity_score")
-                                row.composite_score = m_data.get("composite_score")
-                                row.estimated_delivery_days = m_data.get("estimated_delivery_days")
-                                row.distance_km = m_data.get("distance_km")
-                                # Fix 1: persist which catalogue item was matched
-                                raw_item_id = m_data.get("matched_catalogue_item_id")
-                                if raw_item_id:
-                                    import uuid as _uuid
-                                    try:
-                                        row.matched_catalogue_item_id = _uuid.UUID(raw_item_id)
-                                    except (ValueError, AttributeError):
-                                        pass
-
-                        raw_matches = [(m["enterprise_id"], m["composite_score"]) for m in enhanced_results]
+                        if enhanced_results:
+                            for m_data in enhanced_results:
+                                eid = m_data["enterprise_id"]
+                                prev = merged_enhanced_by_seller.get(eid)
+                                if not prev or m_data["composite_score"] > prev["composite_score"]:
+                                    merged_enhanced_by_seller[eid] = m_data
+                        else:
+                            _kw = KeywordMatchmaker(session)
+                            _kw_results = await _kw.find_matches(rfq, embedding, self._top_n)
+                            for eid, sc in _kw_results:
+                                if eid not in merged_raw_scores or sc > merged_raw_scores[eid]:
+                                    merged_raw_scores[eid] = sc
                     else:
-                        # Enhanced (pgvector) returned nothing — fall back to keyword matching
-                        raw_matches = []
-                        _kw = KeywordMatchmaker(session)
-                        _kw_results = await _kw.find_matches(rfq, embedding, self._top_n)
-                        if _kw_results:
-                            raw_matches = _kw_results
-                            matches = [
-                                Match(
-                                    rfq_id=rfq.id,
-                                    seller_enterprise_id=eid,
-                                    similarity_score=SimilarityScore(value=sc),
-                                    rank=rank + 1,
-                                )
-                                for rank, (eid, sc) in enumerate(_kw_results)
-                            ]
-                            await match_repo.save_bulk(matches)
-                            log.info("enhanced_path_keyword_fallback", rfq_id=str(rfq_id), count=len(_kw_results))
-                else:
-                    # Fallback: standard pgvector matching
-                    raw_matches = await matchmaker.find_matches(
-                        rfq, embedding, self._top_n
-                    )
-
-                    # Fallback to keyword matching if pgvector returns no/low results
-                    if not raw_matches or (raw_matches and all(s < 0.3 for _, s in raw_matches)):
-                        keyword_matchmaker = KeywordMatchmaker(session)
-                        keyword_results = await keyword_matchmaker.find_matches(rfq, embedding, self._top_n)
-                        if keyword_results:
-                            raw_matches = keyword_results
-
-                    if raw_matches:
-                        matches = [
-                            Match(
-                                rfq_id=rfq.id,
-                                seller_enterprise_id=ent_id,
-                                similarity_score=SimilarityScore(value=score),
-                                rank=rank + 1,
+                        variant_raw = await matchmaker.find_matches(
+                            rfq, embedding, self._top_n
+                        )
+                        if not variant_raw or all(s < 0.3 for _, s in variant_raw):
+                            keyword_matchmaker = KeywordMatchmaker(session)
+                            variant_raw = await keyword_matchmaker.find_matches(
+                                rfq, embedding, self._top_n
                             )
-                            for rank, (ent_id, score) in enumerate(raw_matches)
-                        ]
-                        await match_repo.save_bulk(matches)
+                        for eid, sc in variant_raw:
+                            if eid not in merged_raw_scores or sc > merged_raw_scores[eid]:
+                                merged_raw_scores[eid] = sc
+
+                rfq.parsed_fields = parsed
+
+                enhanced_results = sorted(
+                    merged_enhanced_by_seller.values(),
+                    key=lambda m: m["composite_score"],
+                    reverse=True,
+                )[: self._top_n]
+                raw_matches: list = []
+                matches: list = []
+
+                if enhanced_results:
+                    matches = [
+                        Match(
+                            rfq_id=rfq.id,
+                            seller_enterprise_id=m["enterprise_id"],
+                            similarity_score=SimilarityScore(value=m["composite_score"]),
+                            rank=rank + 1,
+                        )
+                        for rank, m in enumerate(enhanced_results)
+                    ]
+                    await match_repo.save_bulk(matches)
+                    for m_data in enhanced_results:
+                        match_row = await session.execute(
+                            sa_select(MatchModel).where(
+                                MatchModel.rfq_id == rfq.id,
+                                MatchModel.seller_enterprise_id == m_data["enterprise_id"],
+                            )
+                        )
+                        row = match_row.scalar_one_or_none()
+                        if row:
+                            row.semantic_score = m_data.get("semantic_score")
+                            row.delivery_feasibility_score = m_data.get("delivery_feasibility_score")
+                            row.capacity_score = m_data.get("capacity_score")
+                            row.price_score = m_data.get("price_score")
+                            row.proximity_score = m_data.get("proximity_score")
+                            row.composite_score = m_data.get("composite_score")
+                            row.estimated_delivery_days = m_data.get("estimated_delivery_days")
+                            row.distance_km = m_data.get("distance_km")
+                            raw_item_id = m_data.get("matched_catalogue_item_id")
+                            if raw_item_id:
+                                import uuid as _uuid
+                                try:
+                                    row.matched_catalogue_item_id = _uuid.UUID(raw_item_id)
+                                except (ValueError, AttributeError):
+                                    pass
+                    raw_matches = [
+                        (m["enterprise_id"], m["composite_score"]) for m in enhanced_results
+                    ]
+                elif merged_raw_scores:
+                    raw_matches = sorted(
+                        merged_raw_scores.items(), key=lambda x: x[1], reverse=True
+                    )[: self._top_n]
+                    matches = [
+                        Match(
+                            rfq_id=rfq.id,
+                            seller_enterprise_id=ent_id,
+                            similarity_score=SimilarityScore(value=score),
+                            rank=rank + 1,
+                        )
+                        for rank, (ent_id, score) in enumerate(raw_matches)
+                    ]
+                    await match_repo.save_bulk(matches)
 
                 # Fallback: if no matches found, try direct enterprise commodity matching
                 if not raw_matches:
@@ -613,6 +624,9 @@ class MarketplaceService:
                     uow=SqlAlchemyUnitOfWork(db_session),
                 )
 
+                import os as _os
+                _inter_turn_delay = float(_os.getenv("AUTO_TURN_DELAY_SECONDS", "1.5"))
+
                 for _round in range(max_rounds):
                     session = await svc.session_repo.get_by_id(session_id)
                     if not session or not session.status.is_active:
@@ -626,6 +640,8 @@ class MarketplaceService:
                             error=str(turn_exc),
                         )
                         break
+                    if _inter_turn_delay > 0 and _round < max_rounds - 1:
+                        await asyncio.sleep(_inter_turn_delay)
 
                 session = await svc.session_repo.get_by_id(session_id)
                 log.info(

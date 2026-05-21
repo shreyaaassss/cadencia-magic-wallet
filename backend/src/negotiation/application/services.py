@@ -94,7 +94,7 @@ class NegotiationService:
             expires_at=datetime.now(tz=timezone.utc) + timedelta(hours=self.session_ttl_hours),
         )
 
-        # Activate: INIT → BUYER_ANCHOR
+        # Activate: INIT → SELLER_ANCHOR (seller quotes catalog price first)
         created_event = session.activate()
 
         await self.session_repo.save(session)  # type: ignore[union-attr]
@@ -339,28 +339,21 @@ class NegotiationService:
                 catalogue_price=catalogue_price,
             )
         except LLMExhaustedException:
-            # ── NEG-07: Auto-fallback to StubAgent — never freeze the session ──
-            log.warning("llm_exhausted_falling_back_to_stub", session_id=str(session_id))
-            from src.negotiation.infrastructure.llm_agent_driver import StubAgentDriver
-            original_driver = self.neutral_engine.agent_driver  # type: ignore[union-attr]
-            self.neutral_engine.agent_driver = StubAgentDriver()  # type: ignore[union-attr]
-            try:
-                offer, is_terminal = await self.neutral_engine.process_turn(  # type: ignore[union-attr]
-                    session=session,
-                    buyer_profile=buyer_profile,
-                    seller_profile=seller_profile,
-                    buyer_playbook=buyer_playbook,
-                    seller_playbook=seller_playbook,
-                    rfq_parsed_fields=rfq_parsed_fields,
-                    catalogue_price=catalogue_price,
-                )
-            finally:
-                self.neutral_engine.agent_driver = original_driver  # type: ignore[union-attr]
+            log.warning("llm_exhausted_policy_breach", session_id=str(session_id))
+            await self._handle_policy_breach(session)
             if self.sse_publisher:
                 await self.sse_publisher.publish_turn(  # type: ignore[union-attr]
                     session_id,
-                    {"event": "llm_fallback", "reason": "llm_unavailable_stub_used", "session_id": str(session_id)},
+                    {
+                        "event": "llm_unavailable",
+                        "reason": "All LLM API keys exhausted",
+                        "session_id": str(session_id),
+                    },
                 )
+            await self.uow.commit()  # type: ignore[union-attr]
+            raise ConflictError(
+                f"Session {session_id}: LLM unavailable (quota exhausted on all keys)"
+            )
 
         # Add offer to session and persist
         offer_event = session.add_offer(offer)
@@ -392,11 +385,16 @@ class NegotiationService:
 
         if is_terminal:
             reasoning = offer.agent_reasoning or ""
-            if "REJECT" in reasoning or "WALK_AWAY" in reasoning:
+            ru = reasoning.upper()
+            if "REJECT" in ru or "WALK_AWAY" in ru:
                 await self._handle_walk_away(session, f"Agent rejected at round {session.round_count.value}")
-            elif "POLICY_BREACH" in reasoning:
+            elif "POLICY_BREACH" in ru:
                 await self._handle_policy_breach(session)
-            elif "TIMEOUT" in reasoning:
+            elif "STALL_TERMINAL" in ru:
+                await self._handle_stall(session)
+            elif "MAX_ROUNDS" in ru:
+                await self._handle_timeout(session)
+            elif "TIMEOUT" in ru and "MAX_ROUNDS" not in ru:
                 await self._handle_timeout(session)
             elif session.stall_counter >= 3:
                 await self._handle_stall(session)
@@ -449,12 +447,12 @@ class NegotiationService:
             profile.update_after_session(
                 session_agreed=True,
                 rounds_taken=session.round_count.value,
-                final_price=offer.price.amount,
+                final_price=agreed_amount,
                 budget_ceiling=profile.risk_profile.budget_ceiling,
             )
             await self.profile_repo.update(profile)  # type: ignore[union-attr]
 
-        log.info("session_agreed", session_id=str(session.id), price=float(offer.price.amount))
+        log.info("session_agreed", session_id=str(session.id), price=float(agreed_amount))
 
     async def _handle_walk_away(self, session: NegotiationSession, reason: str) -> None:
         """ROUND_LOOP → WALK_AWAY: agent rejected."""

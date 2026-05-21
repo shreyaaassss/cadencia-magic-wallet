@@ -44,6 +44,29 @@ class PgvectorMatchmaker:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    @staticmethod
+    def _select_best_catalogue_item(
+        catalogue_items: list,
+        rfq_product: str,
+        rfq_hsn: str | None,
+    ):
+        """Pick catalogue row that best matches RFQ product name or HSN."""
+        if not catalogue_items:
+            return None
+        rfq_product_lower = (rfq_product or "").lower().strip()
+        hsn = (str(rfq_hsn).strip() if rfq_hsn else "") or ""
+        if hsn:
+            for item in catalogue_items:
+                item_hsn = getattr(item, "hsn_code", None)
+                if item_hsn and str(item_hsn).strip() == hsn:
+                    return item
+        if rfq_product_lower:
+            for item in catalogue_items:
+                name = (getattr(item, "product_name", None) or "").lower()
+                if rfq_product_lower in name or name in rfq_product_lower:
+                    return item
+        return catalogue_items[0]
+
     async def find_matches(
         self,
         rfq: "RFQ",
@@ -201,7 +224,10 @@ class PgvectorMatchmaker:
             if product_category and not catalogue_items:
                 continue
 
-            best_item = catalogue_items[0] if catalogue_items else None
+            rfq_hsn = rfq_parsed.get("hsn_code")
+            best_item = self._select_best_catalogue_item(
+                catalogue_items, rfq_product, rfq_hsn
+            )
             lead_time = best_item.lead_time_days if best_item else 14
 
             # Delivery feasibility check
@@ -229,9 +255,16 @@ class PgvectorMatchmaker:
                     if feasibility.distance_km > seller_cap.max_delivery_radius_km:
                         continue
 
-            # Capacity check
+            # Capacity check (MT/month sellers only — skip for piece/unit RFQs)
             capacity_score = 1.0
-            if buyer_qty and seller_cap and seller_cap.available_capacity_mt:
+            item_unit = (getattr(best_item, "unit", None) or "MT").upper() if best_item else "MT"
+            apply_mt_capacity = item_unit in ("MT", "TON", "TONNE", "METRIC TON")
+            if (
+                apply_mt_capacity
+                and buyer_qty
+                and seller_cap
+                and seller_cap.available_capacity_mt
+            ):
                 available = float(seller_cap.available_capacity_mt)
                 window = buyer_delivery_window or 30
                 months = max(window / 30, 1)
