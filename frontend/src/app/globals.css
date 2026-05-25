@@ -3,8 +3,9 @@
 @tailwind utilities;
 
 @layer base {
+  /* ── LIGHT MODE (default) ── */
   :root {
-    /* ── Surface ── */
+    /* Surface */
     --background: #ffffff;
     --foreground: #181d26;
     --card: #ffffff;
@@ -12,39 +13,39 @@
     --popover: #ffffff;
     --popover-foreground: #181d26;
 
-    /* ── Brand ── */
+    /* Brand */
     --primary: #181d26;
     --primary-foreground: #ffffff;
     --primary-active: #0d1218;
 
-    /* ── Secondary (white outline style) ── */
+    /* Secondary */
     --secondary: #f8fafc;
     --secondary-foreground: #181d26;
 
-    /* ── Muted / Accent ── */
+    /* Muted / Accent */
     --muted: #f8fafc;
     --muted-foreground: #41454d;
     --accent: #f8fafc;
     --accent-foreground: #181d26;
 
-    /* ── Borders & Inputs ── */
+    /* Borders & Inputs */
     --border: #dddddd;
     --input: #dddddd;
     --ring: #458fff;
     --hairline: #dddddd;
 
-    /* ── Destructive ── */
+    /* Destructive */
     --destructive: #e54d2e;
     --destructive-foreground: #ffffff;
 
-    /* ── Text roles ── */
+    /* Text roles */
     --ink: #181d26;
     --body: #333840;
     --text-muted: #41454d;
     --on-primary: #ffffff;
     --border-strong: #9297a0;
 
-    /* ── Signature surfaces ── */
+    /* Signature surfaces */
     --signature-coral: #aa2d00;
     --signature-forest: #0a2e0e;
     --signature-cream: #f5e9d4;
@@ -53,13 +54,13 @@
     --signature-yellow: #f4d35e;
     --signature-mustard: #d9a441;
 
-    /* ── Named surfaces ── */
+    /* Named surfaces */
     --surface-soft: #f8fafc;
     --surface-strong: #e0e2e6;
     --surface-dark: #181d26;
     --surface-dark-elevated: #1d1f25;
 
-    /* ── Semantic ── */
+    /* Semantic */
     --link: #1b61c9;
     --link-active: #1a3866;
     --info: #254fad;
@@ -67,21 +68,21 @@
     --success: #006400;
     --success-border: #39bf45;
 
-    /* ── Radius ── */
+    /* Radius */
     --radius: 0.625rem;
     --radius-xs: 2px;
     --radius-sm: 6px;
     --radius-md: 10px;
     --radius-lg: 12px;
 
-    /* ── Charts ── */
+    /* Charts */
     --chart-1: #181d26;
     --chart-2: #aa2d00;
     --chart-3: #0a2e0e;
     --chart-4: #1b61c9;
     --chart-5: #d9a441;
 
-    /* ── Sidebar (light) ── */
+    /* Sidebar */
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 220 16% 12%;
     --sidebar-primary: 220 16% 12%;
@@ -89,6 +90,89 @@
     --sidebar-accent: 210 40% 98%;
     --sidebar-accent-foreground: 220 16% 12%;
     --sidebar-border: 0 0% 87%;
+    --sidebar-ring: 217 100% 64%;
+  }
+
+  /* ── DARK MODE ── */
+  .dark {
+    /* Surface */
+    --background: #0f1117;
+    --foreground: #e4e5e9;
+    --card: #181a20;
+    --card-foreground: #e4e5e9;
+    --popover: #181a20;
+    --popover-foreground: #e4e5e9;
+
+    /* Brand */
+    --primary: #e4e5e9;
+    --primary-foreground: #0f1117;
+    --primary-active: #ffffff;
+
+    /* Secondary */
+    --secondary: #1e2028;
+    --secondary-foreground: #e4e5e9;
+
+    /* Muted / Accent */
+    --muted: #1e2028;
+    --muted-foreground: #8b8d95;
+    --accent: #1e2028;
+    --accent-foreground: #e4e5e9;
+
+    /* Borders & Inputs */
+    --border: #2a2c35;
+    --input: #2a2c35;
+    --ring: #458fff;
+    --hairline: #2a2c35;
+
+    /* Destructive */
+    --destructive: #e54d2e;
+    --destructive-foreground: #ffffff;
+
+    /* Text roles */
+    --ink: #e4e5e9;
+    --body: #b0b2b8;
+    --text-muted: #8b8d95;
+    --on-primary: #0f1117;
+    --border-strong: #4a4c55;
+
+    /* Signature surfaces (slightly muted for dark) */
+    --signature-coral: #c04a20;
+    --signature-forest: #1a4a22;
+    --signature-cream: #2a2520;
+    --signature-peach: #3d2a18;
+    --signature-mint: #1a2d24;
+    --signature-yellow: #3d3418;
+    --signature-mustard: #3d2e18;
+
+    /* Named surfaces */
+    --surface-soft: #1e2028;
+    --surface-strong: #2a2c35;
+    --surface-dark: #0a0c10;
+    --surface-dark-elevated: #141620;
+
+    /* Semantic */
+    --link: #5b9cf5;
+    --link-active: #3d7ee0;
+    --info: #5b9cf5;
+    --info-border: #458fff;
+    --success: #2ecc71;
+    --success-border: #39bf45;
+
+    /* Charts */
+    --chart-1: #e4e5e9;
+    --chart-2: #c04a20;
+    --chart-3: #2ecc71;
+    --chart-4: #5b9cf5;
+    --chart-5: #d9a441;
+
+    /* Sidebar */
+    --sidebar-background: 228 15% 7%;
+    --sidebar-foreground: 228 10% 90%;
+    --sidebar-primary: 228 10% 90%;
+    --sidebar-primary-foreground: 228 15% 7%;
+    --sidebar-accent: 228 12% 13%;
+    --sidebar-accent-foreground: 228 10% 90%;
+    --sidebar-border: 228 10% 18%;
     --sidebar-ring: 217 100% 64%;
   }
 }

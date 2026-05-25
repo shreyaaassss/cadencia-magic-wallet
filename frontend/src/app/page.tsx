@@ -8,6 +8,7 @@ import {
   ArrowRight, CircleDot, CreditCard, DollarSign,
   ShieldCheck, Menu, X,
 } from 'lucide-react';
+import { ThemeToggle } from '@/components/shared/ThemeToggle';
 import './landing.css';
 
 export default function LandingPage() {
@@ -62,6 +63,7 @@ export default function LandingPage() {
           <li><a href="#trust">Customers</a></li>
         </ul>
         <div className="nav-actions">
+          <ThemeToggle />
           <Link href="/login" className="btn-ghost">Sign in</Link>
           <div className="nav-register-group">
             <Link href="/register?role=buyer" className="btn-primary-nav">

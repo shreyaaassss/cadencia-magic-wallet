@@ -5,7 +5,7 @@
   position: fixed; top: 0; left: 0; right: 0; z-index: 100;
   padding: 0 3rem; height: 64px;
   display: flex; align-items: center; justify-content: space-between;
-  background: rgba(255,255,255,0.92);
+  background: color-mix(in srgb, var(--background) 92%, transparent);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid transparent;
   transition: border-color .3s;

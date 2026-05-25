@@ -306,7 +306,7 @@ export default function RegisterPage() {
         </Link>
       </div>
 
-      <div className="bg-white border border-hairline rounded-lg w-full max-w-lg shadow-sm flex flex-col">
+      <div className="bg-card border border-hairline rounded-lg w-full max-w-lg shadow-sm flex flex-col">
         <div className="p-5 sm:p-8">
           <StepIndicator currentStep={state.step} steps={stepLabels} />
           {globalError && <ErrorBanner message={globalError} />}

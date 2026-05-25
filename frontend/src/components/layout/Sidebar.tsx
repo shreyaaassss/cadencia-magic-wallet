@@ -73,7 +73,7 @@ export function Sidebar() {
   const allItems = isAdmin ? [...visibleItems, adminItem] : visibleItems;
 
   return (
-    <aside className="w-60 min-h-screen bg-white border-r border-hairline flex flex-col shrink-0">
+    <aside className="w-60 min-h-screen bg-background border-r border-hairline flex flex-col shrink-0">
 
       {/* Enterprise header */}
       <div className="p-4 border-b border-hairline">

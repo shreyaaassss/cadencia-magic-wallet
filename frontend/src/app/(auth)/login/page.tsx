@@ -98,7 +98,7 @@ export default function LoginPage() {
         </Link>
       </div>
 
-      <div className="bg-white border border-hairline rounded-lg p-6 sm:p-8 w-full max-w-sm">
+      <div className="bg-card border border-hairline rounded-lg p-6 sm:p-8 w-full max-w-sm">
         <div className="flex flex-col items-center mb-6">
           <div className="bg-surface-soft border border-hairline rounded-lg p-3 mb-4">
             <Building2 className="h-6 w-6 text-ink" />
@@ -156,7 +156,7 @@ export default function LoginPage() {
           </Link>
           <Link
             href="/register?role=seller"
-            className="flex-1 text-center py-2.5 px-4 rounded-lg text-sm font-medium transition-all duration-200 border border-hairline bg-white text-ink hover:bg-surface-soft"
+            className="flex-1 text-center py-2.5 px-4 rounded-lg text-sm font-medium transition-all duration-200 border border-hairline bg-card text-ink hover:bg-surface-soft"
           >
             Seller
           </Link>

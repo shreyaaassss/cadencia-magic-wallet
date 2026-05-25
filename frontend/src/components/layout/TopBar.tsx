@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/useAuth';
 import { useHealthStatus } from '@/hooks/useHealthStatus';
+import { ThemeToggle } from '@/components/shared/ThemeToggle';
 import { ROUTES } from '@/lib/constants';
 import Link from 'next/link';
 
@@ -46,7 +47,7 @@ export function TopBar() {
   const hd = healthDisplay[status] ?? healthDisplay.unknown;
 
   return (
-    <header className="h-16 border-b border-hairline bg-white flex items-center justify-between px-6 shrink-0">
+    <header className="h-16 border-b border-hairline bg-background flex items-center justify-between px-6 shrink-0">
 
       <h1 className="text-base font-medium text-ink">{title}</h1>
 
@@ -57,6 +58,9 @@ export function TopBar() {
           <Circle className={`h-2 w-2 ${hd.fill}`} />
           <span className={`text-xs ${hd.text}`}>{hd.label}</span>
         </div>
+
+        {/* Theme toggle */}
+        <ThemeToggle />
 
         {/* Notifications */}
         <Button variant="ghost" size="icon" className="h-8 w-8 relative">
