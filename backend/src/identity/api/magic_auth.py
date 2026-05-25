@@ -1,15 +1,19 @@
 """
-Magic.link authentication endpoint.
+Magic.link + Web3 wallet authentication endpoints.
 
-Verifies the DID token issued by Magic SDK on the frontend,
-finds or creates the user, auto-links their ALGO address to their enterprise,
-and returns a Cadencia JWT (same RS256 system as /v1/auth/login).
+Magic path: Verifies DID token issued by Magic SDK on the frontend.
+Web3 path: Verifies wallet ownership via challenge-response (Pera/Defly/Lute).
+
+Both paths issue a Cadencia JWT (same RS256 system as /v1/auth/login).
 """
 
 from __future__ import annotations
 
 import os
+import secrets
 import uuid
+from decimal import Decimal
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
@@ -227,6 +231,194 @@ async def magic_register(
         email=user_data.get("email"),
         enterprise_id=str(result["enterprise_id"]),
     )
+
+    return success_response(
+        MagicLoginResponse(
+            access_token=result["access_token"],
+            token_type="bearer",
+            user_id=str(result.get("user_id", "")),
+            enterprise_id=str(result["enterprise_id"]),
+        )
+    )
+
+
+# ── Web3 Wallet Authentication ──────────────────────────────────────────────
+
+
+class Web3ChallengeResponse(BaseModel):
+    challenge_id: str
+    nonce: str
+    message_to_sign: str
+    expires_at: str
+
+
+@router.get(
+    "/web3-challenge",
+    response_model=ApiResponse[Web3ChallengeResponse],
+    summary="Generate a wallet ownership challenge for Web3 login/register (no auth required)",
+)
+async def web3_challenge() -> ApiResponse[Web3ChallengeResponse]:
+    """
+    Pre-auth endpoint — no JWT required.
+    Generates a challenge nonce that the user signs with their external wallet
+    (Pera/Defly/Lute) to prove ownership.
+    """
+    from src.shared.infrastructure.cache.redis_client import get_redis_instance
+    from src.identity.infrastructure.wallet_verifier import WalletVerifier
+
+    redis = await get_redis_instance()
+    verifier = WalletVerifier(redis=redis)
+    challenge = await verifier.create_open_challenge()
+
+    return success_response(
+        Web3ChallengeResponse(
+            challenge_id=challenge.challenge_id,
+            nonce=challenge.nonce,
+            message_to_sign=challenge.message_to_sign,
+            expires_at=challenge.expires_at.isoformat(),
+        )
+    )
+
+
+class Web3LoginRequest(BaseModel):
+    wallet_address: str
+    challenge_id: str
+    signed_txn: str  # base64-encoded signed zero-value txn
+
+
+@router.post(
+    "/web3-login",
+    response_model=ApiResponse[MagicLoginResponse],
+    summary="Authenticate via external wallet signature (Pera/Defly/Lute)",
+)
+async def web3_login(
+    body: Web3LoginRequest,
+    response: Response,
+    svc: IdentityService = Depends(get_identity_service),
+) -> ApiResponse[MagicLoginResponse]:
+    """
+    1. Verify wallet ownership via signed transaction
+    2. Find user by linked wallet address
+    3. Return Cadencia JWT
+    """
+    from src.shared.infrastructure.cache.redis_client import get_redis_instance
+    from src.identity.infrastructure.wallet_verifier import WalletVerifier
+
+    redis = await get_redis_instance()
+    verifier = WalletVerifier(redis=redis)
+
+    is_valid = await verifier.verify_open_challenge(
+        challenge_id=body.challenge_id,
+        algorand_address=body.wallet_address,
+        signed_txn_b64=body.signed_txn,
+    )
+    if not is_valid:
+        raise HTTPException(status_code=401, detail="Wallet verification failed. Invalid signature or expired challenge.")
+
+    result = await svc.web3_login(wallet_address=body.wallet_address)
+
+    _set_refresh_cookie(response, result["refresh_token"])
+
+    log.info("web3_login_success", address=body.wallet_address[:8])
+
+    return success_response(
+        MagicLoginResponse(
+            access_token=result["access_token"],
+            token_type="bearer",
+            user_id=str(result.get("user_id", "")),
+            enterprise_id=str(result.get("enterprise_id", "")) if result.get("enterprise_id") else None,
+        )
+    )
+
+
+class Web3RegisterRequest(BaseModel):
+    wallet_address: str
+    challenge_id: str
+    signed_txn: str
+    enterprise: dict
+    user: dict  # { email, full_name }
+
+
+@router.post(
+    "/web3-register",
+    response_model=ApiResponse[MagicLoginResponse],
+    summary="Register a new enterprise via external wallet (Pera/Defly/Lute)",
+)
+async def web3_register(
+    body: Web3RegisterRequest,
+    response: Response,
+    svc: IdentityService = Depends(get_identity_service),
+) -> ApiResponse[MagicLoginResponse]:
+    """
+    1. Verify wallet ownership via signed transaction
+    2. Create enterprise + user (random password — wallet is auth)
+    3. Link wallet address to enterprise
+    4. Return Cadencia JWT
+    """
+    from src.shared.infrastructure.cache.redis_client import get_redis_instance
+    from src.identity.infrastructure.wallet_verifier import WalletVerifier
+
+    redis = await get_redis_instance()
+    verifier = WalletVerifier(redis=redis)
+
+    is_valid = await verifier.verify_open_challenge(
+        challenge_id=body.challenge_id,
+        algorand_address=body.wallet_address,
+        signed_txn_b64=body.signed_txn,
+    )
+    if not is_valid:
+        raise HTTPException(status_code=401, detail="Wallet verification failed. Invalid signature or expired challenge.")
+
+    from src.identity.application.commands import RegisterEnterpriseCommand
+
+    ent = body.enterprise
+    user_data = body.user
+    random_password = secrets.token_urlsafe(32) + "Aa1!"
+
+    cmd = RegisterEnterpriseCommand(
+        legal_name=ent.get("legal_name", ""),
+        pan=ent.get("pan", "").upper(),
+        gstin=ent.get("gstin", "").upper(),
+        trade_role=ent.get("trade_role", "BUYER"),
+        email=user_data.get("email", "").strip().lower(),
+        password=random_password,
+        full_name=user_data.get("full_name", ""),
+        role=user_data.get("role", "MEMBER"),
+        commodities=ent.get("commodities", []),
+        min_order_value=Decimal(str(ent["min_order_value"])) if ent.get("min_order_value") else None,
+        max_order_value=Decimal(str(ent["max_order_value"])) if ent.get("max_order_value") else None,
+        industry_vertical=ent.get("industry_vertical"),
+        geography=ent.get("geography", "IN"),
+        address=ent.get("address"),
+        facility_type=ent.get("facility_type"),
+        payment_terms_accepted=ent.get("payment_terms_accepted", []),
+        credit_period_days=ent.get("credit_period_days"),
+        years_in_operation=ent.get("years_in_operation"),
+        annual_turnover_inr=Decimal(str(ent["annual_turnover_inr"])) if ent.get("annual_turnover_inr") else None,
+        quality_certifications=ent.get("quality_certifications", []),
+        test_certificate_available=ent.get("test_certificate_available", False),
+        third_party_inspection_allowed=ent.get("third_party_inspection_allowed", False),
+    )
+
+    result = await svc.register_enterprise(cmd)
+
+    # Link external wallet to the enterprise
+    try:
+        from src.identity.application.commands import LinkWalletCommand
+        await svc.link_wallet(
+            LinkWalletCommand(
+                enterprise_id=result["enterprise_id"],
+                requesting_user_id=result["user_id"],
+                algorand_address=body.wallet_address,
+            )
+        )
+        log.info("web3_wallet_linked", enterprise_id=str(result["enterprise_id"]), address=body.wallet_address[:8])
+    except Exception as exc:
+        log.warning("web3_wallet_link_failed", error=str(exc))
+
+    _set_refresh_cookie(response, result["refresh_token"])
+
+    log.info("web3_register_success", email=user_data.get("email"), enterprise_id=str(result["enterprise_id"]))
 
     return success_response(
         MagicLoginResponse(

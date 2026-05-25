@@ -5,6 +5,7 @@ import { CadenciaWalletProvider } from '@/context/WalletContext';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 import { MSWProvider } from '@/components/providers/MSWProvider';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
+import { WalletConnectProvider } from '@/components/providers/WalletConnectProvider';
 import { Toaster } from '@/components/ui/sonner';
 
 export const metadata: Metadata = {
@@ -24,12 +25,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <MSWProvider>
             <QueryProvider>
-              <AuthProvider>
-                <CadenciaWalletProvider>
-                  {children}
-                  <Toaster position="bottom-right" />
-                </CadenciaWalletProvider>
-              </AuthProvider>
+              <WalletConnectProvider>
+                <AuthProvider>
+                  <CadenciaWalletProvider>
+                    {children}
+                    <Toaster position="bottom-right" />
+                  </CadenciaWalletProvider>
+                </AuthProvider>
+              </WalletConnectProvider>
             </QueryProvider>
           </MSWProvider>
         </ThemeProvider>

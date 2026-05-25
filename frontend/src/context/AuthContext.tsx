@@ -7,17 +7,24 @@ import { magic, getMagicAddress } from '@/lib/magic';
 import type { User, Enterprise } from '@/types';
 import { ROUTES } from '@/lib/constants';
 
+export type AuthMethod = 'magic' | 'web3' | null;
+
 interface AuthContextValue {
   user: User | null;
   enterprise: Enterprise | null;
   walletAddress: string | null;
   isLoading: boolean;
+  authMethod: AuthMethod;
   /** Magic OTP login — email only, no password */
   login: (email: string) => Promise<void>;
   /** Password-based admin backdoor — kept for platform admin use */
   adminLogin: (email: string, password: string) => Promise<void>;
   /** Magic-based registration — submits enterprise data + authenticates via Magic */
   register: (payload: Record<string, unknown>) => Promise<void>;
+  /** Web3 wallet login — wallet address + challenge signature */
+  web3Login: (walletAddress: string, challengeId: string, signedTxn: string) => Promise<void>;
+  /** Web3 wallet registration — wallet + enterprise data + challenge signature */
+  web3Register: (payload: Record<string, unknown>, walletAddress: string, challengeId: string, signedTxn: string) => Promise<void>;
   logout: () => Promise<void>;
   setUser: (user: User) => void;
   setEnterprise: (enterprise: Enterprise) => void;
@@ -29,12 +36,24 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const AUTH_METHOD_KEY = 'cadencia_auth_method';
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [enterprise, setEnterprise] = useState<Enterprise | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [authMethod, setAuthMethod] = useState<AuthMethod>(null);
+
+  const persistAuthMethod = (method: AuthMethod) => {
+    setAuthMethod(method);
+    if (method) {
+      localStorage.setItem(AUTH_METHOD_KEY, method);
+    } else {
+      localStorage.removeItem(AUTH_METHOD_KEY);
+    }
+  };
 
   /** Fetch Cadencia user profile + enterprise after we have an access token */
   const fetchProfile = useCallback(async () => {
@@ -54,29 +73,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   /**
    * Exchange a Magic DID token for a Cadencia JWT, then load the profile.
-   * Called after Magic OTP succeeds (login) and on session restore.
-   *
-   * If the backend rejects the user (not registered, network error, etc.)
-   * we log them out of Magic immediately so they aren't stuck in a half-authed
-   * state where every subsequent page load triggers another failed hydration.
    */
   const _hydrateFromMagic = useCallback(async () => {
     if (!magic) throw new Error('Magic SDK not available');
 
-    // getInfo() is the non-deprecated replacement for getMetadata()
     const info = await (magic.user as any).getInfo();
     const metadata = { email: info.email };
     let address: string | null = null;
     try {
       address = (info as any).publicAddress as string ?? null;
       if (address) setWalletAddress(address);
-    } catch {
-      // Non-fatal
-    }
+    } catch {}
 
-    // getIdToken() will throw if Magic's session has actually expired on their
-    // servers (even if isLoggedIn() returned true from stale local state).
-    // We let that throw propagate — the catch block below will log out cleanly.
     const didToken = await magic.user.getIdToken();
 
     try {
@@ -86,13 +94,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         algo_address: address ?? '',
       });
       setAccessToken(data.data.access_token);
+      persistAuthMethod('magic');
       await fetchProfile();
     } catch (err: any) {
-      // Backend rejected — log out of Magic so the user doesn't get stuck
       try { await magic.user.logout(); } catch {}
       setWalletAddress(null);
 
-      // Surface the backend's detail message if available
       const detail = err?.response?.data?.detail;
       const status = err?.response?.status;
       if (status === 401 || status === 404) {
@@ -110,33 +117,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchProfile]);
 
-  // On mount: try Magic session first, then fall back to refresh-cookie session
+  // On mount: restore session based on persisted auth method
   useEffect(() => {
     const init = async () => {
+      const savedMethod = localStorage.getItem(AUTH_METHOD_KEY) as AuthMethod;
+
       try {
-        if (magic) {
-          const isLoggedIn = await magic.user.isLoggedIn();
-          if (isLoggedIn) {
-            // _hydrateFromMagic will throw if the Magic session is actually
-            // expired on their servers (stale isLoggedIn = true). The catch
-            // block below handles that — it logs out of Magic and shows login.
-            await _hydrateFromMagic();
-            setIsLoading(false);
-            return;
+        if (savedMethod === 'magic' || !savedMethod) {
+          // Try Magic session restore
+          if (magic) {
+            const isLoggedIn = await magic.user.isLoggedIn();
+            if (isLoggedIn) {
+              await _hydrateFromMagic();
+              setIsLoading(false);
+              return;
+            }
           }
         }
-        // Fallback: silent refresh for admin users (password-based sessions)
+
+        // Fallback: silent refresh for admin users or web3 users (cookie-based)
         const { data } = await api.post('/v1/auth/refresh');
         setAccessToken(data.data.access_token);
+        if (savedMethod) setAuthMethod(savedMethod);
         await fetchProfile();
       } catch {
-        // Clear everything — user needs to log in fresh
         setAccessToken(null);
         setUser(null);
         setEnterprise(null);
         setWalletAddress(null);
-        // If Magic thinks the user is logged in but hydration failed,
-        // log them out of Magic too so the next mount starts clean.
+        persistAuthMethod(null);
         if (magic) {
           try { await magic.user.logout(); } catch {}
         }
@@ -154,6 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setEnterprise(null);
       setWalletAddress(null);
+      persistAuthMethod(null);
     };
     window.addEventListener('auth:session-expired', handleSessionExpired);
     return () => window.removeEventListener('auth:session-expired', handleSessionExpired);
@@ -172,55 +182,84 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  /** Password-based admin backdoor — unchanged */
+  /** Password-based admin backdoor */
   const adminLogin = async (email: string, password: string) => {
     const { data } = await api.post('/v1/auth/admin-login', { email, password });
     setAccessToken(data.data.access_token);
-    try {
-      await fetchProfile();
-    } catch {
-      // Admin user may have no enterprise — keep authenticated
-    }
+    persistAuthMethod(null);
+    try { await fetchProfile(); } catch {}
     router.push(ROUTES.ADMIN);
   };
 
-  /**
-   * Magic-based registration.
-   *
-   * The payload includes enterprise data + user { email, full_name }.
-   * We first authenticate via Magic OTP, then submit everything to
-   * POST /v1/auth/magic-register which creates the enterprise without a password.
-   */
+  /** Magic-based registration */
   const register = async (payload: Record<string, unknown>) => {
     if (!magic) throw new Error('Magic SDK not available');
 
     const userPayload = payload.user as { email: string; full_name: string };
     setIsLoading(true);
     try {
-      // 1. Authenticate via Magic OTP
       await magic.auth.loginWithEmailOTP({ email: userPayload.email });
-
-      // 2. Get DID token + ALGO address
       const didToken = await magic.user.getIdToken();
       let algoAddress = '';
       try {
         algoAddress = await getMagicAddress();
         setWalletAddress(algoAddress);
-      } catch {
-        // Non-fatal
-      }
+      } catch {}
 
-      // 3. Submit enterprise data to magic-register endpoint
       const { data } = await api.post('/v1/auth/magic-register', {
         did_token: didToken,
         algo_address: algoAddress,
         enterprise: payload.enterprise,
-        user: {
-          email: userPayload.email,
-          full_name: userPayload.full_name,
-        },
+        user: { email: userPayload.email, full_name: userPayload.full_name },
       });
       setAccessToken(data.data.access_token);
+      persistAuthMethod('magic');
+      await fetchProfile();
+      router.push(ROUTES.DASHBOARD);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /** Web3 wallet login — Pera/Defly/Lute */
+  const web3Login = async (address: string, challengeId: string, signedTxn: string) => {
+    setIsLoading(true);
+    try {
+      const { data } = await api.post('/v1/auth/web3-login', {
+        wallet_address: address,
+        challenge_id: challengeId,
+        signed_txn: signedTxn,
+      });
+      setAccessToken(data.data.access_token);
+      setWalletAddress(address);
+      persistAuthMethod('web3');
+      await fetchProfile();
+      router.push(ROUTES.DASHBOARD);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /** Web3 wallet registration — Pera/Defly/Lute */
+  const web3Register = async (
+    payload: Record<string, unknown>,
+    address: string,
+    challengeId: string,
+    signedTxn: string,
+  ) => {
+    setIsLoading(true);
+    try {
+      const userPayload = payload.user as { email: string; full_name: string };
+      const { data } = await api.post('/v1/auth/web3-register', {
+        wallet_address: address,
+        challenge_id: challengeId,
+        signed_txn: signedTxn,
+        enterprise: payload.enterprise,
+        user: { email: userPayload.email, full_name: userPayload.full_name },
+      });
+      setAccessToken(data.data.access_token);
+      setWalletAddress(address);
+      persistAuthMethod('web3');
       await fetchProfile();
       router.push(ROUTES.DASHBOARD);
     } finally {
@@ -229,14 +268,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    if (magic) {
-      try { await magic.user.logout(); } catch {}
+    const method = authMethod;
+    if (method === 'magic' || !method) {
+      if (magic) {
+        try { await magic.user.logout(); } catch {}
+      }
     }
     try { await api.post('/v1/auth/logout'); } catch {}
     setAccessToken(null);
     setUser(null);
     setEnterprise(null);
     setWalletAddress(null);
+    persistAuthMethod(null);
     router.push(ROUTES.LOGIN);
   };
 
@@ -246,8 +289,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, enterprise, walletAddress, isLoading,
-      login, adminLogin, register, logout,
+      user, enterprise, walletAddress, isLoading, authMethod,
+      login, adminLogin, register, web3Login, web3Register, logout,
       setUser, setEnterprise,
       refreshProfile: fetchProfile,
       isAdmin, isBuyer, isSeller,

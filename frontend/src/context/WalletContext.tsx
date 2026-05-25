@@ -1,15 +1,10 @@
 'use client';
 
 /**
- * Cadencia Wallet Context — Magic.link edition.
+ * Cadencia Wallet Context — supports both Magic (Web2) and external wallets (Web3).
  *
- * Replaces the previous Pera/use-wallet implementation with Magic embedded wallet signing.
- * The public interface is preserved so all escrow and settings pages continue to work.
- *
- * Key differences from the Pera version:
- * - No wallet connect/disconnect UI — the wallet is always the Magic-managed address
- * - No challenge/link flow — Magic address is auto-linked on first login
- * - Transaction signing uses magic.algorand.signTransaction instead of use-wallet
+ * When authMethod === 'magic': signing via Magic SDK (embedded wallet)
+ * When authMethod === 'web3': signing via @txnlab/use-wallet-react (Pera/Defly/Lute)
  */
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
@@ -18,10 +13,10 @@ import algosdk from 'algosdk';
 import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { magic, signAlgoTxn, signAlgoTxnGroup } from '@/lib/magic';
+import { useWallet as useTxnLabWallet } from '@txnlab/use-wallet-react';
 import type { WalletBalance } from '@/types';
 
 interface CadenciaWalletContextValue {
-  // Wallet state
   activeAddress: string | null;
   wallets: any[];
   isWalletConnected: boolean;
@@ -29,8 +24,6 @@ interface CadenciaWalletContextValue {
   isConnecting: boolean;
   connectWallet: (walletId: string) => Promise<void>;
   disconnectWallet: () => Promise<void>;
-
-  // Platform link state
   isLinked: boolean;
   linkedAddress: string | null;
   balance: WalletBalance | null;
@@ -52,14 +45,18 @@ const CadenciaWalletContext = createContext<CadenciaWalletContextValue | null>(n
 const b64ToBytes = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
 export function CadenciaWalletProvider({ children }: { children: React.ReactNode }) {
-  const { enterprise, walletAddress: magicAddress } = useAuth();
+  const { enterprise, walletAddress: magicAddress, authMethod } = useAuth();
+  const txnLab = useTxnLabWallet();
 
   const [balance, setBalance] = useState<WalletBalance | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // The active address is the Magic-managed address from AuthContext
-  const activeAddress = magicAddress ?? null;
+  // Active address depends on auth method
+  const activeAddress = authMethod === 'web3'
+    ? (txnLab.activeAddress ?? magicAddress ?? null)
+    : (magicAddress ?? null);
+
   const isWalletConnected = !!activeAddress;
   const isLinked = !!enterprise?.algorand_wallet;
   const linkedAddress = enterprise?.algorand_wallet ?? null;
@@ -72,11 +69,24 @@ export function CadenciaWalletProvider({ children }: { children: React.ReactNode
   }, []);
 
   /**
-   * Sign one or more transactions via Magic and return base64-encoded results.
-   * For atomic groups (multiple txns), uses signAlgoTxnGroup which will use
-   * Magic's signGroupTransaction if available, otherwise signs individually.
+   * Sign transactions — delegates to Magic or external wallet based on authMethod.
    */
   const signTxns = useCallback(async (txns: algosdk.Transaction[]): Promise<string[]> => {
+    if (authMethod === 'web3') {
+      // Use @txnlab/use-wallet-react for external wallets
+      const encoded = txns.map(t => algosdk.encodeUnsignedTransaction(t));
+      const signed = await txnLab.signTransactions(encoded);
+      // signTransactions returns (Uint8Array | null)[] — convert to base64
+      return signed.map((s, i) => {
+        if (!s) throw new Error(`Wallet did not sign transaction ${i}`);
+        if (s instanceof Uint8Array) {
+          return Buffer.from(s).toString('base64');
+        }
+        return typeof s === 'string' ? s : Buffer.from(s as any).toString('base64');
+      });
+    }
+
+    // Magic signing
     if (txns.length === 1) {
       const encodedB64 = Buffer.from(algosdk.encodeUnsignedTransaction(txns[0])).toString('base64');
       return [await signAlgoTxn(encodedB64)];
@@ -85,34 +95,34 @@ export function CadenciaWalletProvider({ children }: { children: React.ReactNode
       Buffer.from(algosdk.encodeUnsignedTransaction(t)).toString('base64')
     );
     return signAlgoTxnGroup(encodedGroup);
-  }, []);
+  }, [authMethod, txnLab]);
 
-  // connectWallet / disconnectWallet are no-ops — Magic manages the wallet automatically
   const connectWallet = useCallback(async (_walletId: string) => {
-    toast.info('Wallet is managed automatically via Magic — no connection needed');
-  }, []);
+    if (authMethod === 'web3') {
+      toast.info('Use the login page to connect your wallet');
+    } else {
+      toast.info('Wallet is managed automatically via Magic — no connection needed');
+    }
+  }, [authMethod]);
 
   const disconnectWallet = useCallback(async () => {
-    toast.info('Wallet is managed by Magic — use logout to end your session');
-  }, []);
+    if (authMethod === 'web3') {
+      toast.info('Use logout to disconnect your wallet');
+    } else {
+      toast.info('Wallet is managed by Magic — use logout to end your session');
+    }
+  }, [authMethod]);
 
-  /**
-   * "Link wallet" for Magic users is a no-op at the UI level.
-   * The wallet is auto-linked on login via the magic-login endpoint.
-   */
   const linkWallet = useCallback(async () => {
     if (!activeAddress) {
       toast.error('No wallet address available — please log in again');
       return;
     }
-    // For Magic users the wallet is already linked via magic-login.
-    // If somehow not linked, call the link endpoint directly.
     try {
       if (enterprise?.id) {
         await api.post(`/v1/enterprises/${enterprise.id}/wallet/link`, {
           algorand_address: activeAddress,
-          // No challenge signing needed for Magic — address is cryptographically tied to email
-          magic_address: true,
+          magic_address: authMethod === 'magic',
         });
         toast.success('Wallet linked successfully');
       }
@@ -121,7 +131,7 @@ export function CadenciaWalletProvider({ children }: { children: React.ReactNode
       setError(msg);
       toast.error(msg);
     }
-  }, [activeAddress, enterprise]);
+  }, [activeAddress, enterprise, authMethod]);
 
   const unlinkWallet = useCallback(async () => {
     try {
@@ -205,20 +215,16 @@ export function CadenciaWalletProvider({ children }: { children: React.ReactNode
     setError(null);
 
     try {
-      // Backend pre-encodes the full unsigned atomic group (including algod params)
-      // so we can call signAlgoTxnGroup immediately on the user's click gesture
-      // without any further async work — this prevents the browser from blocking
-      // the Magic signing popup.
       const { data: buildRes } = await api.get(`/v1/escrow/${escrowId}/build-fund-txn`);
       const d = buildRes.data;
 
       let signedB64: string[];
 
-      if (d.encoded_group_b64 && d.encoded_group_b64.length === 2) {
-        // Fast path: backend returned pre-encoded txns — sign immediately
+      if (d.encoded_group_b64 && d.encoded_group_b64.length === 2 && authMethod === 'magic') {
+        // Fast path for Magic: backend returned pre-encoded txns
         signedB64 = await signAlgoTxnGroup(d.encoded_group_b64);
       } else {
-        // Fallback: build locally (algod call required)
+        // Build locally (needed for external wallets + fallback)
         const algod = getAlgod();
         const sp = await algod.getTransactionParams().do();
         const payTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
@@ -250,7 +256,7 @@ export function CadenciaWalletProvider({ children }: { children: React.ReactNode
       toast.error(msg);
       throw err;
     }
-  }, [activeAddress, getAlgod, signTxns]);
+  }, [activeAddress, getAlgod, signTxns, authMethod]);
 
   // ── Release ────────────────────────────────────────────────────────────────
 
@@ -287,7 +293,6 @@ export function CadenciaWalletProvider({ children }: { children: React.ReactNode
       });
 
       algosdk.assignGroupID([mbrTxn, txn]);
-
       const signedB64 = await signTxns([mbrTxn, txn]);
 
       const { data: submitRes } = await api.post(`/v1/escrow/${escrowId}/submit-signed-release`, {
@@ -338,7 +343,6 @@ export function CadenciaWalletProvider({ children }: { children: React.ReactNode
       });
 
       algosdk.assignGroupID([mbrTxn, txn]);
-
       const signedB64 = await signTxns([mbrTxn, txn]);
 
       const { data: submitRes } = await api.post(`/v1/escrow/${escrowId}/submit-signed-refund`, {
@@ -358,9 +362,9 @@ export function CadenciaWalletProvider({ children }: { children: React.ReactNode
   return (
     <CadenciaWalletContext.Provider value={{
       activeAddress,
-      wallets: [],
+      wallets: txnLab.wallets ?? [],
       isWalletConnected,
-      isReady: !!magic,
+      isReady: authMethod === 'web3' ? !!txnLab.activeAddress : !!magic,
       isConnecting: false,
       connectWallet,
       disconnectWallet,
@@ -389,5 +393,4 @@ export function useWalletContext() {
   return ctx;
 }
 
-// Backward-compatible alias
 export const useWallet_legacy = useWalletContext;

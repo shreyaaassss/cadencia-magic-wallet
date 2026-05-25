@@ -538,6 +538,49 @@ class IdentityService:
             "enterprise_id": enterprise_id,
         }
 
+    async def web3_login(self, wallet_address: str) -> dict:
+        """
+        Find an existing user by their linked wallet address and issue a JWT.
+        Used for Web3 login (Pera/Defly/Lute) after challenge-response verification.
+        """
+        enterprise = await self._enterprises.get_by_wallet_address(wallet_address)
+        if enterprise is None:
+            raise NotFoundError(
+                "No account linked to this wallet address. Please register first."
+            )
+
+        # Find any active user belonging to this enterprise
+        users = await self._users.list_by_enterprise(enterprise.id)
+        user = next((u for u in users if u.is_active), None)
+        if user is None:
+            raise AuthenticationError("No active user found for this enterprise.")
+
+        trade_role_value = None
+        if enterprise.trade_role:
+            trade_role_value = (
+                enterprise.trade_role.value
+                if hasattr(enterprise.trade_role, "value")
+                else str(enterprise.trade_role)
+            )
+
+        access_token = self._jwt.create_access_token(
+            subject=str(user.id),
+            enterprise_id=enterprise.id,
+            role=user.role.value,
+            trade_role=trade_role_value,
+        )
+        refresh_token = self._jwt.create_refresh_token(subject=str(user.id))
+
+        log.info("web3_login_success", user_id=str(user.id), address=wallet_address[:8])
+
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "user_id": user.id,
+            "enterprise_id": enterprise.id,
+        }
+
     async def get_enterprise(self, query: GetEnterpriseQuery) -> Enterprise:
         """
         Return enterprise profile.

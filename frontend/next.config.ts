@@ -32,6 +32,21 @@ const nextConfig: NextConfig = {
       '@magic-sdk/types': path.join(nm, '@magic-sdk/types/dist/cjs/index.js'),
       '@magic-ext/algorand': path.join(nm, '@magic-ext/algorand/dist/cjs/index.js'),
     };
+
+    // Stub out optional @txnlab/use-wallet peer dependencies we don't use
+    // (Web3Auth, viem/account-abstraction etc. pull in massive Ethereum bundles)
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      'viem/account-abstraction': false,
+    };
+
+    // Ignore missing optional modules from @txnlab/use-wallet
+    config.plugins.push(
+      new (require('webpack')).IgnorePlugin({
+        resourceRegExp: /^(@web3auth\/modal|@web3auth\/no-modal|@toruslabs\/ethereum-controllers|viem\/account-abstraction)$/,
+      })
+    );
+
     return config;
   },
 

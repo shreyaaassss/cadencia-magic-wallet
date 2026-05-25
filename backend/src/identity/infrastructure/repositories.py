@@ -233,6 +233,13 @@ class PostgresEnterpriseRepository:
         model = result.scalar_one_or_none()
         return _enterprise_to_domain(model) if model else None
 
+    async def get_by_wallet_address(self, wallet_address: str) -> Enterprise | None:
+        result = await self._session.execute(
+            select(EnterpriseModel).where(EnterpriseModel.algorand_wallet == wallet_address)
+        )
+        model = result.scalar_one_or_none()
+        return _enterprise_to_domain(model) if model else None
+
     async def update(self, enterprise: Enterprise) -> None:
         result = await self._session.execute(
             select(EnterpriseModel).where(EnterpriseModel.id == enterprise.id)

@@ -59,6 +59,105 @@ class WalletVerifier:
         """
         self._redis = redis
 
+    async def create_open_challenge(self) -> WalletChallenge:
+        """
+        Generate a wallet ownership challenge without requiring an enterprise_id.
+        Used for pre-auth Web3 login/register where the user isn't logged in yet.
+        """
+        challenge_id = f"wc-{uuid.uuid4().hex[:16]}"
+        nonce = secrets.token_hex(32)
+        message = f"Cadencia wallet verification: {nonce}"
+        expires_at = datetime.now(tz=timezone.utc) + timedelta(seconds=_CHALLENGE_TTL)
+
+        redis_key = f"{_CHALLENGE_PREFIX}{challenge_id}"
+        await self._redis.setex(
+            redis_key,
+            _CHALLENGE_TTL,
+            f"{nonce}|__open__",
+        )
+
+        log.info(
+            "wallet_open_challenge_created",
+            challenge_id=challenge_id,
+            expires_at=expires_at.isoformat(),
+        )
+
+        return WalletChallenge(
+            challenge_id=challenge_id,
+            nonce=nonce,
+            message_to_sign=message,
+            expires_at=expires_at,
+        )
+
+    async def verify_open_challenge(
+        self,
+        challenge_id: str,
+        algorand_address: str,
+        signed_txn_b64: str,
+    ) -> bool:
+        """
+        Verify wallet ownership for a pre-auth open challenge.
+        Accepts a signed zero-value transaction (like verify_challenge_txn but
+        without enterprise_id scoping).
+        """
+        if not self._is_valid_algorand_address(algorand_address):
+            return False
+
+        try:
+            stxn = encoding.msgpack_decode(signed_txn_b64)
+            txn = stxn.transaction
+        except Exception as exc:
+            log.warning("web3_verify_decode_error", error=str(exc))
+            return False
+
+        if txn.sender != algorand_address:
+            return False
+
+        note_bytes = getattr(txn, "note", None)
+        if not note_bytes:
+            return False
+
+        note_str = note_bytes.decode("utf-8") if isinstance(note_bytes, bytes) else str(note_bytes)
+        prefix = "Cadencia wallet verification: "
+        if not note_str.startswith(prefix):
+            return False
+
+        nonce_from_txn = note_str[len(prefix):]
+
+        redis_key = f"{_CHALLENGE_PREFIX}{challenge_id}"
+        stored = await self._redis.get(redis_key)
+        if stored is None:
+            return False
+
+        stored_str = stored.decode() if isinstance(stored, bytes) else stored
+        parts = stored_str.split("|", 1)
+        if len(parts) != 2 or parts[0] != nonce_from_txn:
+            return False
+
+        # Verify Ed25519 signature
+        try:
+            from nacl.signing import VerifyKey
+            from nacl.exceptions import BadSignatureError
+
+            pk_bytes = encoding.decode_address(algorand_address)
+            verify_key = VerifyKey(pk_bytes)
+            txn_b64 = encoding.msgpack_encode(txn)
+            txn_raw = base64.b64decode(txn_b64)
+            message = b"TX" + txn_raw
+            sig_bytes = (
+                base64.b64decode(stxn.signature)
+                if isinstance(stxn.signature, str)
+                else stxn.signature
+            )
+            verify_key.verify(message, sig_bytes)
+        except Exception:
+            log.warning("web3_verify_signature_invalid", address=algorand_address[:8])
+            return False
+
+        await self._redis.delete(redis_key)
+        log.info("web3_ownership_verified", address=algorand_address[:8])
+        return True
+
     async def create_challenge(self, enterprise_id: uuid.UUID) -> WalletChallenge:
         """
         Generate a new wallet ownership challenge.

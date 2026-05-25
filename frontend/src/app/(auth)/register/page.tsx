@@ -6,10 +6,13 @@ import Link from 'next/link';
 import * as z from 'zod';
 import { useForm, Controller, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { AlertCircle, Loader2, X, Pencil, Check } from 'lucide-react';
+import { AlertCircle, Loader2, X, Pencil, Check, Mail, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
+import algosdk from 'algosdk';
 
 import { useAuth } from '@/hooks/useAuth';
+import { useWallet as useTxnLabWallet } from '@txnlab/use-wallet-react';
+import { api } from '@/lib/api';
 import { formatCurrency, cn } from '@/lib/utils';
 import { ROUTES as AppRoutes } from '@/lib/constants';
 
@@ -141,14 +144,21 @@ interface RegistrationState {
 // Main page
 // ─────────────────────────────────────────────────────────────────────────────
 
+type RegisterAuthTab = 'magic' | 'web3';
+
 export default function RegisterPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const auth = useAuth();
   const { user, isLoading } = auth;
+  const txnLab = useTxnLabWallet();
 
   const roleParam = searchParams.get('role')?.toUpperCase();
   const defaultTradeRole = roleParam === 'BUYER' ? 'BUYER' : roleParam === 'SELLER' ? 'SELLER' : undefined;
+
+  const [authTab, setAuthTab] = React.useState<RegisterAuthTab>('magic');
+  const [web3Address, setWeb3Address] = React.useState<string | null>(null);
+  const [web3Status, setWeb3Status] = React.useState<'idle' | 'connecting'>('idle');
 
   const [state, setState] = React.useState<RegistrationState>({
     step: 1,
@@ -161,6 +171,14 @@ export default function RegisterPage() {
 
   const [globalError, setGlobalError] = React.useState<string | null>(null);
   const [isSubmittingForm, setIsSubmittingForm] = React.useState(false);
+
+  // Track wallet connection for web3 tab
+  React.useEffect(() => {
+    if (txnLab.activeAddress && web3Status === 'connecting') {
+      setWeb3Address(txnLab.activeAddress);
+      setWeb3Status('idle');
+    }
+  }, [txnLab.activeAddress, web3Status]);
 
   const isSeller = state.enterprise?.trade_role === 'SELLER' || state.enterprise?.trade_role === 'BOTH';
   const isBuyer = state.enterprise?.trade_role === 'BUYER';
@@ -232,7 +250,32 @@ export default function RegisterPage() {
     };
 
     try {
-      await auth.register(payload);
+      if (authTab === 'web3' && web3Address) {
+        // Web3 registration: challenge → sign → register
+        const { data: challengeRes } = await api.get('/v1/auth/web3-challenge');
+        const challenge = challengeRes.data;
+
+        const server = process.env.NEXT_PUBLIC_ALGOD_SERVER || 'https://testnet-api.4160.nodely.dev';
+        const algod = new algosdk.Algodv2('', server, '');
+        const sp = await algod.getTransactionParams().do();
+
+        const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+          sender: web3Address,
+          receiver: web3Address,
+          amount: 0,
+          note: new TextEncoder().encode(challenge.message_to_sign),
+          suggestedParams: sp,
+        });
+
+        const encoded = [algosdk.encodeUnsignedTransaction(txn)];
+        const signed = await txnLab.signTransactions(encoded);
+        if (!signed[0]) throw new Error('Wallet did not return a signed transaction');
+        const signedB64 = Buffer.from(signed[0] as Uint8Array).toString('base64');
+
+        await auth.web3Register(payload, web3Address, challenge.challenge_id, signedB64);
+      } else {
+        await auth.register(payload);
+      }
       toast.success('Account created successfully. Welcome to Cadencia.');
     } catch (err: any) {
       if (err.response?.status === 409) {
@@ -240,7 +283,7 @@ export default function RegisterPage() {
       } else if (err.response?.status === 422) {
         setGlobalError('Validation failed on server. Please check your data.');
       } else {
-        setGlobalError('Registration failed. Please try again.');
+        setGlobalError(err?.message || 'Registration failed. Please try again.');
       }
       setIsSubmittingForm(false);
     }
@@ -308,9 +351,92 @@ export default function RegisterPage() {
 
       <div className="bg-card border border-hairline rounded-lg w-full max-w-lg shadow-sm flex flex-col">
         <div className="p-5 sm:p-8">
-          <StepIndicator currentStep={state.step} steps={stepLabels} />
-          {globalError && <ErrorBanner message={globalError} />}
-          {renderStep()}
+          {/* Auth Method Toggle */}
+          <div className="flex rounded-lg border border-hairline overflow-hidden mb-6">
+            <button
+              type="button"
+              onClick={() => { setAuthTab('magic'); setGlobalError(null); }}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors',
+                authTab === 'magic'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-card text-muted-foreground hover:text-ink'
+              )}
+            >
+              <Mail className="h-3.5 w-3.5" />
+              Email & Wallet
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAuthTab('web3'); setGlobalError(null); }}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors',
+                authTab === 'web3'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-card text-muted-foreground hover:text-ink'
+              )}
+            >
+              <Wallet className="h-3.5 w-3.5" />
+              Connect Wallet
+            </button>
+          </div>
+
+          {/* Web3: Wallet connection step (before the form) */}
+          {authTab === 'web3' && !web3Address && (
+            <div className="space-y-4">
+              <h2 className="text-base font-medium text-ink">Connect your wallet</h2>
+              <p className="text-xs text-muted-foreground mb-4">
+                Connect your Algorand wallet first, then fill in your enterprise details.
+              </p>
+              {txnLab.wallets?.map((wallet: any) => (
+                <button
+                  key={wallet.id}
+                  onClick={async () => {
+                    setWeb3Status('connecting');
+                    setGlobalError(null);
+                    try {
+                      await wallet.connect();
+                    } catch (err: any) {
+                      setGlobalError(err?.message || 'Failed to connect wallet');
+                      setWeb3Status('idle');
+                    }
+                  }}
+                  className="w-full flex items-center gap-3 p-3 rounded-md border border-hairline bg-card hover:bg-surface-soft transition-colors text-left"
+                >
+                  {wallet.metadata?.icon && (
+                    <img src={wallet.metadata.icon} alt="" className="h-6 w-6 rounded" />
+                  )}
+                  <span className="text-sm font-medium text-ink">{wallet.metadata?.name || wallet.id}</span>
+                </button>
+              ))}
+              {globalError && <ErrorBanner message={globalError} />}
+            </div>
+          )}
+
+          {/* Web3: Show connected wallet badge */}
+          {authTab === 'web3' && web3Address && (
+            <div className="mb-4 bg-surface-soft border border-hairline rounded-md p-3 flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground">Connected Wallet</p>
+                <p className="text-sm font-mono text-ink truncate max-w-[280px]">{web3Address}</p>
+              </div>
+              <button
+                onClick={() => { setWeb3Address(null); txnLab.activeWallet?.disconnect(); }}
+                className="text-xs text-muted-foreground hover:text-destructive"
+              >
+                Disconnect
+              </button>
+            </div>
+          )}
+
+          {/* Show form steps: always for magic, only after wallet connected for web3 */}
+          {(authTab === 'magic' || web3Address) && (
+            <>
+              <StepIndicator currentStep={state.step} steps={stepLabels} />
+              {globalError && <ErrorBanner message={globalError} />}
+              {renderStep()}
+            </>
+          )}
         </div>
       </div>
     </div>

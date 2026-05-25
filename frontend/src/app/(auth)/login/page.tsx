@@ -6,10 +6,13 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Building2, AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
+import algosdk from 'algosdk';
+import { Building2, AlertCircle, Loader2, ShieldCheck, Wallet, Mail } from 'lucide-react';
 
 import { useAuth } from '@/hooks/useAuth';
+import { useWallet } from '@txnlab/use-wallet-react';
 import { ROUTES } from '@/lib/constants';
+import { api } from '@/lib/api';
 import { FormField } from '@/components/shared/FormField';
 import { PasswordInput } from '@/components/shared/PasswordInput';
 import { Button } from '@/components/ui/button';
@@ -23,20 +26,26 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 function ErrorBanner({ message }: { message: string }) {
   return (
-    <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700 mb-4">
+    <div className="flex items-start gap-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-md p-3 text-sm text-red-700 dark:text-red-400 mb-4">
       <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
       <span>{message}</span>
     </div>
   );
 }
 
+type AuthTab = 'magic' | 'web3';
+
 export default function LoginPage() {
   const router = useRouter();
-  const { user, isLoading, login, adminLogin } = useAuth();
+  const { user, isLoading, login, adminLogin, web3Login } = useAuth();
+  const txnLab = useWallet();
+
+  const [activeTab, setActiveTab] = React.useState<AuthTab>('magic');
   const [globalError, setGlobalError] = React.useState<string | null>(null);
   const [showAdminForm, setShowAdminForm] = React.useState(false);
   const [adminError, setAdminError] = React.useState<string | null>(null);
   const [adminSubmitting, setAdminSubmitting] = React.useState(false);
+  const [web3Status, setWeb3Status] = React.useState<'idle' | 'connecting' | 'signing' | 'verifying'>('idle');
 
   const {
     register,
@@ -67,6 +76,69 @@ export default function LoginPage() {
     }
   };
 
+  const handleWeb3Connect = async (walletId: string) => {
+    setGlobalError(null);
+    setWeb3Status('connecting');
+    try {
+      // Find the wallet provider and connect
+      const wallet = txnLab.wallets?.find((w: any) => w.id === walletId);
+      if (!wallet) throw new Error('Wallet not found');
+      await wallet.connect();
+    } catch (err: any) {
+      setGlobalError(err?.message || 'Failed to connect wallet');
+      setWeb3Status('idle');
+    }
+  };
+
+  const handleWeb3Login = async () => {
+    if (!txnLab.activeAddress) return;
+    setGlobalError(null);
+    setWeb3Status('signing');
+
+    try {
+      // 1. Get challenge from backend
+      const { data: challengeRes } = await api.get('/v1/auth/web3-challenge');
+      const challenge = challengeRes.data;
+
+      // 2. Build a zero-value self-payment transaction with challenge in the note
+      const server = process.env.NEXT_PUBLIC_ALGOD_SERVER || 'https://testnet-api.4160.nodely.dev';
+      const algod = new algosdk.Algodv2('', server, '');
+      const sp = await algod.getTransactionParams().do();
+
+      const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+        sender: txnLab.activeAddress,
+        receiver: txnLab.activeAddress,
+        amount: 0,
+        note: new TextEncoder().encode(challenge.message_to_sign),
+        suggestedParams: sp,
+      });
+
+      // 3. Sign with external wallet
+      const encoded = [algosdk.encodeUnsignedTransaction(txn)];
+      const signed = await txnLab.signTransactions(encoded);
+      if (!signed[0]) throw new Error('Wallet did not return a signed transaction');
+      const signedB64 = Buffer.from(signed[0] as Uint8Array).toString('base64');
+
+      // 4. Verify with backend
+      setWeb3Status('verifying');
+      await web3Login(txnLab.activeAddress, challenge.challenge_id, signedB64);
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      const msg =
+        typeof detail === 'string' ? detail :
+        err?.message || 'Web3 login failed';
+      setGlobalError(msg);
+      setWeb3Status('idle');
+    }
+  };
+
+  // Auto-trigger login flow when wallet connects
+  React.useEffect(() => {
+    if (txnLab.activeAddress && web3Status === 'connecting') {
+      handleWeb3Login();
+    }
+  }, [txnLab.activeAddress, web3Status]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -85,7 +157,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-surface-soft flex flex-col items-center justify-center p-4">
-      {/* Back to landing */}
       <div className="w-full max-w-sm mb-4">
         <Link
           href="/"
@@ -107,40 +178,117 @@ export default function LoginPage() {
           <p className="text-sm text-muted-foreground">AI-powered B2B trade platform</p>
         </div>
 
-        <div className="border-t border-hairline w-full mb-6" />
-
-        <h2 className="text-base font-medium text-ink mb-2">Sign in to your account</h2>
-        <p className="text-xs text-muted-foreground mb-6">
-          Enter your email — we&apos;ll send you a one-time code to sign in instantly.
-        </p>
+        {/* Tab Toggle */}
+        <div className="flex rounded-lg border border-hairline overflow-hidden mb-6">
+          <button
+            type="button"
+            onClick={() => { setActiveTab('magic'); setGlobalError(null); }}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors ${
+              activeTab === 'magic'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-card text-muted-foreground hover:text-ink'
+            }`}
+          >
+            <Mail className="h-3.5 w-3.5" />
+            Email & Wallet
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('web3'); setGlobalError(null); }}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors ${
+              activeTab === 'web3'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-card text-muted-foreground hover:text-ink'
+            }`}
+          >
+            <Wallet className="h-3.5 w-3.5" />
+            Connect Wallet
+          </button>
+        </div>
 
         {globalError && <ErrorBanner message={globalError} />}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <FormField
-            label="Email address"
-            required
-            error={touchedFields.email ? errors.email?.message : undefined}
-          >
-            <Input
-              type="email"
-              placeholder="you@company.com"
-              className={touchedFields.email && errors.email ? 'border-destructive ring-destructive' : ''}
-              {...register('email')}
-            />
-          </FormField>
+        {/* ── Magic (Web2) Tab ── */}
+        {activeTab === 'magic' && (
+          <>
+            <h2 className="text-base font-medium text-ink mb-2">Sign in with email</h2>
+            <p className="text-xs text-muted-foreground mb-6">
+              Enter your email — we&apos;ll send you a one-time code to sign in instantly.
+            </p>
 
-          <Button type="submit" disabled={isSubmitting} className="w-full mt-2">
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Sending code...
-              </>
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                label="Email address"
+                required
+                error={touchedFields.email ? errors.email?.message : undefined}
+              >
+                <Input
+                  type="email"
+                  placeholder="you@company.com"
+                  className={touchedFields.email && errors.email ? 'border-destructive ring-destructive' : ''}
+                  {...register('email')}
+                />
+              </FormField>
+
+              <Button type="submit" disabled={isSubmitting} className="w-full mt-2">
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Sending code...
+                  </>
+                ) : (
+                  'Continue with Email'
+                )}
+              </Button>
+            </form>
+          </>
+        )}
+
+        {/* ── Web3 Tab ── */}
+        {activeTab === 'web3' && (
+          <>
+            <h2 className="text-base font-medium text-ink mb-2">Sign in with wallet</h2>
+            <p className="text-xs text-muted-foreground mb-6">
+              Connect your Algorand wallet to sign in. You&apos;ll sign a message to verify ownership.
+            </p>
+
+            {web3Status !== 'idle' ? (
+              <div className="flex flex-col items-center gap-3 py-6">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">
+                  {web3Status === 'connecting' && 'Connecting wallet...'}
+                  {web3Status === 'signing' && 'Sign the message in your wallet app...'}
+                  {web3Status === 'verifying' && 'Verifying ownership...'}
+                </p>
+              </div>
+            ) : txnLab.activeAddress ? (
+              <div className="space-y-4">
+                <div className="bg-surface-soft border border-hairline rounded-md p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Connected</p>
+                  <p className="text-sm font-mono text-ink truncate">{txnLab.activeAddress}</p>
+                </div>
+                <Button onClick={handleWeb3Login} className="w-full">
+                  Sign & Verify
+                </Button>
+              </div>
             ) : (
-              'Continue with Email'
+              <div className="space-y-2">
+                {txnLab.wallets?.map((wallet: any) => (
+                  <button
+                    key={wallet.id}
+                    onClick={() => handleWeb3Connect(wallet.id)}
+                    className="w-full flex items-center gap-3 p-3 rounded-md border border-hairline bg-card hover:bg-surface-soft transition-colors text-left"
+                  >
+                    {wallet.metadata?.icon && (
+                      <img src={wallet.metadata.icon} alt="" className="h-6 w-6 rounded" />
+                    )}
+                    <span className="text-sm font-medium text-ink">{wallet.metadata?.name || wallet.id}</span>
+                  </button>
+                ))}
+              </div>
             )}
-          </Button>
-        </form>
+          </>
+        )}
 
         <div className="border-t border-hairline w-full my-6" />
 
@@ -163,39 +311,43 @@ export default function LoginPage() {
         </div>
 
         {/* Admin Login */}
-        <div className="border-t border-hairline w-full my-6" />
+        {activeTab === 'magic' && (
+          <>
+            <div className="border-t border-hairline w-full my-6" />
 
-        {!showAdminForm ? (
-          <button
-            type="button"
-            onClick={() => setShowAdminForm(true)}
-            className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-xs font-medium transition-all border border-hairline text-muted-foreground hover:text-ink hover:border-border-strong hover:bg-surface-soft"
-          >
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Admin Login
-          </button>
-        ) : (
-          <AdminLoginForm
-            onSubmit={async (email, password) => {
-              setAdminError(null);
-              setAdminSubmitting(true);
-              try {
-                await adminLogin(email, password);
-              } catch (err: any) {
-                const detail = err.response?.data?.detail;
-                const msg = typeof detail === 'string'
-                  ? detail
-                  : Array.isArray(detail)
-                    ? detail.map((e: any) => e.msg || e.message || JSON.stringify(e)).join('; ')
-                    : 'Invalid admin credentials.';
-                setAdminError(msg);
-                setAdminSubmitting(false);
-              }
-            }}
-            error={adminError}
-            isSubmitting={adminSubmitting}
-            onCancel={() => { setShowAdminForm(false); setAdminError(null); }}
-          />
+            {!showAdminForm ? (
+              <button
+                type="button"
+                onClick={() => setShowAdminForm(true)}
+                className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-xs font-medium transition-all border border-hairline text-muted-foreground hover:text-ink hover:border-border-strong hover:bg-surface-soft"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Admin Login
+              </button>
+            ) : (
+              <AdminLoginForm
+                onSubmit={async (email, password) => {
+                  setAdminError(null);
+                  setAdminSubmitting(true);
+                  try {
+                    await adminLogin(email, password);
+                  } catch (err: any) {
+                    const detail = err.response?.data?.detail;
+                    const msg = typeof detail === 'string'
+                      ? detail
+                      : Array.isArray(detail)
+                        ? detail.map((e: any) => e.msg || e.message || JSON.stringify(e)).join('; ')
+                        : 'Invalid admin credentials.';
+                    setAdminError(msg);
+                    setAdminSubmitting(false);
+                  }
+                }}
+                error={adminError}
+                isSubmitting={adminSubmitting}
+                onCancel={() => { setShowAdminForm(false); setAdminError(null); }}
+              />
+            )}
+          </>
         )}
       </div>
     </div>
@@ -224,7 +376,7 @@ function AdminLoginForm({
       </div>
 
       {error && (
-        <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700">
+        <div className="flex items-start gap-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-md p-3 text-sm text-red-700 dark:text-red-400">
           <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
