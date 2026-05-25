@@ -7,9 +7,9 @@ interface AsyncPollingStatusProps {
 
 const statusConfig: Record<string, { icon: React.ElementType; label: string; className: string; animate?: string }> = {
   DRAFT:     { icon: Loader2,      label: 'Draft -- processing...',           className: 'text-muted-foreground',  animate: 'animate-spin' },
-  PARSED:    { icon: Zap,          label: 'Parsed -- generating matches...',  className: 'text-amber-400',         animate: 'animate-pulse' },
-  MATCHED:   { icon: CheckCircle2, label: 'Matches ready',                   className: 'text-green-400' },
-  CONFIRMED: { icon: CheckCircle2, label: 'Negotiation started',             className: 'text-green-400' },
+  PARSED:    { icon: Zap,          label: 'Parsed -- generating matches...',  className: 'text-amber-600',         animate: 'animate-pulse' },
+  MATCHED:   { icon: CheckCircle2, label: 'Matches ready',                   className: 'text-green-700' },
+  CONFIRMED: { icon: CheckCircle2, label: 'Negotiation started',             className: 'text-green-700' },
 };
 
 export function AsyncPollingStatus({ status }: AsyncPollingStatusProps) {

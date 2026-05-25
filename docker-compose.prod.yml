@@ -3,7 +3,7 @@ version: "3.9"
 # ─────────────────────────────────────────────────────────────
 # Cadencia — Production (EC2 + RDS)
 # Images pulled from ECR; RDS Postgres used instead of local DB
-# Access: https://cadenciaa.duckdns.org  (frontend via Caddy)
+# Access: https://cadencia-magic-wallet.duckdns.org  (frontend via Caddy)
 #         http://<EC2_PUBLIC_IP>:8000    (backend API)
 # ─────────────────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ services:
         condition: service_healthy
 
   # ── Caddy (HTTPS reverse proxy) ───────────────────────────────
-  # Automatically provisions a Let's Encrypt TLS cert for cadenciaa.duckdns.org.
+  # Automatically provisions a Let's Encrypt TLS cert for cadencia-magic-wallet.duckdns.org.
   # Requires ports 80 + 443 open in the EC2 security group and the DuckDNS
   # hostname pointing to the EC2 public IP.
   # crypto.subtle (needed by WalletConnect) requires a secure context (HTTPS),

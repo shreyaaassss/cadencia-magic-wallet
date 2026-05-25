@@ -108,7 +108,7 @@ export function PeraFundWizard({ escrowId, onFundComplete, onCancel }: PeraFundW
               {isBuilding ? (
                 <div className="h-24 bg-accent/50 animate-pulse rounded-md" />
               ) : buildError ? (
-                <div className="text-destructive text-sm bg-red-950/20 p-4 rounded-md">Failed to build transaction group.</div>
+                <div className="text-destructive text-sm bg-red-50 p-4 rounded-md">Failed to build transaction group.</div>
               ) : buildData ? (
                 <div className="bg-muted p-4 rounded-md font-mono text-xs text-muted-foreground space-y-2">
                   <p>Transaction Group ({buildData.transaction_count} txs):</p>
@@ -178,7 +178,7 @@ export function PeraFundWizard({ escrowId, onFundComplete, onCancel }: PeraFundW
 
           {step === 3 && successData && (
             <div className="flex flex-col items-center text-center py-6 space-y-4">
-              <div className="h-16 w-16 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mb-4">
+              <div className="h-16 w-16 bg-green-50 text-green-600 rounded-full flex items-center justify-center mb-4">
                 <CheckCircle2 className="h-8 w-8" />
               </div>
               <h3 className="text-lg font-medium text-foreground">Funded Successfully</h3>

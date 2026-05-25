@@ -37,28 +37,28 @@ function ConfidenceRing({ value }: { value: number }) {
 function getStrategyTag(reasoning: string): { label: string; style: string } | null {
   const r = reasoning.toLowerCase();
   if (r.startsWith('reject:') || r.includes('must reject') || r.includes('walk away')) {
-    return { label: 'REJECT', style: 'bg-red-950 text-red-400 border-red-900/60' };
+    return { label: 'REJECT', style: 'bg-red-50 text-red-700 border-red-200' };
   }
   if (r.includes('prices crossed') || r.includes('instant agreement')) {
-    return { label: 'INSTANT DEAL', style: 'bg-green-950 text-green-400 border-green-900/60' };
+    return { label: 'INSTANT DEAL', style: 'bg-green-50 text-green-700 border-green-200' };
   }
   if (r.includes('no zone') || r.includes('no zopa') || r.includes('walking away')) {
-    return { label: 'NO ZOPA', style: 'bg-red-950 text-red-400 border-red-900/60' };
+    return { label: 'NO ZOPA', style: 'bg-red-50 text-red-700 border-red-200' };
   }
   if (r.includes('anchor') || r.includes('listed asking price')) {
-    return { label: 'ANCHOR', style: 'bg-blue-950 text-blue-400 border-blue-900/60' };
+    return { label: 'ANCHOR', style: 'bg-blue-50 text-blue-700 border-blue-200' };
   }
   if (r.includes('maximize') || r.includes('aggressive')) {
-    return { label: 'AGGRESSIVE', style: 'bg-orange-950 text-orange-400 border-orange-900/60' };
+    return { label: 'AGGRESSIVE', style: 'bg-orange-50 text-orange-700 border-orange-200' };
   }
   if (r.includes('conservative') || r.includes('cautious')) {
     return { label: 'CONSERVATIVE', style: 'bg-secondary text-muted-foreground border-border' };
   }
   if (r.includes('concession') || r.includes('concede') || r.includes('halfway')) {
-    return { label: 'CONCESSIVE', style: 'bg-violet-950 text-violet-400 border-violet-900/60' };
+    return { label: 'CONCESSIVE', style: 'bg-violet-50 text-violet-700 border-violet-200' };
   }
   if (r.includes('budget ceiling') || r.includes('budget') || r.includes('floor')) {
-    return { label: 'CONSTRAINED', style: 'bg-amber-950 text-amber-400 border-amber-900/60' };
+    return { label: 'CONSTRAINED', style: 'bg-amber-50 text-amber-600 border-amber-200' };
   }
   return null;
 }
@@ -110,23 +110,23 @@ export function NegotiationTimeline({ offers, sessionStatus }: NegotiationTimeli
             <div className={cn(
               'mt-1 shrink-0 w-9 h-9 rounded-full flex items-center justify-center border-2 shadow-lg',
               isBuyer
-                ? 'bg-emerald-950 border-emerald-700 shadow-emerald-950'
-                : 'bg-blue-950 border-blue-700 shadow-blue-950'
+                ? 'bg-emerald-50 border-emerald-700 shadow-emerald-100'
+                : 'bg-blue-50 border-blue-700 shadow-blue-100'
             )}>
-              <Bot className={cn('h-4 w-4', isBuyer ? 'text-emerald-400' : 'text-blue-400')} />
+              <Bot className={cn('h-4 w-4', isBuyer ? 'text-emerald-700' : 'text-blue-700')} />
             </div>
 
             {/* Bubble */}
             <div className={cn(
               'relative max-w-[72%] min-w-[220px] rounded-2xl px-4 py-3 border shadow-md',
               isBuyer
-                ? 'rounded-tr-sm bg-emerald-950/30 border-emerald-900/50 shadow-emerald-950/20'
-                : 'rounded-tl-sm bg-blue-950/30 border-blue-900/50 shadow-blue-950/20'
+                ? 'rounded-tr-sm bg-emerald-50 border-emerald-200 shadow-emerald-100/20'
+                : 'rounded-tl-sm bg-blue-50 border-blue-200 shadow-blue-100/20'
             )}>
 
               {/* Top row: agent name + round + strategy tag */}
               <div className={cn('flex items-center gap-2 mb-2 flex-wrap', isBuyer ? 'justify-end' : 'justify-start')}>
-                <span className={cn('text-[11px] font-bold tracking-wider uppercase', isBuyer ? 'text-emerald-400' : 'text-blue-400')}>
+                <span className={cn('text-[11px] font-bold tracking-wider uppercase', isBuyer ? 'text-emerald-700' : 'text-blue-700')}>
                   {isBuyer ? 'Buyer Agent' : 'Seller Agent'}
                 </span>
                 <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded font-mono">
@@ -143,7 +143,7 @@ export function NegotiationTimeline({ offers, sessionStatus }: NegotiationTimeli
               <div className={cn('flex items-baseline gap-2 mb-2', isBuyer ? 'justify-end' : 'justify-start')}>
                 <span className={cn(
                   'text-2xl font-black tabular-nums tracking-tight',
-                  isBuyer ? 'text-emerald-300' : 'text-blue-300'
+                  isBuyer ? 'text-emerald-700' : 'text-blue-700'
                 )}>
                   {formatCurrency(offer.price)}
                 </span>
@@ -155,7 +155,7 @@ export function NegotiationTimeline({ offers, sessionStatus }: NegotiationTimeli
               {offer.agent_reasoning && (
                 <p className={cn(
                   'text-[11px] text-muted-foreground/75 leading-relaxed italic border-t pt-2 mt-1',
-                  isBuyer ? 'text-right border-emerald-900/30' : 'text-left border-blue-900/30'
+                  isBuyer ? 'text-right border-emerald-200' : 'text-left border-blue-200'
                 )}>
                   {offer.agent_reasoning}
                 </p>

@@ -42,7 +42,7 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 const NEG_STATUS_ICONS: Record<string, React.ReactNode> = {
-  AGREED: <CheckCircle2 className="h-4 w-4 text-green-500" />,
+  AGREED: <CheckCircle2 className="h-4 w-4 text-green-600" />,
   FAILED: <XCircle className="h-4 w-4 text-red-500" />,
   WALK_AWAY: <XCircle className="h-4 w-4 text-red-500" />,
   TIMEOUT: <Clock className="h-4 w-4 text-amber-500" />,
@@ -206,19 +206,19 @@ export function RfqDetailPanel({
                     key={m.enterprise_id}
                     className={`p-3 rounded-lg border ${
                       isBestDeal
-                        ? 'border-green-500/50 bg-green-500/5'
+                        ? 'border-green-200 bg-green-50'
                         : 'border-border bg-muted'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        {isBestDeal && <Trophy className="h-4 w-4 text-green-500 shrink-0" />}
+                        {isBestDeal && <Trophy className="h-4 w-4 text-green-600 shrink-0" />}
                         <span className="text-sm font-medium text-foreground truncate">{m.enterprise_name}</span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0 ml-2">
                         {neg ? (
                           <>
-                            {NEG_STATUS_ICONS[neg.status] || <Loader2 className="h-4 w-4 animate-spin text-blue-400" />}
+                            {NEG_STATUS_ICONS[neg.status] || <Loader2 className="h-4 w-4 animate-spin text-blue-700" />}
                             <StatusBadge status={neg.status} size="sm" />
                           </>
                         ) : (
@@ -245,7 +245,7 @@ export function RfqDetailPanel({
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {isAgreed && neg?.agreed_price && (
-                          <span className="text-green-500 font-semibold">
+                          <span className="text-green-600 font-semibold">
                             {formatCurrency(neg.agreed_price)}
                           </span>
                         )}

@@ -38,8 +38,8 @@ export function AgentMonitorRow({ agent, onPause, onResume, isLoading }: AgentMo
   // Latency color
   const latencyColor = 
     agent.latency_ms === 0 ? 'text-muted-foreground' :
-    agent.latency_ms < 500 ? 'text-green-400' :
-    agent.latency_ms < 2000 ? 'text-amber-400' : 
+    agent.latency_ms < 500 ? 'text-green-700' :
+    agent.latency_ms < 2000 ? 'text-amber-600' :
     'text-destructive';
 
   return (

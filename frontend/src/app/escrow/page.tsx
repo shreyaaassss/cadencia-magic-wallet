@@ -331,12 +331,12 @@ export default function EscrowPage() {
                             </Button>
                           ) : (
                             <div className="flex flex-col items-center gap-2">
-                              <p className="text-xs text-amber-400">Connect your wallet to fund this escrow</p>
+                              <p className="text-xs text-amber-600">Connect your wallet to fund this escrow</p>
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => router.push('/settings/wallet')}
-                                className="border-amber-500 text-amber-400 hover:bg-amber-500/10"
+                                className="border-amber-500 text-amber-600 hover:bg-amber-500/10"
                               >
                                 <Wallet className="mr-2 h-4 w-4" />
                                 Connect Wallet
@@ -345,7 +345,7 @@ export default function EscrowPage() {
                           )
                         )}
                         {escrow.status === 'DEPLOYED' && isSeller && (
-                          <div className="flex items-center gap-2 text-indigo-400">
+                          <div className="flex items-center gap-2 text-indigo-600">
                             <Rocket className="h-4 w-4" />
                             <span className="text-sm">Contract deployed. Waiting for buyer to fund...</span>
                           </div>
@@ -363,7 +363,7 @@ export default function EscrowPage() {
                           </Button>
                         )}
                         {escrow.status === 'FUNDED' && isBuyer && (
-                          <div className="flex items-center gap-2 text-green-500">
+                          <div className="flex items-center gap-2 text-green-600">
                             <CheckCircle2 className="h-4 w-4" />
                             <span className="text-sm">Funded! Waiting for seller to dispatch order...</span>
                           </div>
@@ -381,7 +381,7 @@ export default function EscrowPage() {
                           </Button>
                         )}
                         {escrow.status === 'DISPATCHED' && isSeller && (
-                          <div className="flex items-center gap-2 text-blue-400">
+                          <div className="flex items-center gap-2 text-blue-600">
                             <Package className="h-4 w-4" />
                             <span className="text-sm">Order dispatched. Waiting for buyer to confirm delivery...</span>
                           </div>
@@ -389,7 +389,7 @@ export default function EscrowPage() {
 
                         {/* Released */}
                         {escrow.status === 'RELEASED' && (
-                          <div className="flex items-center gap-2 text-green-500">
+                          <div className="flex items-center gap-2 text-green-600">
                             <CheckCircle2 className="h-5 w-5" />
                             <span className="text-sm font-medium">Trade Complete! Funds released to seller.</span>
                           </div>

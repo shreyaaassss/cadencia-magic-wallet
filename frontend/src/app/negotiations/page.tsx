@@ -128,9 +128,9 @@ export default function NegotiationsPage() {
   // ─── Row highlight class ────────────────────────────────────────────────────
   const getRowClass = (status: SessionStatus) => {
     switch (status) {
-      case 'ACTIVE': return 'border-l-4 border-l-green-500 bg-green-950/20';
-      case 'WALK_AWAY': return 'border-l-4 border-l-amber-500 bg-amber-950/20';
-      case 'AGREED': return 'bg-green-950/5';
+      case 'ACTIVE': return 'border-l-4 border-l-green-500 bg-green-50';
+      case 'WALK_AWAY': return 'border-l-4 border-l-amber-500 bg-amber-50';
+      case 'AGREED': return 'bg-green-50';
       default: return '';
     }
   };
@@ -282,7 +282,7 @@ export default function NegotiationsPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => router.push(`${ROUTES.NEGOTIATIONS}/${session.session_id}`)}
-                              className="h-8 w-8 p-0 text-green-400 hover:bg-green-950 hover:text-green-400"
+                              className="h-8 w-8 p-0 text-green-600 hover:bg-green-50 hover:text-green-600"
                               title="Live Room"
                             >
                               <Play className="h-4 w-4" />
@@ -304,7 +304,7 @@ export default function NegotiationsPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => router.push(`${ROUTES.NEGOTIATIONS}/${session.session_id}`)}
-                              className="h-8 w-8 p-0 text-amber-400 hover:bg-amber-950 hover:text-amber-400"
+                              className="h-8 w-8 p-0 text-amber-600 hover:bg-amber-50 hover:text-amber-600"
                               title="Walk Away - Review"
                             >
                               <AlertTriangle className="h-4 w-4" />
@@ -315,7 +315,7 @@ export default function NegotiationsPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => setTerminateTarget(session)}
-                              className="h-8 w-8 p-0 text-muted-foreground hover:bg-red-950 hover:text-destructive"
+                              className="h-8 w-8 p-0 text-muted-foreground hover:bg-red-50 hover:text-destructive"
                               title="Terminate"
                             >
                               <StopCircle className="h-4 w-4" />

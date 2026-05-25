@@ -46,7 +46,7 @@ const CERT_SUGGESTIONS = ["ISO 9001", "BIS", "RDSO", "ISO 14001", "NABL"];
 
 function ErrorBanner({ message }: { message: string }) {
   return (
-    <div className="flex items-start gap-2 bg-red-950 border border-destructive/40 rounded-lg p-3 text-sm text-destructive mb-4">
+    <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700 mb-4">
       <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
       <span>{message}</span>
     </div>
@@ -292,7 +292,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center py-8 px-4">
+    <div className="min-h-screen bg-surface-soft flex flex-col items-center justify-center py-8 px-4">
       {/* Back to landing */}
       <div className="w-full max-w-lg mb-4">
         <Link
@@ -306,7 +306,7 @@ export default function RegisterPage() {
         </Link>
       </div>
 
-      <div className="bg-card border border-border rounded-lg w-full max-w-lg shadow-sm flex flex-col">
+      <div className="bg-white border border-hairline rounded-lg w-full max-w-lg shadow-sm flex flex-col">
         <div className="p-5 sm:p-8">
           <StepIndicator currentStep={state.step} steps={stepLabels} />
           {globalError && <ErrorBanner message={globalError} />}

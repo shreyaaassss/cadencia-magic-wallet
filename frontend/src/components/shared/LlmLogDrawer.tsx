@@ -66,7 +66,7 @@ export function LlmLogDrawer({ log, open, onClose }: LlmLogDrawerProps) {
             </div>
             <div>
               <span className="text-muted-foreground block text-xs mb-1">Status</span>
-              <span className={log.status === 'SUCCESS' ? 'text-green-500' : 'text-destructive font-medium'}>
+              <span className={log.status === 'SUCCESS' ? 'text-green-600' : 'text-destructive font-medium'}>
                 {log.status}
               </span>
             </div>
@@ -89,7 +89,7 @@ export function LlmLogDrawer({ log, open, onClose }: LlmLogDrawerProps) {
                 className="h-6 text-xs text-muted-foreground"
                 onClick={() => copyToClipboard(log.prompt_summary, 'prompt')}
               >
-                {copiedSection === 'prompt' ? <Check className="h-3 w-3 mr-1 text-green-500" /> : <Copy className="h-3 w-3 mr-1" />}
+                {copiedSection === 'prompt' ? <Check className="h-3 w-3 mr-1 text-green-600" /> : <Copy className="h-3 w-3 mr-1" />}
                 Copy
               </Button>
             </div>
@@ -108,7 +108,7 @@ export function LlmLogDrawer({ log, open, onClose }: LlmLogDrawerProps) {
                   className="h-6 text-xs text-muted-foreground"
                   onClick={() => copyToClipboard(log.response_summary!, 'response')}
                 >
-                  {copiedSection === 'response' ? <Check className="h-3 w-3 mr-1 text-green-500" /> : <Copy className="h-3 w-3 mr-1" />}
+                  {copiedSection === 'response' ? <Check className="h-3 w-3 mr-1 text-green-600" /> : <Copy className="h-3 w-3 mr-1" />}
                   Copy
                 </Button>
               )}

@@ -137,7 +137,7 @@ export default function CataloguePage() {
                       <td className="px-4 py-3 text-right text-foreground">{item.moq} {item.unit}</td>
                       <td className="px-4 py-3 text-right text-foreground">{item.lead_time_days}d</td>
                       <td className="px-4 py-3 text-center">
-                        <span className={cn('inline-block px-2 py-0.5 rounded-full text-xs font-medium', item.is_active ? 'bg-green-500/10 text-green-500' : 'bg-muted text-muted-foreground')}>
+                        <span className={cn('inline-block px-2 py-0.5 rounded-full text-xs font-medium', item.is_active ? 'bg-green-50 text-green-600' : 'bg-muted text-muted-foreground')}>
                           {item.is_active ? 'Active' : 'Inactive'}
                         </span>
                       </td>

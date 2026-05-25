@@ -14,7 +14,7 @@ interface StatCardProps {
 }
 
 const trendConfig = {
-  up:      { Icon: TrendingUp,   className: 'text-green-400' },
+  up:      { Icon: TrendingUp,   className: 'text-green-600' },
   down:    { Icon: TrendingDown,  className: 'text-destructive' },
   neutral: { Icon: Minus,         className: 'text-muted-foreground' },
 };

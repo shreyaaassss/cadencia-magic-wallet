@@ -23,7 +23,7 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 function ErrorBanner({ message }: { message: string }) {
   return (
-    <div className="flex items-start gap-2 bg-red-950 border border-destructive/40 rounded-lg p-3 text-sm text-destructive mb-4">
+    <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700 mb-4">
       <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
       <span>{message}</span>
     </div>
@@ -57,10 +57,7 @@ export default function LoginPage() {
     setGlobalError(null);
     try {
       await login(data.email);
-      // AuthContext redirects to /dashboard on success
     } catch (err: any) {
-      // err.message is already the clean backend detail string (set in _hydrateFromMagic)
-      // Fall back to axios detail or generic message for unexpected errors
       const detail = err?.response?.data?.detail;
       const msg =
         err.message ||
@@ -75,10 +72,10 @@ export default function LoginPage() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="relative h-10 w-10">
-            <div className="absolute inset-0 rounded-full border-2 border-muted" />
+            <div className="absolute inset-0 rounded-full border-2 border-hairline" />
             <div className="absolute inset-0 rounded-full border-2 border-t-primary animate-spin" />
           </div>
-          <p className="text-sm text-muted-foreground animate-pulse">Loading Cadencia…</p>
+          <p className="text-sm text-muted-foreground animate-pulse">Loading Cadencia...</p>
         </div>
       </div>
     );
@@ -87,12 +84,12 @@ export default function LoginPage() {
   if (user) return null;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-surface-soft flex flex-col items-center justify-center p-4">
       {/* Back to landing */}
       <div className="w-full max-w-sm mb-4">
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-ink transition-colors"
         >
           <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -101,18 +98,18 @@ export default function LoginPage() {
         </Link>
       </div>
 
-      <div className="bg-card border border-border rounded-lg p-6 sm:p-8 w-full max-w-sm">
+      <div className="bg-white border border-hairline rounded-lg p-6 sm:p-8 w-full max-w-sm">
         <div className="flex flex-col items-center mb-6">
-          <div className="bg-muted border border-border rounded-lg p-3 mb-4">
-            <Building2 className="h-6 w-6 text-primary" />
+          <div className="bg-surface-soft border border-hairline rounded-lg p-3 mb-4">
+            <Building2 className="h-6 w-6 text-ink" />
           </div>
-          <h1 className="text-xl font-semibold text-foreground mb-1">Cadencia</h1>
+          <h1 className="text-xl font-medium text-ink mb-1">Cadencia</h1>
           <p className="text-sm text-muted-foreground">AI-powered B2B trade platform</p>
         </div>
 
-        <div className="border-t border-border w-full mb-6" />
+        <div className="border-t border-hairline w-full mb-6" />
 
-        <h2 className="text-base font-semibold text-foreground mb-2">Sign in to your account</h2>
+        <h2 className="text-base font-medium text-ink mb-2">Sign in to your account</h2>
         <p className="text-xs text-muted-foreground mb-6">
           Enter your email — we&apos;ll send you a one-time code to sign in instantly.
         </p>
@@ -133,11 +130,11 @@ export default function LoginPage() {
             />
           </FormField>
 
-          <Button type="submit" disabled={isSubmitting} className="w-full bg-primary text-primary-foreground hover:bg-primary/90 mt-2">
+          <Button type="submit" disabled={isSubmitting} className="w-full mt-2">
             {isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Sending code…
+                Sending code...
               </>
             ) : (
               'Continue with Email'
@@ -145,7 +142,7 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <div className="border-t border-border w-full my-6" />
+        <div className="border-t border-hairline w-full my-6" />
 
         <p className="text-center text-sm text-muted-foreground mb-3">
           New to Cadencia? Register as:
@@ -153,26 +150,26 @@ export default function LoginPage() {
         <div className="flex gap-3">
           <Link
             href="/register?role=buyer"
-            className="flex-1 text-center py-2.5 px-4 rounded-lg text-sm font-medium transition-all duration-200 border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 hover:-translate-y-[1px]"
+            className="flex-1 text-center py-2.5 px-4 rounded-lg text-sm font-medium transition-all duration-200 border border-primary bg-primary text-on-primary"
           >
             Buyer
           </Link>
           <Link
             href="/register?role=seller"
-            className="flex-1 text-center py-2.5 px-4 rounded-lg text-sm font-medium transition-all duration-200 border border-border bg-transparent text-foreground hover:bg-accent hover:border-muted-foreground hover:-translate-y-[1px]"
+            className="flex-1 text-center py-2.5 px-4 rounded-lg text-sm font-medium transition-all duration-200 border border-hairline bg-white text-ink hover:bg-surface-soft"
           >
             Seller
           </Link>
         </div>
 
         {/* Admin Login */}
-        <div className="border-t border-border w-full my-6" />
+        <div className="border-t border-hairline w-full my-6" />
 
         {!showAdminForm ? (
           <button
             type="button"
             onClick={() => setShowAdminForm(true)}
-            className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-xs font-medium transition-all border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5"
+            className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-xs font-medium transition-all border border-hairline text-muted-foreground hover:text-ink hover:border-border-strong hover:bg-surface-soft"
           >
             <ShieldCheck className="h-3.5 w-3.5" />
             Admin Login
@@ -222,12 +219,12 @@ function AdminLoginForm({
   return (
     <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
       <div className="flex items-center gap-2 mb-2">
-        <ShieldCheck className="h-4 w-4 text-amber-400" />
-        <span className="text-sm font-medium text-foreground">Platform Admin</span>
+        <ShieldCheck className="h-4 w-4 text-amber-600" />
+        <span className="text-sm font-medium text-ink">Platform Admin</span>
       </div>
 
       {error && (
-        <div className="flex items-start gap-2 bg-red-950 border border-destructive/40 rounded-lg p-3 text-sm text-destructive">
+        <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700">
           <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>

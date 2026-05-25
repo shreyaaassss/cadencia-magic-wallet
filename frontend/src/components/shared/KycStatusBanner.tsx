@@ -26,8 +26,8 @@ export function KycStatusBanner({ status, onUpload, isUploading }: KycStatusBann
   if (status === 'ACTIVE') {
     return (
       <div className="flex items-start gap-4 p-4 bg-card border border-border rounded-lg">
-        <div className="bg-green-950 rounded-md p-2 shrink-0">
-          <ShieldCheck className="h-5 w-5 text-green-400" />
+        <div className="bg-green-50 rounded-md p-2 shrink-0">
+          <ShieldCheck className="h-5 w-5 text-green-700" />
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
@@ -44,8 +44,8 @@ export function KycStatusBanner({ status, onUpload, isUploading }: KycStatusBann
   if (status === 'PENDING') {
     return (
       <div className="flex items-start gap-4 p-4 bg-card border border-border rounded-lg">
-        <div className="bg-amber-950 rounded-md p-2 shrink-0">
-          <ShieldAlert className="h-5 w-5 text-amber-400" />
+        <div className="bg-amber-50 rounded-md p-2 shrink-0">
+          <ShieldAlert className="h-5 w-5 text-amber-600" />
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
@@ -61,7 +61,7 @@ export function KycStatusBanner({ status, onUpload, isUploading }: KycStatusBann
 
   const isRejected = status === 'REJECTED';
   const IconComp = isRejected ? ShieldX : Shield;
-  const iconBg = isRejected ? 'bg-red-950' : 'bg-muted';
+  const iconBg = isRejected ? 'bg-red-50' : 'bg-muted';
   const iconColor = isRejected ? 'text-destructive' : 'text-muted-foreground';
 
   return (

@@ -5,20 +5,16 @@ import Link from 'next/link';
 import {
   FileText, Search, MessageSquare, Lock, PieChart,
   Activity, BarChart3, CheckCircle2, Globe, Heart,
-  ArrowRight, Play, CircleDot, CreditCard, DollarSign,
+  ArrowRight, CircleDot, CreditCard, DollarSign,
   ShieldCheck, Menu, X,
 } from 'lucide-react';
-import { SplineScene } from '@/components/ui/splite';
-import { Spotlight } from '@/components/ui/spotlight';
 import './landing.css';
 
 export default function LandingPage() {
   const navRef = useRef<HTMLElement>(null);
-  const revealRefs = useRef<HTMLDivElement[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
-    // Navbar border on scroll
     const handleScroll = () => {
       if (navRef.current) {
         if (window.scrollY > 20) {
@@ -30,7 +26,6 @@ export default function LandingPage() {
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
 
-    // Scroll reveal observer
     const obs = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
@@ -52,13 +47,11 @@ export default function LandingPage() {
 
   return (
     <>
-      <div className="noise-overlay" />
-
       {/* NAV */}
       <nav ref={navRef} className="landing-nav">
         <Link href="/" className="nav-logo">
           <div className="nav-logo-mark">
-            <CircleDot className="h-4 w-4" />
+            <CircleDot className="h-3.5 w-3.5" />
           </div>
           <span className="nav-logo-text">Cadencia</span>
         </Link>
@@ -75,13 +68,12 @@ export default function LandingPage() {
               I&apos;m a Buyer
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
-            <Link href="/register?role=seller" className="btn-primary-nav btn-seller-nav">
+            <Link href="/register?role=seller" className="btn-secondary-nav">
               I&apos;m a Seller
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
         </div>
-        {/* Mobile hamburger */}
         <button
           className="nav-hamburger"
           onClick={() => setMenuOpen(o => !o)}
@@ -91,7 +83,7 @@ export default function LandingPage() {
         </button>
       </nav>
 
-      {/* Mobile menu overlay */}
+      {/* Mobile menu */}
       {menuOpen && (
         <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
           <div className="mobile-menu-inner" onClick={e => e.stopPropagation()}>
@@ -104,84 +96,66 @@ export default function LandingPage() {
             <Link href="/register?role=buyer" className="btn-primary-nav w-full justify-center" onClick={() => setMenuOpen(false)}>
               I&apos;m a Buyer <ArrowRight className="h-3.5 w-3.5" />
             </Link>
-            <Link href="/register?role=seller" className="btn-primary-nav btn-seller-nav w-full justify-center" onClick={() => setMenuOpen(false)}>
+            <Link href="/register?role=seller" className="btn-secondary-nav w-full justify-center" onClick={() => setMenuOpen(false)}>
               I&apos;m a Seller <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
         </div>
       )}
 
-      {/* HERO */}
-      <section className="hero hero-split">
-        <div className="hero-bg-ring" />
-        <div className="hero-bg-ring" />
-        <div className="hero-bg-ring" />
-        <div className="hero-bg-glow" />
+      {/* HERO — white canvas, clean whitespace */}
+      <section className="hero">
+        <h1 className="hero-title reveal">
+          Trade at the speed of intelligence
+        </h1>
 
-        <div className="hero-content-wrapper">
-          {/* Left: Text Content */}
-          <div className="hero-left">
-            <div className="hero-eyebrow">
-              <span className="eyebrow-dot" />
-              Now in private beta &nbsp;&middot;&nbsp; India&apos;s first AI-native B2B trade platform
-            </div>
+        <p className="hero-subtitle reveal reveal-delay-1">
+          Cadencia automates the entire B2B procurement cycle — from RFQ to negotiation
+          to on-chain settlement — so your team focuses on strategy, not spreadsheets.
+        </p>
 
-            <h1 className="hero-title" style={{ textAlign: 'left' }}>
-              Trade at the speed<br />of <em>intelligence</em>
-            </h1>
+        <div className="hero-cta reveal reveal-delay-2">
+          <Link href="/register?role=buyer" className="btn-cta-primary">
+            Get started for free
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+          <Link href="/register?role=seller" className="btn-cta-secondary">
+            Book a demo
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
 
-            <p className="hero-subtitle" style={{ margin: '1.75rem 0 0', textAlign: 'left' }}>
-              Cadencia automates the entire B2B procurement cycle — from RFQ to negotiation
-              to on-chain settlement — so your team focuses on strategy, not spreadsheets.
-            </p>
-
-            <div className="hero-cta" style={{ justifyContent: 'flex-start' }}>
-              <Link href="/register?role=buyer" className="btn-cta-p">
-                Register as Buyer
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link href="/register?role=seller" className="btn-cta-s-link">
-                Register as Seller
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-
-            <div className="hero-stats" style={{ justifyContent: 'flex-start' }}>
-              <div className="hero-stat">
-                <span className="hero-stat-value">&#8377;2,400Cr</span>
-                <span className="hero-stat-label">Trade volume facilitated</span>
-              </div>
-              <div className="hero-divider" />
-              <div className="hero-stat">
-                <span className="hero-stat-value">94%</span>
-                <span className="hero-stat-label">Negotiation success rate</span>
-              </div>
-              <div className="hero-divider" />
-              <div className="hero-stat">
-                <span className="hero-stat-value">3.2x</span>
-                <span className="hero-stat-label">Faster deal closure</span>
-              </div>
-            </div>
+        <div className="hero-stats reveal reveal-delay-3">
+          <div className="hero-stat">
+            <span className="hero-stat-value">&#8377;2,400Cr</span>
+            <span className="hero-stat-label">Trade volume facilitated</span>
           </div>
-
-          {/* Right: 3D Robot */}
-          <div className="hero-right">
-            <Spotlight
-              className="-top-40 left-0 md:left-60 md:-top-20"
-              fill="var(--primary)"
-            />
-            <SplineScene
-              scene="https://prod.spline.design/kZDDjO5HuC9GJUM2/scene.splinecode"
-              className="w-full h-full"
-            />
+          <div className="hero-divider" />
+          <div className="hero-stat">
+            <span className="hero-stat-value">94%</span>
+            <span className="hero-stat-label">Negotiation success rate</span>
+          </div>
+          <div className="hero-divider" />
+          <div className="hero-stat">
+            <span className="hero-stat-value">3.2x</span>
+            <span className="hero-stat-label">Faster deal closure</span>
           </div>
         </div>
       </section>
 
-      {/* PREVIEW */}
+      {/* LOGO STRIP */}
+      <div className="logo-strip reveal">
+        <span className="logo-strip-name">Tata Steel</span>
+        <span className="logo-strip-name">JSW Group</span>
+        <span className="logo-strip-name">Hindalco</span>
+        <span className="logo-strip-name">SAIL</span>
+        <span className="logo-strip-name">Ambuja Cements</span>
+        <span className="logo-strip-name">Reliance Retail</span>
+      </div>
+
+      {/* PREVIEW — app mockup */}
       <div className="preview-section">
-        <div className="preview-wrapper">
-          <div className="preview-glow" />
+        <div className="preview-wrapper reveal">
           <div className="preview-frame">
             <div className="preview-bar">
               <div className="preview-dots">
@@ -197,35 +171,15 @@ export default function LandingPage() {
             <div className="preview-body">
               <div className="preview-sidebar">
                 <div className="preview-sidebar-logo">
-                  <div className="pslm">
-                    <CircleDot className="h-3 w-3" />
-                  </div>
+                  <div className="pslm"><CircleDot className="h-2.5 w-2.5" /></div>
                   Cadencia
                 </div>
-                <div className="pni active">
-                  <BarChart3 className="h-3.5 w-3.5" />
-                  Dashboard
-                </div>
-                <div className="pni">
-                  <Search className="h-3.5 w-3.5" />
-                  Marketplace
-                </div>
-                <div className="pni">
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  Negotiations
-                </div>
-                <div className="pni">
-                  <CreditCard className="h-3.5 w-3.5" />
-                  Escrow
-                </div>
-                <div className="pni">
-                  <BarChart3 className="h-3.5 w-3.5" />
-                  Treasury
-                </div>
-                <div className="pni">
-                  <FileText className="h-3.5 w-3.5" />
-                  Compliance
-                </div>
+                <div className="pni active"><BarChart3 className="h-3.5 w-3.5" /> Dashboard</div>
+                <div className="pni"><Search className="h-3.5 w-3.5" /> Marketplace</div>
+                <div className="pni"><MessageSquare className="h-3.5 w-3.5" /> Negotiations</div>
+                <div className="pni"><CreditCard className="h-3.5 w-3.5" /> Escrow</div>
+                <div className="pni"><BarChart3 className="h-3.5 w-3.5" /> Treasury</div>
+                <div className="pni"><FileText className="h-3.5 w-3.5" /> Compliance</div>
               </div>
               <div className="preview-main">
                 <div className="preview-header">
@@ -254,39 +208,39 @@ export default function LandingPage() {
                   <div className="pc">
                     <div className="pc-label">Runway</div>
                     <div className="pc-value">48d</div>
-                    <div className="pc-sub" style={{ color: '#f59e0b' }}>Amber alert</div>
+                    <div className="pc-sub" style={{ color: '#d97706' }}>Amber alert</div>
                   </div>
                 </div>
                 <div className="preview-chart-area">
                   <div className="pcbox">
                     <div className="pct">Price Convergence — #S001</div>
                     <svg className="pcs" viewBox="0 0 240 80" preserveAspectRatio="none">
-                      <path d="M0,65 L48,58 L96,50 L144,42 L192,36 L240,30" stroke="var(--primary)" strokeWidth="2" fill="none" />
-                      <path d="M0,15 L48,22 L96,32 L144,38 L192,34 L240,30" stroke="#22c55e" strokeWidth="2" fill="none" />
-                      <circle cx="240" cy="30" r="4" fill="var(--primary)" opacity=".8" />
-                      <text x="155" y="10" fontSize="7" fill="var(--muted-foreground)" fontFamily="JetBrains Mono,monospace">Converging</text>
+                      <path d="M0,65 L48,58 L96,50 L144,42 L192,36 L240,30" stroke="var(--ink)" strokeWidth="2" fill="none" />
+                      <path d="M0,15 L48,22 L96,32 L144,38 L192,34 L240,30" stroke="#16a34a" strokeWidth="2" fill="none" />
+                      <circle cx="240" cy="30" r="4" fill="var(--ink)" opacity=".7" />
+                      <text x="155" y="10" fontSize="7" fill="var(--text-muted)" fontFamily="JetBrains Mono,monospace">Converging</text>
                     </svg>
                   </div>
                   <div className="pcbox">
                     <div className="pct">Live Negotiation &middot; Round 5</div>
                     <div className="ptl">
                       <div className="pti">
-                        <div className="ptd" style={{ background: 'var(--primary)' }} />
+                        <div className="ptd" style={{ background: 'var(--ink)' }} />
                         <span className="ptt">Buyer Agent</span>
                         <span className="ptp">&#8377;38,000/MT</span>
                       </div>
                       <div className="pti">
-                        <div className="ptd" style={{ background: '#22c55e' }} />
+                        <div className="ptd" style={{ background: '#16a34a' }} />
                         <span className="ptt">Seller counter</span>
                         <span className="ptp">&#8377;44,500/MT</span>
                       </div>
                       <div className="pti">
-                        <div className="ptd" style={{ background: 'var(--primary)' }} />
+                        <div className="ptd" style={{ background: 'var(--ink)' }} />
                         <span className="ptt">Buyer revised</span>
                         <span className="ptp">&#8377;40,200/MT</span>
                       </div>
-                      <div className="pti" style={{ opacity: 0.45 }}>
-                        <div className="ptd" style={{ background: 'var(--muted-foreground)' }} />
+                      <div className="pti" style={{ opacity: 0.4 }}>
+                        <div className="ptd" style={{ background: 'var(--text-muted)' }} />
                         <span className="ptt">Seller responding...</span>
                         <span className="ptp">&middot;&middot;&middot;</span>
                       </div>
@@ -299,13 +253,32 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* HOW IT WORKS */}
-      <section className="landing-section how-section" id="how">
+      {/* SIGNATURE CORAL CARD */}
+      <div className="signature-coral-band reveal">
+        <div className="section-inner">
+          <div className="section-eyebrow">AI-native procurement</div>
+          <h2 className="section-title">
+            Production-grade trade automation at prototype speed
+          </h2>
+          <p className="section-body">
+            From the moment a buyer posts an RFQ to the instant funds settle on-chain,
+            Cadencia&apos;s AI agents handle every step — matching, negotiating, and settling
+            in real time.
+          </p>
+          <Link href="/register" className="btn-on-dark">
+            Start trading
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      </div>
+
+      {/* HOW IT WORKS — white canvas */}
+      <section className="landing-section" id="how">
         <div className="section-inner">
           <div className="reveal">
             <div className="section-eyebrow">How it works</div>
             <h2 className="section-title">
-              Four steps from<br />requirement to settlement
+              Four steps from requirement to settlement
             </h2>
             <p className="section-body">
               The entire trade lifecycle — automated, compliant, and on-chain. No back-and-forth emails, no manual reconciliation.
@@ -314,9 +287,7 @@ export default function LandingPage() {
           <div className="steps-grid reveal reveal-delay-2">
             <div className="step">
               <div className="step-number">01 / RFQ</div>
-              <div className="step-icon">
-                <FileText className="h-5 w-5" />
-              </div>
+              <div className="step-icon"><FileText className="h-5 w-5" /></div>
               <div className="step-title">Post your requirement</div>
               <p className="step-desc">
                 Describe your requirement in plain language. Our AI parses product specs, quantities, budgets, and delivery terms automatically.
@@ -324,9 +295,7 @@ export default function LandingPage() {
             </div>
             <div className="step">
               <div className="step-number">02 / MATCH</div>
-              <div className="step-icon">
-                <Search className="h-5 w-5" />
-              </div>
+              <div className="step-icon"><Search className="h-5 w-5" /></div>
               <div className="step-title">AI finds the best sellers</div>
               <p className="step-desc">
                 Vector embeddings rank sellers by capability match. You see a scored shortlist — confirm one to begin negotiation.
@@ -334,9 +303,7 @@ export default function LandingPage() {
             </div>
             <div className="step">
               <div className="step-number">03 / NEGOTIATE</div>
-              <div className="step-icon">
-                <MessageSquare className="h-5 w-5" />
-              </div>
+              <div className="step-icon"><MessageSquare className="h-5 w-5" /></div>
               <div className="step-title">Agents negotiate for you</div>
               <p className="step-desc">
                 AI agents exchange offers in real time. You watch the price converge — or step in with a human override anytime.
@@ -344,9 +311,7 @@ export default function LandingPage() {
             </div>
             <div className="step">
               <div className="step-number">04 / SETTLE</div>
-              <div className="step-icon">
-                <Lock className="h-5 w-5" />
-              </div>
+              <div className="step-icon"><Lock className="h-5 w-5" /></div>
               <div className="step-title">On-chain escrow &amp; compliance</div>
               <p className="step-desc">
                 Algorand smart contracts hold funds in escrow. FEMA and GST reports are auto-generated. Settlement is instant.
@@ -356,7 +321,19 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* FEATURES */}
+      {/* CREAM CALLOUT BAND */}
+      <div className="cream-band reveal">
+        <div className="section-inner" style={{ textAlign: 'center' }}>
+          <h2 className="section-title" style={{ maxWidth: '560px', margin: '0 auto 1rem' }}>
+            The path to 10x every person in your procurement team
+          </h2>
+          <p className="section-body" style={{ maxWidth: '440px', margin: '0 auto' }}>
+            Stop wasting analyst hours on supplier outreach and price comparison. Let AI agents handle the back-and-forth while your team focuses on strategic decisions.
+          </p>
+        </div>
+      </div>
+
+      {/* FEATURES — white canvas */}
       <section className="landing-section" id="features">
         <div className="section-inner">
           <div className="reveal">
@@ -365,9 +342,7 @@ export default function LandingPage() {
           </div>
           <div className="features-grid">
             <div className="fc reveal reveal-delay-1">
-              <div className="fc-icon">
-                <PieChart className="h-5 w-5" />
-              </div>
+              <div className="fc-icon"><PieChart className="h-5 w-5" /></div>
               <div className="fc-title">Autonomous AI Negotiations</div>
               <p className="fc-desc">
                 Configure your agent&apos;s style — aggressive, balanced, or conservative. Set floor prices and max rounds. The agent works 24/7 so you don&apos;t have to.
@@ -375,9 +350,7 @@ export default function LandingPage() {
               <span className="fc-tag">Groq Llama 3.3 70B</span>
             </div>
             <div className="fc reveal reveal-delay-2">
-              <div className="fc-icon">
-                <Activity className="h-5 w-5" />
-              </div>
+              <div className="fc-icon"><Activity className="h-5 w-5" /></div>
               <div className="fc-title">Live SSE Negotiation Room</div>
               <p className="fc-desc">
                 Watch every offer and counter-offer in real time. Price convergence charts update live. Jump in with a human override if the deal needs a personal touch.
@@ -385,9 +358,7 @@ export default function LandingPage() {
               <span className="fc-tag">Server-Sent Events</span>
             </div>
             <div className="fc reveal reveal-delay-3">
-              <div className="fc-icon">
-                <BarChart3 className="h-5 w-5" />
-              </div>
+              <div className="fc-icon"><BarChart3 className="h-5 w-5" /></div>
               <div className="fc-title">Treasury &amp; FX Dashboard</div>
               <p className="fc-desc">
                 Multi-currency pool balances across INR, USDC, and ALGO. Live FX exposure, unrealized P&amp;L, and a 30-day liquidity runway forecast.
@@ -395,9 +366,7 @@ export default function LandingPage() {
               <span className="fc-tag">Multi-currency</span>
             </div>
             <div className="fc reveal reveal-delay-4">
-              <div className="fc-icon">
-                <CheckCircle2 className="h-5 w-5" />
-              </div>
+              <div className="fc-icon"><CheckCircle2 className="h-5 w-5" /></div>
               <div className="fc-title">Compliance Auto-filing</div>
               <p className="fc-desc">
                 Every trade generates FEMA and GST reports automatically. Export as PDF or CSV. Audit trails are immutable, timestamped, and verifiable on-chain.
@@ -408,14 +377,14 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* BLOCKCHAIN */}
-      <section className="landing-section blockchain-section" id="blockchain">
+      {/* BLOCKCHAIN — white canvas */}
+      <section className="landing-section" id="blockchain">
         <div className="section-inner">
           <div className="blockchain-grid">
             <div className="reveal">
               <div className="section-eyebrow">On-chain settlement</div>
               <h2 className="section-title">Escrow that runs itself</h2>
-              <p className="section-body" style={{ marginBottom: '2.5rem' }}>
+              <p className="section-body">
                 Algorand smart contracts hold buyer funds until delivery is confirmed. No intermediaries. No delays. Fully auditable on a public ledger.
               </p>
               <ul className="bc-list">
@@ -448,38 +417,45 @@ export default function LandingPage() {
                 </li>
               </ul>
             </div>
-            <div className="blockchain-visual reveal reveal-delay-2">
-              <div className="bc-orbit" style={{ width: 200, height: 200 }}>
-                <div className="bc-node" style={{ top: -20, left: '50%', transform: 'translateX(-50%)' }}>
-                  <CreditCard className="h-4 w-4" />
+            <div className="reveal reveal-delay-2" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{
+                width: 280, height: 280, borderRadius: 'var(--radius-lg)',
+                background: 'var(--surface-soft)', border: '1px solid var(--hairline)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16,
+              }}>
+                <div style={{
+                  width: 64, height: 64, borderRadius: 'var(--radius-lg)',
+                  background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'var(--on-primary)',
+                }}>
+                  <Lock className="h-7 w-7" />
                 </div>
-                <div className="bc-node" style={{ bottom: -20, left: '50%', transform: 'translateX(-50%)' }}>
-                  <DollarSign className="h-4 w-4" />
-                </div>
-              </div>
-              <div className="bc-orbit" style={{ width: 320, height: 320 }}>
-                <div className="bc-node" style={{ top: -20, left: '50%', transform: 'translateX(-50%)' }}>
-                  <FileText className="h-4 w-4" />
-                </div>
-                <div className="bc-node" style={{ bottom: -20, left: '50%', transform: 'translateX(-50%)' }}>
-                  <Activity className="h-4 w-4" />
-                </div>
-                <div className="bc-node" style={{ left: -20, top: '50%', transform: 'translateY(-50%)' }}>
-                  <Lock className="h-4 w-4" />
-                </div>
-                <div className="bc-node" style={{ right: -20, top: '50%', transform: 'translateY(-50%)' }}>
-                  <BarChart3 className="h-4 w-4" />
-                </div>
-              </div>
-              <div className="bc-center">
-                <Lock className="h-8 w-8" />
+                <span style={{ fontSize: '.82rem', fontWeight: 500, color: 'var(--ink)' }}>Algorand Escrow</span>
+                <span style={{ fontSize: '.72rem', color: 'var(--text-muted)', textAlign: 'center', maxWidth: 200 }}>
+                  Smart contract holds funds until both parties confirm delivery
+                </span>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* TRUST */}
+      {/* DARK CTA CARD */}
+      <div className="dark-cta-band reveal">
+        <div className="section-eyebrow">Ready to transform procurement?</div>
+        <h2 className="section-title">
+          Start closing deals intelligently
+        </h2>
+        <p className="section-body">
+          Join 200+ enterprises already using Cadencia. Free to start, no credit card required.
+        </p>
+        <Link href="/register" className="btn-on-dark">
+          Get early access
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+
+      {/* TRUST — surface-soft canvas */}
       <section className="landing-section trust-section" id="trust">
         <div className="section-inner">
           <div className="reveal" style={{ textAlign: 'center' }}>
@@ -489,14 +465,6 @@ export default function LandingPage() {
             <h2 className="section-title" style={{ maxWidth: '100%', textAlign: 'center', margin: '0 auto .5rem' }}>
               Powering trade across sectors
             </h2>
-          </div>
-          <div className="companies-row reveal reveal-delay-1">
-            <span className="company-name">Tata Steel</span>
-            <span className="company-name">JSW Group</span>
-            <span className="company-name">Hindalco</span>
-            <span className="company-name">SAIL</span>
-            <span className="company-name">Ambuja Cements</span>
-            <span className="company-name">Reliance Retail</span>
           </div>
           <div className="testimonials-grid">
             <div className="tcard reveal reveal-delay-1">
@@ -539,36 +507,30 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="cta-section">
-        <div className="cta-glow" />
-        <div className="section-eyebrow">Ready to automate your trade desk?</div>
-        <h2 className="cta-title">
-          Start closing deals<br /><em>intelligently</em>
-        </h2>
-        <p className="cta-sub">
-          Join 200+ enterprises already using Cadencia. Free to start, no credit card required.
+      {/* LIGHT CTA BAND */}
+      <div className="light-cta-band reveal">
+        <h2 className="section-title">Start building with Cadencia</h2>
+        <p className="section-body">
+          Sign up in 2 minutes. No credit card required.
         </p>
         <div className="cta-form">
           <input type="email" className="cta-input" placeholder="Enter your work email" />
-          <Link href="/register" className="btn-cta-w">
+          <Link href="/register" className="btn-cta-submit">
             Get early access
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
-        <p style={{ marginTop: '1rem', fontSize: '.75rem', color: 'var(--muted-foreground)' }}>
+        <p style={{ marginTop: '1rem', fontSize: '.72rem', color: 'var(--text-muted)' }}>
           By signing up, you agree to our Terms of Service and Privacy Policy.
         </p>
-      </section>
+      </div>
 
       {/* FOOTER */}
       <footer className="landing-footer">
         <div className="footer-inner">
           <div className="footer-brand">
             <div className="footer-logo">
-              <div className="flm">
-                <CircleDot className="h-3.5 w-3.5" />
-              </div>
+              <div className="flm"><CircleDot className="h-3 w-3" /></div>
               Cadencia
             </div>
             <p className="footer-tagline">

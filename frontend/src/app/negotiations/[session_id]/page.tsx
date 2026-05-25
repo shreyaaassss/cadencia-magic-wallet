@@ -38,14 +38,14 @@ function GapMeter({ buyerOffers, sellerOffers }: { buyerOffers: number[]; seller
   if (!lastBuyer || !lastSeller) return null;
 
   const gap = Math.abs(lastSeller - lastBuyer) / Math.min(lastBuyer, lastSeller) * 100;
-  const gapColor = gap <= 2 ? 'text-green-400' : gap <= 5 ? 'text-emerald-400' : gap <= 10 ? 'text-amber-400' : 'text-red-400';
+  const gapColor = gap <= 2 ? 'text-green-600' : gap <= 5 ? 'text-emerald-600' : gap <= 10 ? 'text-amber-600' : 'text-red-600';
   const barColor = gap <= 2 ? 'bg-green-500' : gap <= 5 ? 'bg-emerald-500' : gap <= 10 ? 'bg-amber-500' : 'bg-red-500';
   const fillPct = Math.max(0, 100 - gap * 5);
 
   return (
     <div className="flex items-center gap-3 bg-secondary/50 border border-border rounded-lg px-4 py-2.5 mt-3">
       <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0 flex-1">
-        <span className="font-mono font-semibold text-blue-400 shrink-0">{formatCurrency(lastSeller)}</span>
+        <span className="font-mono font-semibold text-blue-600 shrink-0">{formatCurrency(lastSeller)}</span>
         <span className="text-muted-foreground/40 shrink-0">Seller</span>
 
         <div className="flex-1 flex items-center gap-1 min-w-[80px] mx-1">
@@ -58,12 +58,12 @@ function GapMeter({ buyerOffers, sellerOffers }: { buyerOffers: number[]; seller
         </div>
 
         <span className="text-muted-foreground/40 shrink-0">Buyer</span>
-        <span className="font-mono font-semibold text-emerald-400 shrink-0">{formatCurrency(lastBuyer)}</span>
+        <span className="font-mono font-semibold text-emerald-600 shrink-0">{formatCurrency(lastBuyer)}</span>
       </div>
       <div className={cn('shrink-0 font-bold tabular-nums text-sm px-2 py-0.5 rounded border', gapColor,
-        gap <= 2 ? 'bg-green-950/50 border-green-900/40' :
-        gap <= 5 ? 'bg-emerald-950/50 border-emerald-900/40' :
-        gap <= 10 ? 'bg-amber-950/50 border-amber-900/40' : 'bg-red-950/50 border-red-900/40'
+        gap <= 2 ? 'bg-green-50 border-green-200' :
+        gap <= 5 ? 'bg-emerald-50 border-emerald-200' :
+        gap <= 10 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'
       )}>
         {gap.toFixed(1)}% gap
       </div>
@@ -219,7 +219,7 @@ export default function NegotiationRoomPage() {
                 <StatusBadge status={sessionStatus} />
                 <div className="flex items-center gap-1.5">
                   {isConnected ? (
-                    <><Circle className="h-2 w-2 fill-green-500 text-green-500" /><span className="text-xs text-green-500 font-medium">Live</span></>
+                    <><Circle className="h-2 w-2 fill-green-500 text-green-600" /><span className="text-xs text-green-600 font-medium">Live</span></>
                   ) : (
                     <><Circle className="h-2 w-2 fill-amber-500/50 text-amber-500 animate-pulse" /><span className="text-xs text-muted-foreground">Syncing</span></>
                   )}
@@ -228,9 +228,9 @@ export default function NegotiationRoomPage() {
 
               {/* Participants */}
               <p className="text-sm text-foreground font-medium mb-1">
-                <span className="text-emerald-400">You ({yourRole})</span>
+                <span className="text-emerald-600">You ({yourRole})</span>
                 <span className="mx-2 text-muted-foreground">↔</span>
-                <span className="text-blue-400">{opponent ?? '—'}</span>
+                <span className="text-blue-600">{opponent ?? '—'}</span>
               </p>
 
               {/* Round progress */}
@@ -247,7 +247,7 @@ export default function NegotiationRoomPage() {
                   />
                 </div>
                 {agreedPrice && (
-                  <span className="text-sm text-green-400 font-semibold">
+                  <span className="text-sm text-green-600 font-semibold">
                     ✓ {formatCurrency(agreedPrice)}
                   </span>
                 )}
@@ -302,10 +302,10 @@ export default function NegotiationRoomPage() {
         )}
 
         {sessionStatus === 'AGREED' && (
-          <div className="flex items-center gap-3 bg-green-950 border border-green-900 rounded-lg p-4 mb-4">
-            <CheckCircle2 className="h-5 w-5 text-green-400 shrink-0" />
+          <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+            <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
             <div className="flex-1">
-              <p className="text-sm font-semibold text-green-400">Deal Agreed</p>
+              <p className="text-sm font-semibold text-green-600">Deal Agreed</p>
               <p className="text-xs text-muted-foreground">Final price: {formatCurrency(agreedPrice ?? 0)}</p>
             </div>
             <Button size="sm" onClick={() => router.push(`/escrow?session=${sessionId}`)}
@@ -316,7 +316,7 @@ export default function NegotiationRoomPage() {
         )}
 
         {(sessionStatus === 'FAILED' || sessionStatus === 'WALK_AWAY') && (
-          <div className="flex items-center gap-3 bg-red-950 border border-red-900 rounded-lg p-4 mb-4">
+          <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
             <XCircle className="h-5 w-5 text-destructive shrink-0" />
             <div>
               <p className="text-sm font-semibold text-destructive">
@@ -332,10 +332,10 @@ export default function NegotiationRoomPage() {
         )}
 
         {stallWarning && isActive && (
-          <div className="flex items-center gap-3 bg-amber-950 border border-amber-900 rounded-lg p-4 mb-4">
-            <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
+          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
             <div className="flex-1">
-              <p className="text-sm font-semibold text-amber-400">Stall Detected</p>
+              <p className="text-sm font-semibold text-amber-600">Stall Detected</p>
               <p className="text-xs text-muted-foreground">Agents have not made meaningful concessions — consider manual override.</p>
             </div>
             <Button size="sm" onClick={() => { setShowOverride(true); setStallWarning(false); }}
@@ -392,7 +392,7 @@ export default function NegotiationRoomPage() {
                 <UserCog className="h-4 w-4 mr-2" />Override
               </Button>
               <Button variant="outline" onClick={() => setShowEndDialog(true)}
-                className="text-destructive border-destructive/40 hover:bg-red-950">
+                className="text-destructive border-destructive/40 hover:bg-red-50">
                 <StopCircle className="h-4 w-4 mr-2" />End
               </Button>
             </div>

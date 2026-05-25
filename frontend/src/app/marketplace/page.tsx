@@ -331,13 +331,13 @@ export default function MarketplacePage() {
                 </p>
 
                 {!isWalletConnected ? (
-                  <p className="text-xs text-amber-400 flex items-center gap-1.5">
+                  <p className="text-xs text-amber-600 flex items-center gap-1.5">
                     <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                     Connect your Algorand wallet first (Settings → Wallet)
                   </p>
                 ) : analytics ? (
                   <div className="space-y-2">
-                    <p className="text-xs text-green-500 font-medium mb-2">✓ Payment confirmed</p>
+                    <p className="text-xs text-green-600 font-medium mb-2">✓ Payment confirmed</p>
                     <pre className="text-xs text-muted-foreground bg-muted rounded p-3 overflow-x-auto whitespace-pre-wrap break-all">
                       {JSON.stringify(analytics, null, 2)}
                     </pre>

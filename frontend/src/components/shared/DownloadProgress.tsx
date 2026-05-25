@@ -33,7 +33,7 @@ export function DownloadProgress({ status, progress, downloadUrl, onRetry, onExp
   if (status === 'ready' && downloadUrl) {
     return (
       <div className="flex items-center gap-3">
-        <span className="text-sm text-green-500 flex items-center gap-1">
+        <span className="text-sm text-green-600 flex items-center gap-1">
           <Download className="h-4 w-4" /> Ready
         </span>
         <Button onClick={() => window.open(downloadUrl, '_blank')} className="bg-primary text-primary-foreground hover:opacity-90 transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_4px_16px_hsl(var(--primary)/0.3)] min-w-[140px]">

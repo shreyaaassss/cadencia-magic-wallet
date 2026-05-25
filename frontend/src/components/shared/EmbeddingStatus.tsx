@@ -11,8 +11,8 @@ interface EmbeddingStatusProps {
 }
 
 const statusConfig: Record<string, { icon: React.ElementType; label: string; className: string; animate?: string }> = {
-  active:   { icon: CheckCircle2, label: 'Active',      className: 'text-green-400' },
-  queued:   { icon: Loader2,      label: 'Processing...', className: 'text-amber-400', animate: 'animate-spin' },
+  active:   { icon: CheckCircle2, label: 'Active',      className: 'text-green-700' },
+  queued:   { icon: Loader2,      label: 'Processing...', className: 'text-amber-600', animate: 'animate-spin' },
   failed:   { icon: AlertCircle,  label: 'Failed',       className: 'text-destructive' },
   outdated: { icon: Clock,        label: 'Outdated',     className: 'text-muted-foreground' },
 };

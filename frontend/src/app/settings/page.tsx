@@ -430,7 +430,7 @@ export default function SettingsPage() {
                         e.stopPropagation();
                         setRevokeTarget(row);
                       }}
-                      className="text-muted-foreground hover:text-destructive hover:bg-red-950"
+                      className="text-muted-foreground hover:text-destructive hover:bg-red-50"
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>

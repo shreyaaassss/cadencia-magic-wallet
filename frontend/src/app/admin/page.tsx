@@ -290,7 +290,7 @@ export default function AdminPage() {
                   {recentActivity.length > 0 ? (
                     recentActivity.map((item, idx) => (
                       <div key={item.id} className={`flex gap-3 items-start py-2 ${idx < recentActivity.length - 1 ? 'border-b border-border' : ''}`}>
-                        <div className={`p-2 rounded-md ${item.event_type === 'escrow' ? 'bg-primary/20' : 'bg-blue-500/20'}`}>
+                        <div className={`p-2 rounded-md ${item.event_type === 'escrow' ? 'bg-surface-soft' : 'bg-blue-50'}`}>
                           {item.event_type === 'escrow' ? <Landmark className="h-4 w-4 text-primary" /> : <Cpu className="h-4 w-4 text-blue-500" />}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -697,7 +697,7 @@ export default function AdminPage() {
                         <td className="px-6 py-4 text-center font-mono text-xs">{log.round}</td>
                         <td className="px-6 py-4"><StatusBadge status={log.agent} size="sm" /></td>
                         <td className="px-6 py-4">
-                          <span className={`font-mono text-xs font-medium ${log.latency_ms < 500 ? 'text-green-500' : log.latency_ms < 2000 ? 'text-amber-500' : 'text-destructive'}`}>
+                          <span className={`font-mono text-xs font-medium ${log.latency_ms < 500 ? 'text-green-600' : log.latency_ms < 2000 ? 'text-amber-500' : 'text-destructive'}`}>
                             {log.latency_ms}ms
                           </span>
                         </td>

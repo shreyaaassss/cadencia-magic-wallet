@@ -7,8 +7,8 @@ interface HealthBadgeProps {
 }
 
 const config: Record<string, { label: string; dotClass: string; textClass: string; ringClass: string }> = {
-  healthy:  { label: 'Operational', dotClass: 'bg-green-500',          textClass: 'text-green-400',          ringClass: 'ring-2 ring-green-500/30 animate-pulse' },
-  degraded: { label: 'Degraded',    dotClass: 'bg-amber-500',          textClass: 'text-amber-400',          ringClass: '' },
+  healthy:  { label: 'Operational', dotClass: 'bg-green-500',          textClass: 'text-green-700',          ringClass: 'ring-2 ring-green-500/30 animate-pulse' },
+  degraded: { label: 'Degraded',    dotClass: 'bg-amber-500',          textClass: 'text-amber-600',          ringClass: '' },
   down:     { label: 'Down',        dotClass: 'bg-destructive',        textClass: 'text-destructive',        ringClass: '' },
   unknown:  { label: 'Unknown',     dotClass: 'bg-muted-foreground',   textClass: 'text-muted-foreground',   ringClass: '' },
 };

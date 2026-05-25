@@ -27,10 +27,10 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 const healthDisplay: Record<string, { fill: string; text: string; label: string }> = {
-  healthy:  { fill: 'fill-green-500 text-green-500',               text: 'text-muted-foreground', label: 'Operational' },
-  degraded: { fill: 'fill-amber-500 text-amber-500',               text: 'text-muted-foreground', label: 'Degraded' },
-  down:     { fill: 'fill-destructive text-destructive',            text: 'text-muted-foreground', label: 'Down' },
-  unknown:  { fill: 'fill-muted-foreground text-muted-foreground',  text: 'text-muted-foreground', label: 'Checking...' },
+  healthy:  { fill: 'fill-green-600 text-green-600',         text: 'text-muted-foreground', label: 'Operational' },
+  degraded: { fill: 'fill-amber-500 text-amber-500',         text: 'text-muted-foreground', label: 'Degraded' },
+  down:     { fill: 'fill-destructive text-destructive',      text: 'text-muted-foreground', label: 'Down' },
+  unknown:  { fill: 'fill-muted-foreground text-muted-foreground', text: 'text-muted-foreground', label: 'Checking...' },
 };
 
 export function TopBar() {
@@ -46,9 +46,9 @@ export function TopBar() {
   const hd = healthDisplay[status] ?? healthDisplay.unknown;
 
   return (
-    <header className="h-14 border-b border-border bg-background flex items-center justify-between px-6 shrink-0">
+    <header className="h-16 border-b border-hairline bg-white flex items-center justify-between px-6 shrink-0">
 
-      <h1 className="text-base font-semibold text-foreground">{title}</h1>
+      <h1 className="text-base font-medium text-ink">{title}</h1>
 
       <div className="flex items-center gap-3">
 
@@ -59,7 +59,7 @@ export function TopBar() {
         </div>
 
         {/* Notifications */}
-        <Button variant="ghost" size="icon" className="h-8 w-8 relative hover:bg-accent">
+        <Button variant="ghost" size="icon" className="h-8 w-8 relative">
           <Bell className="h-4 w-4 text-muted-foreground" />
         </Button>
 
@@ -71,9 +71,9 @@ export function TopBar() {
         {/* User dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-accent">
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
               <Avatar className="h-7 w-7">
-                <AvatarFallback className="bg-secondary text-primary text-xs font-semibold">
+                <AvatarFallback className="bg-surface-soft text-ink text-xs font-medium border border-hairline">
                   {initials}
                 </AvatarFallback>
               </Avatar>
@@ -81,29 +81,29 @@ export function TopBar() {
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
-            className="w-56 bg-popover border-border text-popover-foreground"
+            className="w-56"
           >
             <DropdownMenuLabel>
-              <p className="text-sm font-medium text-foreground">{user?.full_name ?? 'User'}</p>
+              <p className="text-sm font-medium text-ink">{user?.full_name ?? 'User'}</p>
               <p className="text-xs text-muted-foreground font-normal">{user?.email ?? ''}</p>
             </DropdownMenuLabel>
-            <DropdownMenuSeparator className="bg-border" />
-            <DropdownMenuItem asChild className="cursor-pointer hover:bg-accent">
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild className="cursor-pointer">
               <Link href={ROUTES.SETTINGS} className="flex items-center gap-2">
                 <Settings className="h-4 w-4" />
                 Settings
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild className="cursor-pointer hover:bg-accent">
+            <DropdownMenuItem asChild className="cursor-pointer">
               <Link href={ROUTES.WALLET} className="flex items-center gap-2">
                 <Wallet className="h-4 w-4" />
                 Wallet
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuSeparator className="bg-border" />
+            <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={logout}
-              className="cursor-pointer text-destructive hover:bg-red-950 focus:text-destructive flex items-center gap-2"
+              className="cursor-pointer text-destructive focus:text-destructive flex items-center gap-2"
             >
               <LogOut className="h-4 w-4" />
               Sign Out

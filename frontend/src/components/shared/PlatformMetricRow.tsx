@@ -24,7 +24,7 @@ export function PlatformMetricRow({ label, value, icon: Icon, unit, trend }: Pla
       </div>
       {trend && (
         <div className={`shrink-0 text-xs font-medium px-2 py-1 rounded ${
-          trend === 'up' ? 'text-green-500 bg-green-500/10' :
+          trend === 'up' ? 'text-green-600 bg-green-50' :
           trend === 'down' ? 'text-destructive bg-destructive/10' :
           'text-muted-foreground bg-muted'
         }`}>

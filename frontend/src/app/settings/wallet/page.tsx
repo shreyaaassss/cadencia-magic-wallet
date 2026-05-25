@@ -70,7 +70,7 @@ export default function WalletPage() {
             <div className="bg-card border border-border rounded-lg p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold text-foreground">Linked Wallet</h3>
-                <span className="inline-flex items-center gap-1 text-xs text-green-500 bg-green-500/10 px-2 py-1 rounded-full">
+                <span className="inline-flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
                   <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
                   {isLinked ? 'Linked' : 'Pending link'}
                 </span>

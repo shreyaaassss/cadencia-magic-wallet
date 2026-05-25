@@ -7,31 +7,31 @@ interface StatusBadgeProps {
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   // Trade roles
-  BUYER:         { label: 'Buyer',         className: 'bg-green-950 text-green-400 border-green-900' },
-  SELLER:        { label: 'Seller',        className: 'bg-blue-950 text-blue-400 border-blue-900' },
+  BUYER:         { label: 'Buyer',         className: 'bg-green-50 text-green-700 border-green-200' },
+  SELLER:        { label: 'Seller',        className: 'bg-blue-50 text-blue-700 border-blue-200' },
   BOTH:          { label: 'Buyer & Seller', className: 'bg-secondary text-secondary-foreground border-border' },
 
   // Green — success states
-  ACTIVE:        { label: 'Active',        className: 'bg-green-950 text-green-400 border-green-900' },
-  AGREED:        { label: 'Agreed',        className: 'bg-green-950 text-green-400 border-green-900' },
-  MATCHED:       { label: 'Matched',       className: 'bg-green-950 text-green-400 border-green-900' },
-  RELEASED:      { label: 'Released',      className: 'bg-green-950 text-green-400 border-green-900' },
-  KYCD:          { label: 'KYC Active',    className: 'bg-green-950 text-green-400 border-green-900' },
+  ACTIVE:        { label: 'Active',        className: 'bg-green-50 text-green-700 border-green-200' },
+  AGREED:        { label: 'Agreed',        className: 'bg-green-50 text-green-700 border-green-200' },
+  MATCHED:       { label: 'Matched',       className: 'bg-green-50 text-green-700 border-green-200' },
+  RELEASED:      { label: 'Released',      className: 'bg-green-50 text-green-700 border-green-200' },
+  KYCD:          { label: 'KYC Active',    className: 'bg-green-50 text-green-700 border-green-200' },
 
   // Amber — in-progress states
-  PENDING:       { label: 'Pending',       className: 'bg-amber-950 text-amber-400 border-amber-900' },
-  PENDING_APPROVAL: { label: 'Pending Approval', className: 'bg-amber-950 text-amber-400 border-amber-900' },
-  PARSED:        { label: 'Parsed',        className: 'bg-amber-950 text-amber-400 border-amber-900' },
-  DEPLOYED:      { label: 'Deployed',      className: 'bg-amber-950 text-amber-400 border-amber-900' },
-  STALLED:       { label: 'Stalled',       className: 'bg-amber-950 text-amber-400 border-amber-900' },
-  NEGOTIATING:   { label: 'Negotiating',   className: 'bg-purple-950 text-purple-400 border-purple-900' },
+  PENDING:       { label: 'Pending',       className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  PENDING_APPROVAL: { label: 'Pending Approval', className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  PARSED:        { label: 'Parsed',        className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  DEPLOYED:      { label: 'Deployed',      className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  STALLED:       { label: 'Stalled',       className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  NEGOTIATING:   { label: 'Negotiating',   className: 'bg-purple-50 text-purple-700 border-purple-200' },
 
   // Blue — confirmed states
-  CONFIRMED:     { label: 'Confirmed',     className: 'bg-blue-950 text-blue-400 border-blue-900' },
-  FUNDED:        { label: 'Funded',        className: 'bg-blue-950 text-blue-400 border-blue-900' },
-  DISPATCHED:    { label: 'Dispatched',   className: 'bg-indigo-950 text-indigo-400 border-indigo-900' },
-  WALLET_LINKED: { label: 'Wallet Linked', className: 'bg-blue-950 text-blue-400 border-blue-900' },
-  ADMIN:         { label: 'Admin',         className: 'bg-blue-950 text-blue-400 border-blue-900' },
+  CONFIRMED:     { label: 'Confirmed',     className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  FUNDED:        { label: 'Funded',        className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  DISPATCHED:    { label: 'Dispatched',   className: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  WALLET_LINKED: { label: 'Wallet Linked', className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  ADMIN:         { label: 'Admin',         className: 'bg-blue-50 text-blue-700 border-blue-200' },
 
   // Muted — neutral / initial states
   DRAFT:         { label: 'Draft',         className: 'bg-muted text-muted-foreground border-border' },
@@ -40,10 +40,10 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   TERMINATED:    { label: 'Terminated',    className: 'bg-muted text-muted-foreground border-border' },
 
   // Red — error / failure states
-  FAILED:        { label: 'Failed',        className: 'bg-red-950 text-destructive border-red-900' },
-  REJECTED:      { label: 'Rejected',      className: 'bg-red-950 text-destructive border-red-900' },
-  FROZEN:        { label: 'Frozen',        className: 'bg-red-950 text-destructive border-red-900' },
-  REFUNDED:      { label: 'Refunded',      className: 'bg-red-950 text-destructive border-red-900' },
+  FAILED:        { label: 'Failed',        className: 'bg-red-50 text-red-700 border-red-200' },
+  REJECTED:      { label: 'Rejected',      className: 'bg-red-50 text-red-700 border-red-200' },
+  FROZEN:        { label: 'Frozen',        className: 'bg-red-50 text-red-700 border-red-200' },
+  REFUNDED:      { label: 'Refunded',      className: 'bg-red-50 text-red-700 border-red-200' },
 };
 
 export function StatusBadge({ status, size = 'sm' }: StatusBadgeProps) {

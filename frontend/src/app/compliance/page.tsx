@@ -216,7 +216,7 @@ export default function CompliancePage() {
                                     {log.entry_hash.substring(0, 16)}...
                                   </span>
                                   <button onClick={() => copyToClipboard(log.entry_hash)} className="text-muted-foreground hover:text-foreground">
-                                    {copiedHash === log.entry_hash ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                                    {copiedHash === log.entry_hash ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
                                   </button>
                                 </div>
                               </td>

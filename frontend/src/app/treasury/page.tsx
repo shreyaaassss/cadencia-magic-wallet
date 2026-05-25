@@ -100,7 +100,7 @@ export default function TreasuryPage() {
                   key: 'unrealized_pnl', label: 'Unrealized PnL',
                   render: (v) => {
                     const pnl = Number(v);
-                    const color = pnl > 0 ? 'text-green-500' : pnl < 0 ? 'text-red-500' : 'text-muted-foreground';
+                    const color = pnl > 0 ? 'text-green-600' : pnl < 0 ? 'text-red-500' : 'text-muted-foreground';
                     const Icon = pnl > 0 ? ArrowUpRight : pnl < 0 ? ArrowDownRight : Minus;
                     return (
                       <span className={`inline-flex items-center gap-1 ${color}`}>
@@ -127,7 +127,7 @@ export default function TreasuryPage() {
           />
 
           {forecast?.alert && (
-            <div className="flex items-start gap-2 bg-amber-950/50 border border-amber-500/30 rounded-lg p-3 text-sm text-amber-400 mb-4">
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-600 mb-4">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
               <span>{forecast.alert}</span>
             </div>

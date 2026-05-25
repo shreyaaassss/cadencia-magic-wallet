@@ -83,11 +83,11 @@ export function BroadcastForm({ onSend, isSending, lastResult }: BroadcastFormPr
       <div className="mb-6">
         <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-2">Message Preview</label>
         <div className={`p-4 rounded-md text-sm ${
-          isUrgent ? 'bg-amber-950/30 border border-amber-500/30 text-amber-50' : 
+          isUrgent ? 'bg-amber-50 border border-amber-200 text-amber-800' :
           isSystem ? 'bg-muted/70 border border-border text-muted-foreground' : 
           'bg-card border border-border text-foreground'
         }`}>
-          {isUrgent && <div className="flex items-center gap-1.5 text-amber-500 font-bold mb-2 text-xs uppercase tracking-wider max-w-fit px-2 py-0.5 rounded bg-amber-500/10"><AlertCircle className="h-3 w-3" /> Urgent Notice</div>}
+          {isUrgent && <div className="flex items-center gap-1.5 text-amber-500 font-bold mb-2 text-xs uppercase tracking-wider max-w-fit px-2 py-0.5 rounded bg-amber-50"><AlertCircle className="h-3 w-3" /> Urgent Notice</div>}
           {isSystem && <div className="text-muted-foreground font-semibold mb-2 text-xs uppercase tracking-wider">System Announcement</div>}
           <div className="whitespace-pre-wrap">{message || 'Your message will appear here...'}</div>
         </div>
@@ -96,7 +96,7 @@ export function BroadcastForm({ onSend, isSending, lastResult }: BroadcastFormPr
       <div className="flex items-center justify-between border-t border-border pt-6">
         <div>
           {lastResult && (
-            <span className="flex items-center gap-1.5 text-sm text-green-500 bg-green-950/20 px-3 py-1.5 rounded-md border border-green-900/30">
+            <span className="flex items-center gap-1.5 text-sm text-green-600 bg-green-50 px-3 py-1.5 rounded-md border border-green-200">
               <CheckCircle2 className="h-4 w-4" />
               Delivered to {lastResult.recipients} users
             </span>

@@ -36,9 +36,9 @@ const navItems: NavItem[] = [
 const adminItem: NavItem = { label: 'Admin', href: ROUTES.ADMIN, icon: ShieldCheck, roles: ['ADMIN'] };
 
 const TRADE_ROLE_BADGE: Record<string, { label: string; className: string }> = {
-  BUYER:  { label: 'Buyer',          className: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
-  SELLER: { label: 'Seller',         className: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
-  BOTH:   { label: 'Buyer & Seller', className: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
+  BUYER:  { label: 'Buyer',          className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  SELLER: { label: 'Seller',         className: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  BOTH:   { label: 'Buyer & Seller', className: 'bg-amber-50 text-amber-700 border-amber-200' },
 };
 
 export function Sidebar() {
@@ -73,15 +73,15 @@ export function Sidebar() {
   const allItems = isAdmin ? [...visibleItems, adminItem] : visibleItems;
 
   return (
-    <aside className="w-60 min-h-screen bg-sidebar border-r border-sidebar-border flex flex-col shrink-0">
+    <aside className="w-60 min-h-screen bg-white border-r border-hairline flex flex-col shrink-0">
 
       {/* Enterprise header */}
-      <div className="p-4 border-b border-sidebar-border">
+      <div className="p-4 border-b border-hairline">
         <div className="flex items-center gap-2 mb-2">
-          <div className="bg-sidebar-accent rounded-md p-1.5">
-            <Building2 className="h-4 w-4 text-sidebar-foreground" />
+          <div className="bg-surface-soft rounded-md p-1.5">
+            <Building2 className="h-4 w-4 text-ink" />
           </div>
-          <span className="text-sm font-semibold text-sidebar-foreground truncate">
+          <span className="text-sm font-medium text-ink truncate">
             {enterprise?.legal_name ?? 'Cadencia'}
           </span>
         </div>
@@ -109,10 +109,10 @@ export function Sidebar() {
               key={href}
               href={href}
               className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
                 isActive
-                  ? 'bg-secondary text-primary font-medium'
-                  : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                  ? 'bg-surface-soft text-ink font-medium'
+                  : 'text-body hover:bg-surface-soft hover:text-ink'
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
@@ -123,10 +123,10 @@ export function Sidebar() {
       </nav>
 
       {/* User footer */}
-      <div className="p-3 border-t border-sidebar-border">
+      <div className="p-3 border-t border-hairline">
         <div className="flex items-center justify-between px-2 py-1.5">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">
+            <p className="text-sm font-medium text-ink truncate">
               {user?.full_name ?? 'User'}
             </p>
             <p className="text-xs text-muted-foreground truncate">
@@ -135,7 +135,7 @@ export function Sidebar() {
           </div>
           <button
             onClick={logout}
-            className="ml-2 p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-sidebar-accent transition-colors shrink-0"
+            className="ml-2 p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-surface-soft transition-colors shrink-0"
             title="Sign out"
           >
             <LogOut className="h-4 w-4" />

@@ -25,14 +25,14 @@ export function HashChainVerifier({ onVerify, isVerifying, verification }: HashC
   if (verification) {
     if (verification.is_valid) {
       return (
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium bg-green-950/30 text-green-500 border border-green-900/50">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium bg-green-50 text-green-600 border border-green-200">
           <CheckCircle2 className="h-3 w-3" />
           Chain Valid ({verification.chain_length} entries)
         </div>
       );
     } else {
       return (
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium bg-red-950/30 text-destructive border border-red-900/50">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium bg-red-50 text-destructive border border-red-200">
           <AlertCircle className="h-3 w-3" />
           Chain Invalid
         </div>
