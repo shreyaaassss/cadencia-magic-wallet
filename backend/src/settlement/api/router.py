@@ -1292,7 +1292,10 @@ async def submit_signed_fund(
     import base64
     from algosdk import encoding
 
-    allowed_senders = {escrow.buyer_address}
+    # Build set of allowed sender addresses (all as plain strings)
+    allowed_senders: set[str] = set()
+    if escrow.buyer_address:
+        allowed_senders.add(str(escrow.buyer_address))
     if current_user.enterprise_id:
         from src.identity.infrastructure.repositories import PostgresEnterpriseRepository
         from src.shared.infrastructure.db.session import get_session_factory
@@ -1301,7 +1304,14 @@ async def submit_signed_fund(
             ent_repo = PostgresEnterpriseRepository(db)
             enterprise = await ent_repo.get_by_id(current_user.enterprise_id)
             if enterprise and enterprise.algorand_wallet:
-                allowed_senders.add(enterprise.algorand_wallet)
+                # algorand_wallet is an AlgorandAddress value object — extract .value
+                wallet_str = (
+                    enterprise.algorand_wallet.value
+                    if hasattr(enterprise.algorand_wallet, "value")
+                    else str(enterprise.algorand_wallet)
+                )
+                if wallet_str:
+                    allowed_senders.add(wallet_str)
 
     for b64_txn in request_body.signed_transactions:
         try:
