@@ -10,7 +10,15 @@ import algosdk from 'algosdk';
 import { Building2, AlertCircle, Loader2, ShieldCheck, Wallet, Mail } from 'lucide-react';
 
 import { useAuth } from '@/hooks/useAuth';
-import { useWallet } from '@txnlab/use-wallet-react';
+import { useWallet as _useWallet } from '@txnlab/use-wallet-react';
+
+function useWalletSafe() {
+  try {
+    return _useWallet();
+  } catch {
+    return { activeAddress: null, wallets: [], signTransactions: async () => [] as any, activeWallet: null } as any;
+  }
+}
 import { ROUTES } from '@/lib/constants';
 import { api } from '@/lib/api';
 import { FormField } from '@/components/shared/FormField';
@@ -38,7 +46,7 @@ type AuthTab = 'magic' | 'web3';
 export default function LoginPage() {
   const router = useRouter();
   const { user, isLoading, login, adminLogin, web3Login } = useAuth();
-  const txnLab = useWallet();
+  const txnLab = useWalletSafe();
 
   const [activeTab, setActiveTab] = React.useState<AuthTab>('magic');
   const [globalError, setGlobalError] = React.useState<string | null>(null);

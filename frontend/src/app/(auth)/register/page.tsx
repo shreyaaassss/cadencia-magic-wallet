@@ -11,7 +11,15 @@ import { toast } from 'sonner';
 import algosdk from 'algosdk';
 
 import { useAuth } from '@/hooks/useAuth';
-import { useWallet as useTxnLabWallet } from '@txnlab/use-wallet-react';
+import { useWallet as _useTxnLabWallet } from '@txnlab/use-wallet-react';
+
+function useTxnLabWalletSafe() {
+  try {
+    return _useTxnLabWallet();
+  } catch {
+    return { activeAddress: null, wallets: [], signTransactions: async () => [] as any, activeWallet: null } as any;
+  }
+}
 import { api } from '@/lib/api';
 import { formatCurrency, cn } from '@/lib/utils';
 import { ROUTES as AppRoutes } from '@/lib/constants';
@@ -151,7 +159,7 @@ export default function RegisterPage() {
   const searchParams = useSearchParams();
   const auth = useAuth();
   const { user, isLoading } = auth;
-  const txnLab = useTxnLabWallet();
+  const txnLab = useTxnLabWalletSafe();
 
   const roleParam = searchParams.get('role')?.toUpperCase();
   const defaultTradeRole = roleParam === 'BUYER' ? 'BUYER' : roleParam === 'SELLER' ? 'SELLER' : undefined;
