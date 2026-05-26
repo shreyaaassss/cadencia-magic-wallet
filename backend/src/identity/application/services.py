@@ -546,7 +546,7 @@ class IdentityService:
         enterprise = await self._enterprises.get_by_wallet_address(wallet_address)
         if enterprise is None:
             raise NotFoundError(
-                "No account linked to this wallet address. Please register first."
+                "Enterprise", f"wallet:{wallet_address[:8]}..."
             )
 
         # Find any active user belonging to this enterprise
