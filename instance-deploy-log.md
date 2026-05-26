@@ -29,25 +29,77 @@
 | **Database** | Docker → pgvector/pgvector:pg15 | 5432 |
 | **Redis** | System service | 6379 |
 
-## Deployment Method
+## CI/CD Pipeline
 
-- Build frontend **locally** (the instance has only 2GB RAM, too low for `npm install` + `next build`)
-- `tar czf` the `.next/standalone`, `.next/static`, and `public` directories
-- `scp` the tarball to the instance
-- Extract into `~/cadencia/frontend/`, copy static assets into standalone
-- `pm2 restart cadencia-frontend`
+**Workflow:** `.github/workflows/deploy.yml`
+**Trigger:** Push to `main` or manual `workflow_dispatch`
+**Average deploy time:** ~2.5 minutes
 
-## Keys & Secrets
+### Pipeline Steps
+
+```
+Push to main
+  → GitHub Actions runner (ubuntu-latest, 7GB RAM)
+  → Install frontend deps (npm ci)
+  → Build Next.js standalone (with env vars from GitHub Secrets)
+  → Package frontend (.next/standalone + .next/static + public) into tarball
+  → Package backend source into tarball
+  → SCP both tarballs to EC2 instance
+  → Extract frontend → pm2 restart cadencia-frontend
+  → Extract backend → pm2 restart cadencia-backend
+  → Health check (frontend HTTP 200 + backend /health = healthy)
+```
+
+### GitHub Secrets
+
+| Secret | Purpose |
+|--------|---------|
+| `EC2_HOST` | `13.204.194.47` (Cadencia-Magic-Wallet instance) |
+| `EC2_USER` | `ec2-user` |
+| `EC2_SSH_KEY` | PEM private key for SSH access |
+| `NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY` | Magic.link publishable key (baked into frontend build) |
+| `MAGIC_SECRET_KEY` | Magic.link secret key (set in backend `.env` on instance) |
+
+### Why build in CI (not on instance)?
+
+The instance is a `t4g.small` (2GB RAM) — `npm install` + `next build` requires ~4GB and causes OOM kills.
+GitHub Actions runners have 7GB RAM, so the build runs reliably there. Only the pre-built output is uploaded to the instance.
+
+## Deployment Method (manual fallback)
+
+If CI/CD is unavailable, deploy manually:
+
+```bash
+# Build locally
+cd frontend && npx next build --webpack
+
+# Package
+tar czf /tmp/frontend-deploy.tar.gz .next/standalone .next/static public
+
+# Upload
+scp -i <pem-key> /tmp/frontend-deploy.tar.gz ec2-user@13.204.194.47:/tmp/
+
+# Deploy
+ssh -i <pem-key> ec2-user@13.204.194.47 "
+  cd ~/cadencia/frontend && rm -rf .next &&
+  tar xzf /tmp/frontend-deploy.tar.gz &&
+  cp -r .next/static .next/standalone/.next/static &&
+  cp -r public .next/standalone/public &&
+  pm2 restart cadencia-frontend
+"
+```
+
+## Keys & Secrets (on instance)
 
 | Key | Where it's set |
 |-----|----------------|
-| `NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY` | Baked at build time (build arg) |
-| `MAGIC_SECRET_KEY` | Backend `.env` on instance |
+| `NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY` | Baked at build time via GitHub Secrets |
+| `MAGIC_SECRET_KEY` | Backend `~/cadencia/backend/.env` on instance |
 | Backend `.env` | `~/cadencia/backend/.env` on instance |
 
 ## Other Instances (not in use)
 
 | Instance ID | Name | IP | Status | Notes |
 |-------------|------|----|--------|-------|
-| `i-0d107e1399d17af09` | Cadencia-New | 13.232.223.160 | running | Docker Compose setup, DNS not pointing here |
-| `i-0710c784e9ed08a29` | cadencia-demo | 3.111.135.76 | stopped | Legacy demo |
+| `i-0d107e1399d17af09` | Cadencia-New | 13.232.223.160 | **stopped** | Docker Compose setup, not in use |
+| `i-0710c784e9ed08a29` | cadencia-demo | 3.111.135.76 | **stopped** | Legacy demo |
