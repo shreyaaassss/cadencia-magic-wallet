@@ -84,13 +84,24 @@ def _normalize_rfq_budget(fields: dict) -> dict:
                 total = round(per_unit * qty, 2)
                 fields["budget_max"] = total
                 fields["total_budget_inr"] = fields["budget_max"]
+                # Use explicit per-unit minimum if extracted (e.g. "70k–90k/unit" → min=70k×qty)
+                per_unit_min = fields.get("budget_per_unit_min")
+                if per_unit_min is not None:
+                    try:
+                        min_total = round(float(per_unit_min) * qty, 2)
+                        if min_total > 0:
+                            fields["budget_min"] = min_total
+                    except (TypeError, ValueError):
+                        pass
                 if not fields.get("budget_min"):
                     fields["budget_min"] = round(total * 0.80, 2)
                 log.info(
                     "rfq_budget_normalized",
                     budget_per_unit=per_unit,
+                    budget_per_unit_min=per_unit_min,
                     quantity=qty,
                     budget_max_total=total,
+                    budget_min_total=fields.get("budget_min"),
                 )
         except (TypeError, ValueError):
             pass  # leave budget_max as-is if conversion fails
@@ -164,8 +175,9 @@ RFQ_EXTRACTION_SCHEMA = {
     "hsn_code": "string — 4-8 digit HSN tariff code or null",
     "quantity": "number — numeric quantity of primary product as an integer or decimal (e.g. 45, 500, 1000). Extract ONLY the number, not the unit.",
     "budget_per_unit": "number — target price PER UNIT/PER PIECE in INR for the primary product, or null if not stated",
-    "budget_min": "number — TOTAL minimum order budget in INR (= budget_per_unit × quantity). Compute it, do not leave as per-unit.",
-    "budget_max": "number — TOTAL maximum order budget in INR (= budget_per_unit × quantity). ALWAYS multiply unit price by quantity. Example: 5 units at ₹30,000/unit → budget_max=150000 NOT 30000.",
+    "budget_per_unit_min": "number — MINIMUM acceptable price per unit in INR if a range is stated (e.g. '70,000–90,000 per unit' → budget_per_unit_min=70000). Null if only a single price is stated.",
+    "budget_min": "number — TOTAL minimum order budget in INR. If a per-unit range is given, compute as budget_per_unit_min × quantity. Example: 10 units at 70,000–90,000 each → budget_min=700000.",
+    "budget_max": "number — TOTAL maximum order budget in INR (= budget_per_unit × quantity). ALWAYS multiply unit price by quantity. Example: 5 units at 30000/unit → budget_max=150000 NOT 30000.",
     "delivery_window_start": "date string YYYY-MM-DD or null",
     "delivery_window_end": "date string YYYY-MM-DD or null",
     "delivery_window_days": "integer — total delivery window in days, or null (derive from start/end if possible)",

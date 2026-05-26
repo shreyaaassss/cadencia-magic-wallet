@@ -21,6 +21,7 @@ class Match(BaseEntity):
     )
     rank: int = 1
     status: MatchStatus = MatchStatus.PENDING
+    matched_rfq_variant: dict | None = None  # Which product variant this match was scored on
 
     def select(self) -> None:
         """Transition: PENDING → SELECTED."""

@@ -445,10 +445,14 @@ class NegotiationService:
         event = session.mark_agreed(agreed_price, {})
 
         # Compute deal quality score (buyer's share of ZOPA surplus, 0.0–1.0)
+        # Read ZOPA values from session.opponent_beliefs["_zopa"] — persisted by neutral_engine
         try:
-            zopa = getattr(self.neutral_engine, '_zopa_cache', {}).get(str(session.id), {})
-            buyer_ceiling = zopa.get('buyer_ceiling')
-            seller_floor = zopa.get('seller_floor')
+            zopa_data = (session.opponent_beliefs or {}).get("_zopa", {})
+            if not zopa_data:
+                # Fallback: try in-memory cache (same process only)
+                zopa_data = getattr(self.neutral_engine, '_zopa_cache', {}).get(str(session.id), {})
+            buyer_ceiling = zopa_data.get('buyer_ceiling')
+            seller_floor = zopa_data.get('seller_floor')
             if buyer_ceiling and seller_floor:
                 bc = float(buyer_ceiling)
                 sf = float(seller_floor)
