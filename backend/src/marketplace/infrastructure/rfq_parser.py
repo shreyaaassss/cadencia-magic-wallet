@@ -83,6 +83,7 @@ def _normalize_rfq_budget(fields: dict) -> dict:
             if per_unit > 0 and qty > 0:
                 total = round(per_unit * qty, 2)
                 fields["budget_max"] = total
+                fields["total_budget_inr"] = fields["budget_max"]
                 if not fields.get("budget_min"):
                     fields["budget_min"] = round(total * 0.80, 2)
                 log.info(

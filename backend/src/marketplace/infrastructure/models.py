@@ -78,6 +78,7 @@ class RFQModel(Base):
     delivery_window_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     geography: Mapped[str | None] = mapped_column(String(100), nullable=True)
     parsed_fields: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    all_products: Mapped[list | None] = mapped_column(JSONB, nullable=True)  # All products in multi-product RFQ
     # pgvector 1536-dim embedding (context.md §11)
     embedding: Mapped[list | None] = mapped_column(Vector(1536), nullable=True)
     confirmed_match_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -198,6 +199,7 @@ class MatchModel(Base):
         ForeignKey("catalogue_items.id", ondelete="SET NULL"),
         nullable=True,
     )
+    matched_rfq_variant: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # Which product variant this match is for
     created_at: Mapped[str] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

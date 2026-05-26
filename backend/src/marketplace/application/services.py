@@ -171,6 +171,7 @@ class MarketplaceService:
 
                 # 4. Find matches — loop variants for multi-product RFQs
                 import re as _re
+                from sqlalchemy import select as sa_select
                 from src.marketplace.infrastructure.models import AddressModel, MatchModel
 
                 parsed_variants = build_parsed_variants(parsed)
@@ -187,6 +188,9 @@ class MarketplaceService:
                 buyer_addr = addr_result.scalar_one_or_none()
                 if buyer_addr:
                     buyer_pincode = buyer_addr.pincode
+
+                # Track which variant produced the best score per seller
+                best_variant_by_seller: dict = {}
 
                 for variant in parsed_variants:
                     rfq.parsed_fields = variant
@@ -227,12 +231,14 @@ class MarketplaceService:
                                 prev = merged_enhanced_by_seller.get(eid)
                                 if not prev or m_data["composite_score"] > prev["composite_score"]:
                                     merged_enhanced_by_seller[eid] = m_data
+                                    best_variant_by_seller[eid] = variant  # Track which product
                         else:
                             _kw = KeywordMatchmaker(session)
                             _kw_results = await _kw.find_matches(rfq, embedding, self._top_n)
                             for eid, sc in _kw_results:
                                 if eid not in merged_raw_scores or sc > merged_raw_scores[eid]:
                                     merged_raw_scores[eid] = sc
+                                    best_variant_by_seller[eid] = variant  # Track which product
                     else:
                         variant_raw = await matchmaker.find_matches(
                             rfq, embedding, self._top_n
@@ -245,8 +251,13 @@ class MarketplaceService:
                         for eid, sc in variant_raw:
                             if eid not in merged_raw_scores or sc > merged_raw_scores[eid]:
                                 merged_raw_scores[eid] = sc
+                                best_variant_by_seller[eid] = variant  # Track which product
 
                 rfq.parsed_fields = parsed
+                # Persist all product names for multi-product RFQs
+                all_prods = list({v.get("product") for v in parsed_variants if v.get("product")})
+                if len(all_prods) > 1:
+                    rfq.all_products = all_prods
 
                 enhanced_results = sorted(
                     merged_enhanced_by_seller.values(),
@@ -291,6 +302,15 @@ class MarketplaceService:
                                     row.matched_catalogue_item_id = _uuid.UUID(raw_item_id)
                                 except (ValueError, AttributeError):
                                     pass
+                            # Attach which product variant this match was scored on
+                            variant_for_match = best_variant_by_seller.get(m_data["enterprise_id"])
+                            if variant_for_match:
+                                row.matched_rfq_variant = {
+                                    "product": variant_for_match.get("product"),
+                                    "quantity": variant_for_match.get("quantity"),
+                                    "budget_max": variant_for_match.get("budget_max"),
+                                    "budget_per_unit": variant_for_match.get("budget_per_unit"),
+                                }
                     raw_matches = [
                         (m["enterprise_id"], m["composite_score"]) for m in enhanced_results
                     ]
@@ -304,6 +324,11 @@ class MarketplaceService:
                             seller_enterprise_id=ent_id,
                             similarity_score=SimilarityScore(value=score),
                             rank=rank + 1,
+                            matched_rfq_variant={
+                                "product": best_variant_by_seller.get(ent_id, {}).get("product"),
+                                "quantity": best_variant_by_seller.get(ent_id, {}).get("quantity"),
+                                "budget_max": best_variant_by_seller.get(ent_id, {}).get("budget_max"),
+                            } if best_variant_by_seller.get(ent_id) else None,
                         )
                         for rank, (ent_id, score) in enumerate(raw_matches)
                     ]

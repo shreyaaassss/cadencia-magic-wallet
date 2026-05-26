@@ -283,8 +283,21 @@ class StrategyEngine:
             if at_floor:
                 return self._constrained(my_last_price, reservation_price, target_price, is_buyer)
 
-        # ── CONCESSIVE: mid-to-late rounds, large gap — accelerate closing ──
+        # ── Anti-stall: force CONCESSIVE if no concession for 3+ rounds mid-session ──
+        # Prevents buyer/seller from deadlocking when gap is still closeable.
         time_used_pct = 1.0 - time_remaining_pct
+        if (
+            rounds_since_concession >= 3
+            and time_used_pct >= 0.50
+            and my_last_price is not None
+            and opponent_last_price is not None
+        ):
+            gap_abs = abs(float(my_last_price) - float(opponent_last_price))
+            gap_pct_abs = gap_abs / max(float(my_last_price), 1.0)
+            if 0.05 <= gap_pct_abs <= 0.35:  # Gap is closeable — force movement
+                return self._concessive(my_last_price, reservation_price, target_price, is_buyer)
+
+        # ── CONCESSIVE: mid-to-late rounds, large gap — accelerate closing ──
         if (
             0.60 <= time_used_pct <= 0.85
             and my_last_price is not None
@@ -292,7 +305,7 @@ class StrategyEngine:
         ):
             gap = abs(float(my_last_price) - float(opponent_last_price))
             gap_pct = gap / max(float(my_last_price), 1.0)
-            if gap_pct > 0.10:
+            if gap_pct > 0.08:  # Lowered from 0.10 for earlier trigger
                 return self._concessive(my_last_price, reservation_price, target_price, is_buyer)
 
         # ── CONSERVATIVE: moderate opponent, no stall ──

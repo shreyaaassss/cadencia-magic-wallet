@@ -444,6 +444,21 @@ class NegotiationService:
         agreed_price = OfferValue(amount=agreed_amount, currency="INR")
         event = session.mark_agreed(agreed_price, {})
 
+        # Compute deal quality score (buyer's share of ZOPA surplus, 0.0–1.0)
+        try:
+            zopa = getattr(self.neutral_engine, '_zopa_cache', {}).get(str(session.id), {})
+            buyer_ceiling = zopa.get('buyer_ceiling')
+            seller_floor = zopa.get('seller_floor')
+            if buyer_ceiling and seller_floor:
+                bc = float(buyer_ceiling)
+                sf = float(seller_floor)
+                zopa_range = abs(bc - sf)
+                if zopa_range > 0:
+                    buyer_gain = bc - float(agreed_amount)
+                    session.deal_quality_score = round(max(0.0, min(1.0, buyer_gain / zopa_range)), 4)
+        except Exception:
+            pass  # Non-fatal
+
         # Build conversation transcript for RAG re-ingestion
         transcript = None
         try:
