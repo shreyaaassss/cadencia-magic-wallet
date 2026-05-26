@@ -1305,12 +1305,15 @@ async def submit_signed_fund(
 
     for b64_txn in request_body.signed_transactions:
         try:
+            import msgpack as _msgpack
             raw = base64.b64decode(b64_txn)
-            decoded = encoding.msgpack_decode(raw)
-            snd = decoded.get("txn", {}).get("snd")
+            # Use raw msgpack.unpackb — encoding.msgpack_decode expects b64 string, not bytes
+            decoded = _msgpack.unpackb(raw, raw=False)
+            txn_dict = decoded.get("txn", {}) if isinstance(decoded, dict) else {}
+            snd = txn_dict.get("snd")
             if snd is None:
                 raise HTTPException(status_code=400, detail="Cannot read transaction sender")
-            sender_addr = encoding.encode_address(snd)
+            sender_addr = encoding.encode_address(bytes(snd) if not isinstance(snd, bytes) else snd)
         except HTTPException:
             raise
         except Exception as exc:
