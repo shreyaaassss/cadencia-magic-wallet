@@ -13,7 +13,21 @@ import algosdk from 'algosdk';
 import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { magic, signAlgoTxn, signAlgoTxnGroup } from '@/lib/magic';
-import { useWallet as useTxnLabWallet } from '@txnlab/use-wallet-react';
+import { useWallet as _useTxnLabWallet } from '@txnlab/use-wallet-react';
+
+// Safe wrapper — returns empty defaults if WalletProvider isn't mounted yet (SSR)
+function useTxnLabWalletSafe() {
+  try {
+    return _useTxnLabWallet();
+  } catch {
+    return {
+      activeAddress: null,
+      wallets: [],
+      signTransactions: async () => [] as any,
+      activeWallet: null,
+    } as any;
+  }
+}
 import type { WalletBalance } from '@/types';
 
 interface CadenciaWalletContextValue {
@@ -46,7 +60,7 @@ const b64ToBytes = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCode
 
 export function CadenciaWalletProvider({ children }: { children: React.ReactNode }) {
   const { enterprise, walletAddress: magicAddress, authMethod } = useAuth();
-  const txnLab = useTxnLabWallet();
+  const txnLab = useTxnLabWalletSafe();
 
   const [balance, setBalance] = useState<WalletBalance | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
@@ -77,7 +91,7 @@ export function CadenciaWalletProvider({ children }: { children: React.ReactNode
       const encoded = txns.map(t => algosdk.encodeUnsignedTransaction(t));
       const signed = await txnLab.signTransactions(encoded);
       // signTransactions returns (Uint8Array | null)[] — convert to base64
-      return signed.map((s, i) => {
+      return signed.map((s: any, i: number) => {
         if (!s) throw new Error(`Wallet did not sign transaction ${i}`);
         if (s instanceof Uint8Array) {
           return Buffer.from(s).toString('base64');
