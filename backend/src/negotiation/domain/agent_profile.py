@@ -80,12 +80,18 @@ class AgentProfile(BaseEntity):
             )
             new_avg_deviation = w.avg_deviation * (1 - alpha) + deviation * alpha
 
+        # EMA-update concession_rate from this session's actual behavior
+        new_concession_rate = w.concession_rate
+        if session_agreed and final_price is not None and budget_ceiling > Decimal("0"):
+            actual_concession = float(abs(final_price - budget_ceiling) / budget_ceiling)
+            new_concession_rate = w.concession_rate * (1 - alpha) + actual_concession * alpha
+
         # Rebuild frozen StrategyWeights (frozen dataclass — use object.__setattr__)
         object.__setattr__(
             self,
             "strategy_weights",
             StrategyWeights(
-                concession_rate=w.concession_rate,
+                concession_rate=new_concession_rate,
                 acceptance_threshold=w.acceptance_threshold,
                 avg_deviation=new_avg_deviation,
                 avg_rounds=new_avg_rounds,

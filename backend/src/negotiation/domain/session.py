@@ -158,6 +158,8 @@ class NegotiationSession(BaseEntity):
     # Structure: {score, buyer_surplus_inr, seller_surplus_inr, zopa_position_pct}
     deal_quality_score: dict | None = None
 
+    conversation_transcript: dict | None = None  # Populated at session completion
+
     # ── DANP State Transitions ─────────────────────────────────────────────────
 
     def activate(self) -> "SessionCreated":
@@ -555,6 +557,39 @@ class NegotiationSession(BaseEntity):
             return ProposerRole.SELLER
         last = self.offers[-1].proposer_role
         return ProposerRole.SELLER if last == ProposerRole.BUYER else ProposerRole.BUYER
+
+    def build_conversation_transcript(self) -> dict:
+        """
+        Denormalize session into a structured JSON transcript for RAG ingestion.
+        Called at terminal state (AGREED or WALK_AWAY).
+        """
+        from datetime import timezone
+        return {
+            "session_id": str(self.id),
+            "rfq_id": str(self.rfq_id) if self.rfq_id else None,
+            "outcome": self.status.value,
+            "agreed_price": float(self.agreed_price.amount) if self.agreed_price else None,
+            "rounds_taken": self.round_count.value,
+            "completed_at": (
+                self.completed_at.isoformat()
+                if hasattr(self, "completed_at") and self.completed_at
+                else None
+            ),
+            "buyer_enterprise_id": str(self.buyer_enterprise_id),
+            "seller_enterprise_id": str(self.seller_enterprise_id),
+            "deal_quality": getattr(self, "deal_quality_score", None),
+            "rounds": [
+                {
+                    "round": o.round_number.value,
+                    "role": o.proposer_role.value,
+                    "price": float(o.price.amount),
+                    "reasoning": o.agent_reasoning or "",
+                    "confidence": o.confidence.value if o.confidence else None,
+                    "is_human": o.is_human_override,
+                }
+                for o in self.offers
+            ],
+        }
 
 
 # Avoid circular import — domain events imported lazily inside methods.

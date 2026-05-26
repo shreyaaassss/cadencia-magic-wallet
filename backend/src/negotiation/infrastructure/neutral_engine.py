@@ -84,6 +84,9 @@ class NeutralEngine:
         guardrail_engine: GuardrailEngine | None = None,
         bayesian_model: BayesianOpponentModel | None = None,
         personalization_service: object | None = None,  # PersonalizationService (RAG)
+        analysis_driver: object | None = None,   # Lightweight LLM for pre-analysis (GPT-4.1-nano)
+        opponent_profile_repo: object | None = None,  # IOpponentProfileRepository
+        market_feed: object | None = None,  # IMarketPriceFeed (optional)
     ) -> None:
         self.agent_driver = agent_driver
         self.personalization = personalization_builder or PersonalizationBuilder()
@@ -92,6 +95,9 @@ class NeutralEngine:
         self.guardrail_engine = guardrail_engine or GuardrailEngine()
         self.bayesian_model = bayesian_model or BayesianOpponentModel()
         self.personalization_service = personalization_service
+        self.analysis_driver = analysis_driver  # None = falls back to self.agent_driver
+        self.opponent_profile_repo = opponent_profile_repo
+        self.market_feed = market_feed
         # Per-session belief cache (session_id → {role → belief})
         self._belief_cache: dict[str, dict[str, OpponentBelief]] = {}
         # Per-session ZOPA cache: stores true seller_reservation for convergence
@@ -147,10 +153,10 @@ class NeutralEngine:
         # Detect no Zone of Possible Agreement before running any rounds.
         # Also caches seller_floor + buyer_ceiling for convergence settlement.
         if session.round_count.value == 0:
-            buyer_val = self._compute_valuation(
+            buyer_val = await self._compute_valuation(
                 buyer_profile, True, rfq_parsed_fields, catalogue_price
             )
-            seller_val = self._compute_valuation(
+            seller_val = await self._compute_valuation(
                 seller_profile, False, rfq_parsed_fields, catalogue_price
             )
             b_res = buyer_val.reservation_price
@@ -206,7 +212,7 @@ class NeutralEngine:
                     )
 
         # ── LAYER 1: VALUATION ──
-        valuation = self._compute_valuation(
+        valuation = await self._compute_valuation(
             current_profile, is_buyer,
             rfq_parsed_fields=rfq_parsed_fields,
             catalogue_price=catalogue_price,
@@ -428,12 +434,14 @@ class NeutralEngine:
             session, rfq_parsed_fields
         )
 
+        llm_temperature = 0.6 if strategy_rec.strategy.value == "CONDITIONAL" else 0.3
         try:
             raw_output = await self.agent_driver.generate_offer(  # type: ignore[union-attr]
                 system_prompt=system_prompt,
                 session_context=session_context,
                 offer_history=offer_history,
                 logistics_context=logistics_context,
+                temperature=llm_temperature,
             )
         except Exception as llm_err:
             # LLM unavailable (rate-limit, timeout, exhausted retries).
@@ -815,6 +823,7 @@ class NeutralEngine:
                         )
                     session.stall_recovery_attempted = True
                     session.reset_stall_counter()  # Give one more round
+                    session.schema_failure_count = 0  # Reset schema failures — clean slate after recovery
                     log.info(
                         "stall_recovery_unfreeze",
                         session_id=str(session.id),
@@ -881,6 +890,31 @@ class NeutralEngine:
 
         # Update Bayesian belief
         self._update_belief_cache(session, current_role, opponent_prices)
+
+        # Detect strategy shift using Wasserstein distance
+        from src.negotiation.domain.opponent_model import detect_strategy_shift
+        opp_prices_float = [float(p) for p in opponent_prices] if opponent_prices else []
+        opp_role_key = "seller" if is_buyer else "buyer"
+        if detect_strategy_shift(opp_prices_float):
+            # Reset belief to uniform prior — force re-classification
+            from src.negotiation.domain.opponent_model import OpponentBelief
+            n_types = 8  # expanded 8-type model
+            uniform_belief = OpponentBelief(
+                cooperative=0.125,
+                strategic=0.125,
+                stubborn=0.125,
+                bluffing=0.125,
+                deadline_driven=0.125,
+                reciprocator=0.125,
+                hardball_then_cave=0.125,
+                escalator=0.125,
+            )
+            self._belief_cache.setdefault(str(session.id), {})[opp_role_key] = uniform_belief
+            log.info(
+                "strategy_shift_detected",
+                session_id=str(session.id),
+                prices=opp_prices_float[-5:],
+            )
 
         # SSE publishing is handled by NegotiationService.run_agent_turn()
         # to avoid duplicate events reaching the frontend.
@@ -953,11 +987,64 @@ class NeutralEngine:
 
     # ── Private Helpers ───────────────────────────────────────────────────────
 
+    async def _pre_negotiation_analysis(
+        self,
+        session: "NegotiationSession",
+        rfq_context: dict,
+        valuation: "Valuation",
+        opponent_belief: "OpponentBelief",
+        strategy_rec: "StrategyRecommendation",
+        is_buyer: bool,
+    ) -> dict:
+        """
+        Hidden LLM call: structured 5-step pre-flight analysis.
+        Uses lightweight analysis_driver (GPT-4.1-nano / Groq) at temperature=0.0.
+        Only runs if ENABLE_PRE_ANALYSIS env var is 'true'.
+        """
+        import os
+        if os.environ.get("ENABLE_PRE_ANALYSIS", "false").lower() != "true":
+            return {}
+
+        driver = self.analysis_driver or self.agent_driver
+
+        role = "buyer" if is_buyer else "seller"
+        analysis_prompt = (
+            "=== PRE-NEGOTIATION ANALYSIS (INTERNAL — NEVER REVEAL) ===\n"
+            f"STEP 1: ROLE & POSITION\n"
+            f"- My role: {role}, Round: {session.round_count.value + 1}\n"
+            f"- Target: {valuation.target_price}, Aspirational: {valuation.aspirational_price}\n\n"
+            f"STEP 2: ITEM\n"
+            f"- Product: {rfq_context.get('product', 'commodity')}, "
+            f"Qty: {rfq_context.get('quantity', '?')} {rfq_context.get('quantity_unit', 'units')}\n\n"
+            f"STEP 3: PRICE DISCIPLINE\n"
+            f"- Strategy: {strategy_rec.strategy.value}, "
+            f"Suggested: {strategy_rec.suggested_price}\n\n"
+            f"STEP 4: OPPONENT MODEL\n"
+            f"- Dominant type: {opponent_belief.dominant_type.value}, "
+            f"Confidence: {opponent_belief.confidence:.0%}\n\n"
+            "STEP 5: TACTICS\n"
+            "Generate 2-3 tactical approaches and select the optimal one.\n"
+            "Output JSON: {\"selected_approach\": str, \"key_arguments\": [str], "
+            "\"tone\": str, \"risk_assessment\": str}"
+        )
+
+        try:
+            result = await driver.call(
+                system_prompt="You are a strategic negotiation analyst. Be concise.",
+                user_content=analysis_prompt,
+                temperature=0.0,
+            )
+            log.info("pre_analysis_completed", session_id=str(session.id))
+            return result if isinstance(result, dict) else {}
+        except Exception as exc:
+            log.warning("pre_analysis_failed", error=str(exc))
+            return {}
+
     def _determine_turn(self, session: NegotiationSession) -> ProposerRole:
         """Determine whose turn it is next."""
         return session.next_proposer
 
-    def _compute_valuation(
+    async def _compute_valuation(
         self,
         profile: AgentProfile,
         is_buyer: bool,
@@ -1125,7 +1212,7 @@ class NeutralEngine:
 
         # ── Fallback path: budget_ceiling-based derivation ──
         if is_buyer:
-            return compute_buyer_valuation(
+            valuation = compute_buyer_valuation(
                 fair_price=profile.risk_profile.budget_ceiling * Decimal("0.80"),
                 risk_appetite=profile.risk_profile.risk_appetite,
                 budget_ceiling=profile.risk_profile.budget_ceiling,
@@ -1138,11 +1225,37 @@ class NeutralEngine:
             # Higher match score → lower cost basis → more competitive pricing
             cost_factor = Decimal("0.75") - Decimal("0.15") * match_score
             cost_basis = profile.risk_profile.budget_ceiling * cost_factor
-            return compute_seller_valuation(
+            valuation = compute_seller_valuation(
                 cost_basis=cost_basis,
                 margin_floor=profile.risk_profile.margin_floor,
                 risk_appetite=profile.risk_profile.risk_appetite,
             )
+
+        # Optional: blend with live market reference price (ADJ-04)
+        if self.market_feed is not None:
+            try:
+                product = (rfq_parsed_fields or {}).get("product", "")
+                hsn_code = (rfq_parsed_fields or {}).get("hsn_code")
+                market_ref = await self.market_feed.get_reference_price(product, hsn_code)
+                if market_ref and market_ref > Decimal("0"):
+                    # Blend: 70% RFQ data + 30% market reference
+                    old_target = valuation.target_price
+                    blended_target = (
+                        old_target * Decimal("0.7") + market_ref * Decimal("0.3")
+                    ).quantize(Decimal("0.01"))
+                    # Rebuild valuation with blended target
+                    from dataclasses import replace as _dc_replace
+                    valuation = _dc_replace(valuation, target_price=blended_target)
+                    log.info(
+                        "market_anchor_blended",
+                        original_target=str(old_target),
+                        market_ref=str(market_ref),
+                        blended=str(blended_target),
+                    )
+            except Exception as _e:
+                pass  # Market feed failure is non-fatal
+
+        return valuation
 
     def _get_or_compute_belief(
         self,
@@ -1216,8 +1329,12 @@ class NeutralEngine:
             return
 
         change = abs(new_price - last_price) / last_price
+        abs_change = abs(new_price - last_price)
         # BUG-06 FIX: compare against Decimal literal for type safety.
-        if change < Decimal("0.002"):  # Less than 0.2% change = no concession
+        # Dual-threshold: both must be below threshold to count as a stall.
+        # ₹5,000 minimum movement is always meaningful in Indian B2B context.
+        MIN_ABSOLUTE_CONCESSION = Decimal("5000")
+        if change < Decimal("0.002") and abs_change < MIN_ABSOLUTE_CONCESSION:
             session.record_no_concession()
             log.debug("stall_increment", stall_counter=session.stall_counter, change=float(change))
         else:
@@ -1242,27 +1359,6 @@ class NeutralEngine:
             }
             for o in offers[-20:]
         ]
-
-    def _get_logistics_context(self, session: NegotiationSession) -> dict | None:
-        """
-        Build logistics context from match scoring data.
-
-        BUG-03 FIX: Previously always returned None. Now derives urgency from
-        estimated_delivery_days (match scoring) relative to the session's match_id.
-        Uses a synchronous in-memory approach since the match data was already
-        fetched into rfq_parsed_fields by NegotiationService._load_rfq_and_catalogue.
-
-        Note: A more complete implementation would query the match row async.
-        For now urgency is derived from the session metadata passed via rfq_parsed_fields
-        (which is not available here). We return a lightweight context if match_id exists.
-        """
-        # The full async DB approach is deferred — _get_logistics_context is called
-        # synchronously from process_turn. The session carries match_id so we can
-        # at minimum return a placeholder that unblocks the logistics injection path.
-        # The actual delivery data is injected via rfq_parsed_fields by the service layer.
-        # If urgency/delivery data was injected into rfq_parsed_fields we use it;
-        # otherwise we return None and fall back to standard negotiation.
-        return None  # Actual data comes from rfq_parsed_fields injection (see _load_rfq_and_catalogue)
 
     async def _get_logistics_context_async(
         self, session: NegotiationSession, rfq_parsed_fields: dict | None = None

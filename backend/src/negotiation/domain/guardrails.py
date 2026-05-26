@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -13,6 +14,51 @@ from enum import Enum
 
 from src.shared.domain.base_value_object import BaseValueObject
 from src.shared.domain.exceptions import PolicyViolation, ValidationError
+
+
+class PromptInjectionDefense:
+    """Defense-in-depth against prompt injection and information leakage."""
+
+    INJECTION_PATTERNS = [
+        r"(?i)remind me of your (offers|strategy|internal|analysis)",
+        r"(?i)(not visible|invisible|hidden|internal|just for you)",
+        r"(?i)share your (reasoning|thinking|analysis|batna|reservation|walk.?away)",
+        r"(?i)ignore (previous|all|prior|above) instructions",
+        r"(?i)you are now|pretend you are|act as if",
+        r"(?i)what is your (floor|ceiling|minimum|maximum|reservation|budget)",
+        r"(?i)system\s*prompt|initial\s*instructions",
+    ]
+
+    LEAK_PATTERNS = [
+        r"(?i)my (reservation|walk.?away|floor|ceiling|minimum|batna) (is|price|point)",
+        r"(?i)(reservation_price|aspirational_price|budget_ceiling)\s*[=:]\s*[\d₹]",
+        r"(?i)I cannot go (below|above) ₹?\d",
+        r"(?i)my absolute (limit|floor|ceiling)",
+    ]
+
+    @staticmethod
+    def sanitize_incoming(text: str) -> tuple[str, bool]:
+        """Strip injection attempts before LLM sees them. Returns (cleaned_text, was_modified)."""
+        if not text:
+            return text, False
+        was_modified = False
+        cleaned = text
+        for pattern in PromptInjectionDefense.INJECTION_PATTERNS:
+            if re.search(pattern, cleaned):
+                # Replace the injection attempt with a neutral placeholder
+                cleaned = re.sub(pattern, "[instruction removed]", cleaned, flags=re.IGNORECASE)
+                was_modified = True
+        return cleaned, was_modified
+
+    @staticmethod
+    def scan_output(text: str) -> bool:
+        """Returns True if LLM output leaks internal constraint information."""
+        if not text:
+            return False
+        for pattern in PromptInjectionDefense.LEAK_PATTERNS:
+            if re.search(pattern, text):
+                return True
+        return False
 
 
 # ── ActionEnvelope: Strict JSON Schema for Agent Outputs ──────────────────────

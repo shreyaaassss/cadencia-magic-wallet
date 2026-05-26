@@ -39,6 +39,23 @@ SESSION_TTL_HOURS = 24
 MAX_ROUNDS = 20
 
 
+def _build_transcript_text(transcript: dict) -> str:
+    """Convert transcript dict to text for RAG ingestion."""
+    lines = [
+        f"Session {transcript.get('session_id', 'unknown')} — {transcript.get('outcome', 'unknown')}",
+        f"Rounds: {transcript.get('rounds_taken', 0)}",
+        f"Agreed price: {transcript.get('agreed_price', 'N/A')}",
+        "",
+        "Offer sequence:",
+    ]
+    for r in transcript.get("rounds", []):
+        lines.append(
+            f"  Round {r['round']} [{r['role']}]: ₹{r['price']:,.0f}"
+            + (f" — {r['reasoning'][:100]}" if r.get("reasoning") else "")
+        )
+    return "\n".join(lines)
+
+
 class NegotiationService:
     """Orchestrates negotiation lifecycle. All ports injected via constructor (DIP)."""
 
@@ -54,6 +71,7 @@ class NegotiationService:
         uow: object,
         session_ttl_hours: int = SESSION_TTL_HOURS,
         max_rounds: int = MAX_ROUNDS,
+        personalization_service: object | None = None,
     ) -> None:
         self.session_repo = session_repo
         self.offer_repo = offer_repo
@@ -65,6 +83,7 @@ class NegotiationService:
         self.uow = uow
         self.session_ttl_hours = session_ttl_hours
         self.max_rounds = max_rounds
+        self.personalization_service = personalization_service
 
     async def create_session(self, cmd: CreateSessionCommand) -> NegotiationSession:
         """Create a new negotiation session from a marketplace match."""
@@ -124,7 +143,7 @@ class NegotiationService:
 
         try:
             # Access the underlying DB session from session_repo
-            db_session = self.session_repo._session  # type: ignore[union-attr]
+            db_session = self.session_repo.get_db_session()  # type: ignore[union-attr]
             from sqlalchemy import select as sa_select
 
             # 1. Load RFQ parsed_fields
@@ -424,6 +443,39 @@ class NegotiationService:
         )
         agreed_price = OfferValue(amount=agreed_amount, currency="INR")
         event = session.mark_agreed(agreed_price, {})
+
+        # Build conversation transcript for RAG re-ingestion
+        transcript = None
+        try:
+            transcript = session.build_conversation_transcript()
+            session.conversation_transcript = transcript
+        except Exception as _e:
+            pass  # Non-fatal — transcript is best-effort
+
+        # Background: ingest transcript into pgvector for future RAG context
+        if hasattr(self, 'personalization_service') and self.personalization_service is not None and transcript is not None:
+            try:
+                import asyncio as _asyncio
+                transcript_text = _build_transcript_text(transcript)
+                _asyncio.create_task(
+                    self.personalization_service.ingest_text_directly(  # type: ignore[union-attr]
+                        tenant_id=session.buyer_enterprise_id,
+                        text=transcript_text,
+                        role="buyer",
+                        metadata={"session_id": str(session.id), "outcome": session.status.value},
+                    )
+                )
+                _asyncio.create_task(
+                    self.personalization_service.ingest_text_directly(  # type: ignore[union-attr]
+                        tenant_id=session.seller_enterprise_id,
+                        text=transcript_text,
+                        role="seller",
+                        metadata={"session_id": str(session.id), "outcome": session.status.value},
+                    )
+                )
+            except Exception:
+                pass  # Background ingestion is non-fatal
+
         await self.session_repo.update(session)  # type: ignore[union-attr]
         await self.event_publisher.publish(event)  # type: ignore[union-attr]
 
@@ -457,6 +509,14 @@ class NegotiationService:
     async def _handle_walk_away(self, session: NegotiationSession, reason: str) -> None:
         """ROUND_LOOP → WALK_AWAY: agent rejected."""
         event = session.mark_walk_away(reason)
+
+        # Build conversation transcript for RAG re-ingestion
+        try:
+            transcript = session.build_conversation_transcript()
+            session.conversation_transcript = transcript
+        except Exception as _e:
+            pass  # Non-fatal — transcript is best-effort
+
         await self.session_repo.update(session)  # type: ignore[union-attr]
         await self.event_publisher.publish(event)  # type: ignore[union-attr]
 

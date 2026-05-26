@@ -90,6 +90,7 @@ class NegotiationSessionModel(Base):
     # BUG-12 FIX: Persist Bayesian opponent beliefs so pod restarts don't lose
     # accumulated classification state. Nullable for backward compatibility.
     opponent_beliefs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    conversation_transcript: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[str] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

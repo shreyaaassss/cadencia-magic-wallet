@@ -271,6 +271,34 @@ class StrategyEngine:
                 my_last_price, effective_floor, target_price, is_buyer
             )
 
+        # ── CONSTRAINED: near floor, time remaining — micro-concession ──
+        if (
+            my_last_price is not None
+            and time_remaining_pct > 0.25
+        ):
+            at_floor = (
+                (not is_buyer and my_last_price <= reservation_price * Decimal("1.05"))
+                or (is_buyer and my_last_price >= reservation_price * Decimal("0.95"))
+            )
+            if at_floor:
+                return self._constrained(my_last_price, reservation_price, target_price, is_buyer)
+
+        # ── CONCESSIVE: mid-to-late rounds, large gap — accelerate closing ──
+        time_used_pct = 1.0 - time_remaining_pct
+        if (
+            0.60 <= time_used_pct <= 0.85
+            and my_last_price is not None
+            and opponent_last_price is not None
+        ):
+            gap = abs(float(my_last_price) - float(opponent_last_price))
+            gap_pct = gap / max(float(my_last_price), 1.0)
+            if gap_pct > 0.10:
+                return self._concessive(my_last_price, reservation_price, target_price, is_buyer)
+
+        # ── CONSERVATIVE: moderate opponent, no stall ──
+        if 0.3 <= opponent_flexibility <= 0.5 and rounds_since_concession < 2:
+            return self._conservative(my_last_price or target_price, reservation_price, target_price, is_buyer)
+
         # Default: Boulware — concedes toward aspirational (NOT true floor)
         return self._boulware(
             round_num,
@@ -556,6 +584,72 @@ class StrategyEngine:
                 f"{'exceeds' if is_buyer else 'below'} reservation {reservation_price}."
             ),
             action="REJECT",
+        )
+
+    def _conservative(
+        self,
+        my_last: Decimal,
+        floor: Decimal,
+        target: Decimal,
+        is_buyer: bool,
+    ) -> StrategyRecommendation:
+        """Small step: 1.5% concession toward target."""
+        step = my_last * Decimal("0.015")
+        if is_buyer:
+            price = min(my_last + step, target)
+        else:
+            price = max(my_last - step, floor)
+        price = price.quantize(Decimal("0.01"))
+        return StrategyRecommendation(
+            strategy=StrategyType.CONSERVATIVE,
+            concession_fraction=Decimal("0.015"),
+            suggested_price=price,
+            rationale="Conservative: moderate opponent, small deliberate step.",
+            action="OFFER",
+        )
+
+    def _concessive(
+        self,
+        my_last: Decimal,
+        floor: Decimal,
+        target: Decimal,
+        is_buyer: bool,
+    ) -> StrategyRecommendation:
+        """Larger step: 3-4% concession to close gap in mid-late rounds."""
+        step = my_last * Decimal("0.035")
+        if is_buyer:
+            price = min(my_last + step, target)
+        else:
+            price = max(my_last - step, floor)
+        price = price.quantize(Decimal("0.01"))
+        return StrategyRecommendation(
+            strategy=StrategyType.CONCESSIVE,
+            concession_fraction=Decimal("0.035"),
+            suggested_price=price,
+            rationale="Concessive: mid-to-late stage, closing gap to reach agreement.",
+            action="OFFER",
+        )
+
+    def _constrained(
+        self,
+        my_last: Decimal,
+        floor: Decimal,
+        target: Decimal,
+        is_buyer: bool,
+    ) -> StrategyRecommendation:
+        """Near-floor: 0.5-1% micro-concession while signaling constraint."""
+        step = my_last * Decimal("0.007")
+        if is_buyer:
+            price = min(my_last + step, target)
+        else:
+            price = max(my_last - step, floor)
+        price = price.quantize(Decimal("0.01"))
+        return StrategyRecommendation(
+            strategy=StrategyType.CONSTRAINED,
+            concession_fraction=Decimal("0.007"),
+            suggested_price=price,
+            rationale="Constrained: near reservation price — signaling this is our limit.",
+            action="OFFER",
         )
 
 

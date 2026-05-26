@@ -166,6 +166,7 @@ async def get_session(
 @router.post("/{session_id}/turn")
 async def run_turn(
     session_id: uuid.UUID,
+    preview: bool = False,
     svc: NegotiationService = Depends(get_negotiation_service),
     user: User = Depends(get_current_user),
 ) -> dict:
@@ -190,6 +191,18 @@ async def run_turn(
         agent_reasoning=offer.agent_reasoning,
         created_at=offer.created_at,
     )
+
+    # Co-pilot preview mode: return draft offer without persisting
+    if preview:
+        return success_response({
+            "preview": True,
+            "draft_price": float(offer.price.amount),
+            "draft_action": str(offer.proposer_role.value),
+            "reasoning": offer.agent_reasoning or "",
+            "strategy": str(getattr(offer, "_strategy_rec", None) and offer._strategy_rec.strategy.value) if hasattr(offer, "_strategy_rec") else "unknown",
+            "hint": "Call this endpoint without preview=true to accept this offer, or POST /override with your adjusted price.",
+        })
+
     return success_response(data=resp.model_dump(mode="json"))
 
 
@@ -215,76 +228,92 @@ async def run_auto_negotiation(
     if user.enterprise_id not in (session.buyer_enterprise_id, session.seller_enterprise_id):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    offers_this_run: list[OfferResponse] = []
-    terminal = False
+    # Distributed lock: prevent concurrent run-auto for same session
+    from src.shared.infrastructure.cache.redis_client import get_redis_client
+    lock_key = f"negotiation:run_auto:{session_id}"
+    redis_client = get_redis_client()
+    lock = redis_client.lock(lock_key, timeout=300)  # 5-min max hold
+    if not await lock.acquire(blocking=False):
+        raise HTTPException(
+            status_code=409,
+            detail="Negotiation automation already running for this session. Try again shortly.",
+        )
+    try:
+        offers_this_run: list[OfferResponse] = []
+        terminal = False
 
-    import structlog
-    _auto_log = structlog.get_logger("negotiation.run_auto")
+        import structlog
+        _auto_log = structlog.get_logger("negotiation.run_auto")
 
-    import os as _os
-    # BUG-11 FIX: rate-limit between turns so rapid-fire auto-negotiation doesn't
-    # exhaust all Groq API keys simultaneously. Default 1.5s lets ~40 RPM budget
-    # be spread across keys. Set AUTO_TURN_DELAY_SECONDS=0 to disable in tests.
-    _inter_turn_delay = float(_os.getenv("AUTO_TURN_DELAY_SECONDS", "1.5"))
+        import os as _os
+        # BUG-11 FIX: rate-limit between turns so rapid-fire auto-negotiation doesn't
+        # exhaust all Groq API keys simultaneously. Default 1.5s lets ~40 RPM budget
+        # be spread across keys. Set AUTO_TURN_DELAY_SECONDS=0 to disable in tests.
+        _inter_turn_delay = float(_os.getenv("AUTO_TURN_DELAY_SECONDS", "1.5"))
 
-    for round_num in range(max_rounds):
-        # Check if session is still active before each turn
+        for round_num in range(max_rounds):
+            # Check if session is still active before each turn
+            session = await svc.session_repo.get_by_id(session_id)  # type: ignore[union-attr]
+            if not session or not session.status.is_active:
+                terminal = True
+                break
+
+            try:
+                offer = await svc.run_agent_turn(session_id)
+                offers_this_run.append(OfferResponse(
+                    offer_id=offer.id,
+                    session_id=offer.session_id,
+                    round_number=offer.round_number.value,
+                    proposer_role=offer.proposer_role.value,
+                    price=offer.price.amount,
+                    currency=offer.price.currency,
+                    terms=offer.terms,
+                    confidence=offer.confidence.value if offer.confidence else None,
+                    is_human_override=offer.is_human_override,
+                    agent_reasoning=offer.agent_reasoning,
+                    created_at=offer.created_at,
+                ))
+            except ConflictError:
+                # Session transitioned to terminal state during this turn
+                terminal = True
+                break
+            except Exception as exc:
+                _auto_log.error(
+                    "run_auto_turn_failed",
+                    session_id=str(session_id),
+                    round_num=round_num,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+                break
+
+            # Reload session to check terminal status after the turn
+            session = await svc.session_repo.get_by_id(session_id)  # type: ignore[union-attr]
+            if session and not session.status.is_active:
+                terminal = True
+                break
+
+            # Apply inter-turn delay (skip after last iteration)
+            if _inter_turn_delay > 0 and round_num < max_rounds - 1:
+                await asyncio.sleep(_inter_turn_delay)
+
+        # Reload final session state
         session = await svc.session_repo.get_by_id(session_id)  # type: ignore[union-attr]
-        if not session or not session.status.is_active:
-            terminal = True
-            break
+        if not session:
+            raise NotFoundError("NegotiationSession", session_id)
 
+        return success_response(data={
+            "session": _session_to_response(session).model_dump(mode="json"),
+            "rounds_executed": len(offers_this_run),
+            "terminal": terminal,
+            "final_status": _simplify_status(session.status.value),
+            "offers_this_run": [o.model_dump(mode="json") for o in offers_this_run],
+        })
+    finally:
         try:
-            offer = await svc.run_agent_turn(session_id)
-            offers_this_run.append(OfferResponse(
-                offer_id=offer.id,
-                session_id=offer.session_id,
-                round_number=offer.round_number.value,
-                proposer_role=offer.proposer_role.value,
-                price=offer.price.amount,
-                currency=offer.price.currency,
-                terms=offer.terms,
-                confidence=offer.confidence.value if offer.confidence else None,
-                is_human_override=offer.is_human_override,
-                agent_reasoning=offer.agent_reasoning,
-                created_at=offer.created_at,
-            ))
-        except ConflictError:
-            # Session transitioned to terminal state during this turn
-            terminal = True
-            break
-        except Exception as exc:
-            _auto_log.error(
-                "run_auto_turn_failed",
-                session_id=str(session_id),
-                round_num=round_num,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-            break
-
-        # Reload session to check terminal status after the turn
-        session = await svc.session_repo.get_by_id(session_id)  # type: ignore[union-attr]
-        if session and not session.status.is_active:
-            terminal = True
-            break
-
-        # Apply inter-turn delay (skip after last iteration)
-        if _inter_turn_delay > 0 and round_num < max_rounds - 1:
-            await asyncio.sleep(_inter_turn_delay)
-
-    # Reload final session state
-    session = await svc.session_repo.get_by_id(session_id)  # type: ignore[union-attr]
-    if not session:
-        raise NotFoundError("NegotiationSession", session_id)
-
-    return success_response(data={
-        "session": _session_to_response(session).model_dump(mode="json"),
-        "rounds_executed": len(offers_this_run),
-        "terminal": terminal,
-        "final_status": _simplify_status(session.status.value),
-        "offers_this_run": [o.model_dump(mode="json") for o in offers_this_run],
-    })
+            await lock.release()
+        except Exception:
+            pass
 
 
 @router.post("/{session_id}/override")
@@ -337,6 +366,55 @@ async def terminate_session(
     cmd = TerminateSessionCommand(session_id=session_id, reason=body.reason)
     await svc.terminate_session(cmd)
     return success_response(data={"terminated": True, "session_id": str(session_id)})
+
+
+@router.get(
+    "/{session_id}/analytics",
+    summary="Get deal quality and relational quality analytics for a completed session",
+)
+async def get_session_analytics(
+    session_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    svc: NegotiationService = Depends(get_negotiation_service),
+) -> dict:
+    """
+    Returns deal quality score, relational quality scores (trust/respect/equitability),
+    and negotiation trajectory data for charting.
+    Proves ROI to Chief Procurement Officers.
+    """
+    from src.negotiation.domain.relational_quality import RelationalQualityScorer
+
+    session = await svc.session_repo.get_by_id(session_id)  # type: ignore[union-attr]
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if current_user.enterprise_id not in (session.buyer_enterprise_id, session.seller_enterprise_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    scorer = RelationalQualityScorer()
+    rq = scorer.score(session)
+
+    # Price trajectory for charting
+    trajectory = [
+        {
+            "round": o.round_number.value,
+            "role": o.proposer_role.value,
+            "price": float(o.price.amount),
+            "is_human": o.is_human_override,
+        }
+        for o in session.offers
+    ]
+
+    return success_response({
+        "session_id": str(session.id),
+        "status": session.status.value,
+        "agreed_price": float(session.agreed_price.amount) if session.agreed_price else None,
+        "deal_quality_score": getattr(session, "deal_quality_score", None),
+        "relational_quality": rq,
+        "trajectory": trajectory,
+        "rounds_taken": session.round_count.value,
+        "transcript": getattr(session, "conversation_transcript", None),
+    })
 
 
 @router.get("/{session_id}/intelligence")

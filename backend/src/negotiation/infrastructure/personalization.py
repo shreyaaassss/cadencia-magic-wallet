@@ -119,6 +119,39 @@ class PersonalizationBuilder:
         else:
             memory_section = "No past negotiation context available."
 
+        # ── Negotiation intelligence (from past sessions) ──
+        intel = getattr(profile, "negotiation_intelligence", None)
+        if intel:
+            style = intel.get("buyer_style") or intel.get("seller_style") or "analytical"
+            avg_concession = intel.get("buyer_avg_concession_pct") or intel.get("seller_avg_concession_pct")
+            rounds_avg = profile.strategy_weights.avg_rounds
+            intelligence_section = (
+                "=== YOUR NEGOTIATION INTELLIGENCE (from your history) ===\n"
+                f"Based on your past {profile.version} negotiations:\n"
+                f"- Average deal takes {rounds_avg:.1f} rounds\n"
+                f"- Concession style: {style}\n"
+                + (f"- Typical concession per round: {avg_concession:.1f}%\n" if avg_concession else "")
+                + f"- Win rate: {profile.strategy_weights.win_rate:.0%}"
+            )
+        else:
+            intelligence_section = ""
+
+        # ── Communication style: warmth-dominant (MIT study: avoids impasse) ──
+        warmth_section = (
+            "=== COMMUNICATION STYLE (MANDATORY) ===\n"
+            "1. ALWAYS acknowledge the opponent's last offer positively before countering.\n"
+            '   Example: "I appreciate your willingness to move on price..."\n'
+            "2. ASK at least one question per response to show genuine engagement.\n"
+            '   Example: "What factors are driving your pricing for this order?"\n'
+            "3. EXPRESS gratitude when opponent concedes.\n"
+            '   Example: "Thank you for the adjustment — let me meet you halfway."\n'
+            "4. NEVER use hostile language: unacceptable, ridiculous, refuse, impossible, absurd.\n"
+            "5. Frame rejections as constraints, not refusals:\n"
+            '   BAD: "We refuse to accept this price."\n'
+            '   GOOD: "Our cost structure does not allow us to go below ₹X at this volume."\n'
+            "6. Use first-person plural ('we') to build partnership framing."
+        )
+
         # ── Rules: smart stall — only force close when gap is small OR near max rounds ──
         # Do NOT force ACCEPT/REJECT at stall_threshold if prices are still far apart.
         max_rounds_hard = max(w.stall_threshold + 4, 18)
@@ -147,6 +180,8 @@ class PersonalizationBuilder:
             f"=== YOUR CONSTRAINTS ===\n{risk_section}\n\n"
             f"=== INDUSTRY / MARKET CONTEXT ===\n{playbook_section}\n\n"
             f"=== PAST NEGOTIATION CONTEXT ===\n{memory_section}\n\n"
+            + (f"\n{intelligence_section}\n" if intelligence_section else "")
+            + f"{warmth_section}\n\n"
             f"=== RULES ===\n{rules_section}\n\n"
             'Respond ONLY with a single valid JSON object (no markdown, no extra text):\n'
             '{"action": "OFFER|COUNTER|ACCEPT|REJECT", '

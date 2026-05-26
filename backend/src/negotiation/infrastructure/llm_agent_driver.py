@@ -37,7 +37,7 @@ class LLMAgentDriver:
         api_key: str,
         model: str = "gpt-4o",
         temperature: float = 0.3,
-        max_tokens: int = 512,
+        max_tokens: int = 2048,
         base_url: str | None = None,
         extra_api_keys: list[str] | None = None,
     ) -> None:
@@ -62,6 +62,7 @@ class LLMAgentDriver:
         session_context: dict,
         offer_history: list[dict],
         logistics_context: dict | None = None,
+        temperature: float | None = None,
     ) -> dict:
         start_time = time.monotonic()
 
@@ -109,7 +110,7 @@ class LLMAgentDriver:
                     response = await client.chat.completions.create(
                         model=self.model,
                         messages=messages,
-                        temperature=self.temperature,
+                        temperature=temperature if temperature is not None else self.temperature,
                         max_tokens=self.max_tokens,
                         response_format={"type": "json_object"},
                     )

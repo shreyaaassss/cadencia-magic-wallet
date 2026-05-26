@@ -179,6 +179,47 @@ class PersonalizationService:
         results = await self.retrieve_similar(cmd)
         return [r["content"] for r in results]
 
+    async def ingest_text_directly(
+        self,
+        tenant_id: uuid.UUID,
+        text: str,
+        role: str,
+        metadata: dict | None = None,
+    ) -> dict:
+        """
+        Directly ingest a text string into pgvector (no S3 download needed).
+        Used for auto-ingesting completed session transcripts.
+        Returns {'chunks_stored': N}.
+        """
+        try:
+            chunks = self.text_chunker.split(text)  # type: ignore[union-attr]
+            if not chunks:
+                return {"chunks_stored": 0}
+
+            stored = 0
+            async with self.uow:
+                embeddings = await self.embedding_service.embed_documents(chunks)  # type: ignore[union-attr]
+                for chunk, embedding in zip(chunks, embeddings):
+                    if not embedding:
+                        continue
+                    await self.memory_repo.store(  # type: ignore[union-attr]
+                        tenant_id=tenant_id,
+                        role=role,
+                        content=chunk,
+                        embedding=embedding,
+                        metadata={
+                            "source": "session_transcript",
+                            **(metadata or {}),
+                        },
+                    )
+                    stored += 1
+                await self.uow.commit()  # type: ignore[union-attr]
+
+            return {"chunks_stored": stored}
+        except Exception as exc:
+            log.warning("ingest_text_directly_failed", tenant_id=str(tenant_id), error=str(exc))
+            return {"chunks_stored": 0}
+
     async def get_memory_stats(self, tenant_id: uuid.UUID) -> dict:
         """Return memory stats for a tenant."""
         count = await self.memory_repo.count_by_tenant(tenant_id)  # type: ignore[union-attr]

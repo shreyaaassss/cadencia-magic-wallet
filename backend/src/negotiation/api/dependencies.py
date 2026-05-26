@@ -18,7 +18,13 @@ from src.negotiation.infrastructure.repositories import (
     PostgresOfferRepository,
     PostgresPlaybookRepository,
     PostgresSessionRepository,
+    PostgresOpponentProfileRepository,
+    PostgresAgentMemoryRepository,
 )
+from src.negotiation.application.personalization_service import PersonalizationService
+from src.negotiation.infrastructure.embedding_pipeline import GeminiEmbedder, StubEmbedder, TextChunker
+from src.negotiation.infrastructure.s3_vault import S3Vault
+import os
 from src.negotiation.infrastructure.sse_publisher import RedisSSEPublisher
 
 import structlog
@@ -45,10 +51,30 @@ def get_negotiation_service(
     except Exception as e:
         _dep_log.warning("sse_publisher_init_failed", error=str(e))
 
+    # Wire PersonalizationService for RAG context injection
+    personalization_service = None
+    try:
+        gemini_key = os.environ.get("GEMINI_API_KEY", "")
+        embedder = GeminiEmbedder(api_key=gemini_key) if gemini_key else StubEmbedder()
+        s3_vault = S3Vault()
+        personalization_service = PersonalizationService(
+            s3_vault=s3_vault,
+            memory_repo=PostgresAgentMemoryRepository(session),
+            embedding_service=embedder,
+            text_chunker=TextChunker(),
+            uow=SqlAlchemyUnitOfWork(session),
+        )
+    except Exception as e:
+        _dep_log.warning("personalization_service_init_failed", error=str(e))
+
+    opponent_profile_repo = PostgresOpponentProfileRepository(session)
+
     neutral_engine = NeutralEngine(
         agent_driver=agent_driver,
         personalization_builder=PersonalizationBuilder(),
         sse_publisher=sse_pub,
+        personalization_service=personalization_service,
+        opponent_profile_repo=opponent_profile_repo,
     )
 
     return NegotiationService(
