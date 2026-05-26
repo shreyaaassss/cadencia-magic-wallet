@@ -10,7 +10,7 @@ from src.shared.infrastructure.db.session import get_db_session
 from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
 from src.shared.infrastructure.events.publisher import get_publisher
 from src.negotiation.application.services import NegotiationService
-from src.negotiation.infrastructure.llm_agent_driver import get_agent_driver
+from src.negotiation.infrastructure.llm_agent_driver import get_agent_driver, get_analysis_driver
 from src.negotiation.infrastructure.neutral_engine import NeutralEngine
 from src.negotiation.infrastructure.personalization import PersonalizationBuilder
 from src.negotiation.infrastructure.repositories import (
@@ -69,12 +69,20 @@ def get_negotiation_service(
 
     opponent_profile_repo = PostgresOpponentProfileRepository(session)
 
+    # Wire analysis driver (lightweight LLM for pre-negotiation analysis)
+    analysis_driver = None
+    try:
+        analysis_driver = get_analysis_driver()
+    except Exception as e:
+        _dep_log.warning("analysis_driver_init_failed", error=str(e))
+
     neutral_engine = NeutralEngine(
         agent_driver=agent_driver,
         personalization_builder=PersonalizationBuilder(),
         sse_publisher=sse_pub,
         personalization_service=personalization_service,
         opponent_profile_repo=opponent_profile_repo,
+        analysis_driver=analysis_driver,
     )
 
     return NegotiationService(

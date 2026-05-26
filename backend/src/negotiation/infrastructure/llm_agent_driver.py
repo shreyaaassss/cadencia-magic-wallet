@@ -293,3 +293,44 @@ def get_agent_driver() -> object:
         )
 
     return StubAgentDriver()
+
+
+def get_analysis_driver() -> object:
+    """
+    Wire a lightweight LLM driver for pre-negotiation analysis calls.
+
+    Uses LLM_ANALYSIS_PROVIDER / LLM_ANALYSIS_MODEL env vars.
+    Defaults to gpt-4.1-nano (cheapest OpenAI model, deterministic at temp=0.0).
+    Falls back to main agent_driver if analysis provider not configured.
+    """
+    provider = os.getenv("LLM_ANALYSIS_PROVIDER", os.getenv("LLM_PROVIDER", "stub"))
+    model = os.getenv("LLM_ANALYSIS_MODEL", "gpt-4.1-nano")
+    max_tokens = int(os.getenv("LLM_ANALYSIS_MAX_TOKENS", "512"))
+
+    if provider == "openai":
+        api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+        if not api_key:
+            log.warning("analysis_driver_openai_key_missing_falling_back")
+            return StubAgentDriver()
+        log.info("analysis_driver_initialized", provider="openai", model=model)
+        return LLMAgentDriver(
+            api_key=api_key,
+            model=model,
+            temperature=0.0,   # Deterministic — always temp=0.0 for analysis
+            max_tokens=max_tokens,
+        )
+
+    if provider == "groq":
+        api_key = os.environ.get("GROQ_API_KEY", "").strip()
+        if not api_key:
+            return StubAgentDriver()
+        log.info("analysis_driver_initialized", provider="groq", model=model)
+        return LLMAgentDriver(
+            api_key=api_key,
+            model=model,
+            temperature=0.0,
+            max_tokens=max_tokens,
+            base_url="https://api.groq.com/openai/v1",
+        )
+
+    return StubAgentDriver()
