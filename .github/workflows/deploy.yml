@@ -5,91 +5,153 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  deploy:
-    name: Build & Deploy (Backend + Frontend)
+  build-and-deploy:
+    name: Build & Deploy (Frontend + Backend)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     steps:
-      - name: SSH into EC2, pull latest code, build & restart all services
-        uses: appleboy/ssh-action@v1.0.3
+      - uses: actions/checkout@v4
+
+      # ── Build Frontend ────────────────────────────────────────────
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --legacy-peer-deps
+
+      - name: Build Next.js (standalone)
+        working-directory: frontend
         env:
-          MAGIC_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY }}
-          BACKEND_ENV_B64: ${{ secrets.BACKEND_ENV_B64 }}
+          NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_API_URL: ""
+          NEXT_PUBLIC_ENABLE_MOCKS: "false"
+          NEXT_PUBLIC_ALGORAND_NETWORK: testnet
+          NEXT_PUBLIC_ALGOD_SERVER: https://testnet-api.4160.nodely.dev
+          NEXT_PUBLIC_ALGORAND_NODE_URL: https://testnet-api.algonode.cloud
+          NEXT_PUBLIC_X402_ENABLED: "true"
+          NEXT_INTERNAL_BACKEND_URL: http://localhost:8000
+        run: npx next build --webpack
+
+      - name: Package frontend standalone
+        working-directory: frontend
+        run: |
+          tar czf /tmp/frontend-deploy.tar.gz .next/standalone .next/static public
+          echo "Frontend tarball: $(du -h /tmp/frontend-deploy.tar.gz | cut -f1)"
+
+      # ── Package Backend ───────────────────────────────────────────
+      - name: Package backend source
+        run: |
+          tar czf /tmp/backend-deploy.tar.gz \
+            --exclude='__pycache__' \
+            --exclude='.pytest_cache' \
+            --exclude='*.pyc' \
+            -C backend .
+          echo "Backend tarball: $(du -h /tmp/backend-deploy.tar.gz | cut -f1)"
+
+      # ── Deploy to EC2 ─────────────────────────────────────────────
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Upload frontend tarball
+        run: |
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key \
+            /tmp/frontend-deploy.tar.gz \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/frontend-deploy.tar.gz
+
+      - name: Upload backend tarball
+        run: |
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key \
+            /tmp/backend-deploy.tar.gz \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/backend-deploy.tar.gz
+
+      - name: Deploy frontend on EC2
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: MAGIC_PUBLISHABLE_KEY,BACKEND_ENV_B64
-          command_timeout: 40m
+          command_timeout: 5m
           script: |
             set -e
+            echo "=== Deploying frontend ==="
+            cd ~/cadencia/frontend
+            rm -rf .next
+            tar xzf /tmp/frontend-deploy.tar.gz
+            cp -r .next/static .next/standalone/.next/static
+            cp -r public .next/standalone/public 2>/dev/null || true
+            pm2 restart cadencia-frontend
+            echo "Frontend deployed and restarted"
 
-            # ── Pull latest code ────────────────────────────────────────────
-            cd ~/cadencia-magic-wallet
-            git fetch origin main
-            git reset --hard origin/main
-            SHORT_SHA=$(git rev-parse --short HEAD)
-            echo "Code updated to: $(git log --oneline -1)"
+      - name: Deploy backend on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -e
+            echo "=== Deploying backend ==="
+            cd ~/cadencia/backend
 
-            # ── Sync deployment config to app directory ─────────────────────
-            mkdir -p ~/app
-            cp docker-compose.prod.yml ~/app/
-            cp Caddyfile ~/app/
-            # Write .env.production from base64-encoded secret
-            # tr -d '\r' strips Windows CRLF that corrupts env values on Linux
-            echo "${BACKEND_ENV_B64}" | base64 -d | tr -d '\r' > ~/app/.env.production
-            echo "Deployment config synced to ~/app"
-            echo "GROQ keys loaded: $(grep -c GROQ_API_KEY ~/app/.env.production)"
+            # Backup current source
+            cp -r src src.bak.$(date +%s) 2>/dev/null || true
 
-            # ── Free disk space (only dangling images, preserve cache) ───────
-            docker image prune -f 2>/dev/null || true
-            docker builder prune -f 2>/dev/null || true
+            # Extract new backend source
+            tar xzf /tmp/backend-deploy.tar.gz --strip-components=0
 
-            # ── Build backend image (--no-cache ensures code changes deploy) ──
-            cd backend
-            docker build \
-              --platform linux/amd64 \
-              --target production \
-              --tag cadencia-backend:latest \
-              --tag cadencia-backend:${SHORT_SHA} \
-              .
-            echo "Backend image built: cadencia-backend:latest"
+            pm2 restart cadencia-backend
+            echo "Backend deployed and restarted"
 
-            # ── Build frontend image ────────────────────────────────────────
-            cd ../frontend
-            docker build \
-              --platform linux/amd64 \
-              --build-arg NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY="${MAGIC_PUBLISHABLE_KEY}" \
-              --build-arg NEXT_PUBLIC_ALGORAND_NETWORK=testnet \
-              --build-arg NEXT_PUBLIC_ALGOD_SERVER=https://testnet-api.4160.nodely.dev \
-              --build-arg NEXT_PUBLIC_ALGORAND_NODE_URL=https://testnet-api.algonode.cloud \
-              --build-arg NEXT_PUBLIC_X402_ENABLED=true \
-              --build-arg NEXT_PUBLIC_ENABLE_MOCKS=false \
-              --tag cadencia-frontend:latest \
-              --tag cadencia-frontend:${SHORT_SHA} \
-              .
-            echo "Frontend image built: cadencia-frontend:latest"
+      # ── Health Check ──────────────────────────────────────────────
+      - name: Health check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 3m
+          script: |
+            echo "Waiting for services to start..."
+            sleep 10
 
-            # ── Restart all services via Docker Compose ─────────────────────
-            cd ~/app
-            BACKEND_IMAGE=cadencia-backend:latest \
-            FRONTEND_IMAGE=cadencia-frontend:latest \
-              docker compose -p app -f docker-compose.prod.yml up -d --remove-orphans
-            echo "All services restarted."
+            # Check frontend
+            FRONTEND_STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/ || echo "000")
+            echo "Frontend: HTTP $FRONTEND_STATUS"
 
-            # ── Health check ────────────────────────────────────────────────
-            echo "Waiting for backend to become healthy..."
-            for i in $(seq 1 18); do
-              STATUS=$(docker inspect --format='{{.State.Health.Status}}' app-backend-1 2>/dev/null || echo "unknown")
-              echo "  attempt $i/18: $STATUS"
-              if [ "$STATUS" = "healthy" ]; then
-                echo "Backend is healthy! Deploy complete."
+            # Check backend
+            for i in $(seq 1 12); do
+              HEALTH=$(curl -s http://localhost:8000/health 2>/dev/null | python3.12 -c 'import sys,json; print(json.load(sys.stdin)["data"]["overall"])' 2>/dev/null || echo "unknown")
+              echo "  attempt $i/12: $HEALTH"
+              if [ "$HEALTH" = "healthy" ]; then
+                echo "All services healthy! Deploy complete."
+                echo "  Frontend: HTTP $FRONTEND_STATUS"
+                echo "  Backend: $HEALTH"
+                echo "  Commit: $(cd ~/cadencia && git log --oneline -1 2>/dev/null || echo 'N/A')"
+                rm -f /tmp/frontend-deploy.tar.gz /tmp/backend-deploy.tar.gz
                 exit 0
               fi
-              sleep 10
+              sleep 5
             done
-            echo "WARNING: backend did not reach healthy state in 3m — check logs"
-            docker logs app-backend-1 --tail 30
+            echo "WARNING: backend did not reach healthy state in 60s"
+            pm2 logs cadencia-backend --lines 20 --nostream
             exit 1
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
