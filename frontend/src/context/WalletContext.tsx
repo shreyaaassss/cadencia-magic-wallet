@@ -89,15 +89,25 @@ export function CadenciaWalletProvider({ children }: { children: React.ReactNode
     if (authMethod === 'web3') {
       // Use @txnlab/use-wallet-react for external wallets
       const encoded = txns.map(t => algosdk.encodeUnsignedTransaction(t));
-      const signed = await txnLab.signTransactions(encoded);
-      // signTransactions returns (Uint8Array | null)[] — convert to base64
-      return signed.map((s: any, i: number) => {
-        if (!s) throw new Error(`Wallet did not sign transaction ${i}`);
-        if (s instanceof Uint8Array) {
-          return Buffer.from(s).toString('base64');
+      try {
+        const signed = await txnLab.signTransactions(encoded);
+        // signTransactions returns (Uint8Array | null)[] — convert to base64
+        return signed.map((s: any, i: number) => {
+          if (!s) throw new Error(`Wallet did not sign transaction ${i}`);
+          if (s instanceof Uint8Array) {
+            return Buffer.from(s).toString('base64');
+          }
+          return typeof s === 'string' ? s : Buffer.from(s as any).toString('base64');
+        });
+      } catch (err: any) {
+        // Pera error 4100: another transaction request is already pending
+        if (err?.message?.includes('4100') || err?.message?.toLowerCase().includes('pending')) {
+          throw new Error(
+            'Your Pera Wallet has a pending transaction. Open the Pera app, cancel any pending request, then try again.'
+          );
         }
-        return typeof s === 'string' ? s : Buffer.from(s as any).toString('base64');
-      });
+        throw err;
+      }
     }
 
     // Magic signing
