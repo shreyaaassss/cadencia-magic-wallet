@@ -133,7 +133,7 @@ export default function CompliancePage() {
           </div>
 
           {/* Compliance Stats Overview */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
              <StatCard label="Total Escrows" value={recentEscrows?.length ?? 0} icon={Landmark} />
              <StatCard label="Audit Entries" value={auditLogs.length} icon={FileText} />
              <StatCard label="FEMA Records" value={femaRecord ? 1 : 0} icon={File} />
@@ -155,7 +155,7 @@ export default function CompliancePage() {
             
             <div className="px-6 pb-6 pt-2">
               {/* Common Filter Row */}
-              <div className="flex justify-between items-center mb-6">
+              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between mb-6">
                 <div className="flex items-center gap-4">
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-semibold text-muted-foreground">Select Escrow</label>

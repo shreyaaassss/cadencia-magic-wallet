@@ -54,6 +54,7 @@ export function DataTable<T>({ columns, data, isLoading, emptyState, onRowClick,
 
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">
+      <div className="w-full overflow-x-auto">
       <table className="w-full">
         <thead>
           <tr className="bg-muted border-b border-border">
@@ -61,7 +62,7 @@ export function DataTable<T>({ columns, data, isLoading, emptyState, onRowClick,
               <th
                 key={String(col.key)}
                 className={cn(
-                  'text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3 text-left',
+                  'text-xs font-medium text-muted-foreground uppercase tracking-wide px-2 sm:px-4 py-3 text-left',
                   col.sortable && 'cursor-pointer select-none hover:text-foreground'
                 )}
                 style={col.width ? { width: col.width } : undefined}
@@ -86,7 +87,7 @@ export function DataTable<T>({ columns, data, isLoading, emptyState, onRowClick,
             Array.from({ length: 5 }).map((_, rowIdx) => (
               <tr key={rowIdx} className="border-b border-border last:border-0">
                 {columns.map((col, colIdx) => (
-                  <td key={String(col.key)} className="px-4 py-3">
+                  <td key={String(col.key)} className="px-2 sm:px-4 py-3">
                     <div className={cn('bg-muted animate-pulse rounded h-4', skeletonWidths[colIdx % skeletonWidths.length])} />
                   </td>
                 ))}
@@ -115,7 +116,7 @@ export function DataTable<T>({ columns, data, isLoading, emptyState, onRowClick,
                 {columns.map((col) => {
                   const val = (row as Record<string, unknown>)[String(col.key)];
                   return (
-                    <td key={String(col.key)} className="px-4 py-3 text-sm text-foreground">
+                    <td key={String(col.key)} className="px-2 sm:px-4 py-3 text-sm text-foreground">
                       {col.render ? col.render(val, row) : (val != null ? String(val) : '\u2014')}
                     </td>
                   );
@@ -125,6 +126,7 @@ export function DataTable<T>({ columns, data, isLoading, emptyState, onRowClick,
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

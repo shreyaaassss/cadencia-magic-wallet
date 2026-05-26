@@ -233,7 +233,7 @@ export default function EscrowPage() {
               <SectionHeader title="Select a Deal" description="Pick ONE agreed negotiation to proceed with payment" />
               <div className="space-y-3 mt-4">
                 {agreedWithoutEscrow.map(s => (
-                  <div key={s.session_id} className="flex items-center justify-between border border-border rounded-lg p-4 hover:bg-accent/50 transition-colors">
+                  <div key={s.session_id} className="flex items-center justify-between flex-col sm:flex-row gap-3 border border-border rounded-lg p-4 hover:bg-accent/50 transition-colors">
                     <div className="flex-1">
                       <p className="text-sm font-medium text-foreground">
                         {s.seller_name || s.seller_enterprise_id.slice(0, 12)}
@@ -268,7 +268,7 @@ export default function EscrowPage() {
                 return (
                   <div key={escrow.escrow_id} className="bg-card border border-border rounded-lg overflow-hidden">
                     {/* Escrow Header */}
-                    <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+                    <div className="px-6 py-4 border-b border-border flex items-center justify-between flex-col sm:flex-row gap-3">
                       <div>
                         <p className="text-sm font-semibold text-foreground">
                           {escrow.buyer_name || 'Buyer'} &rarr; {escrow.seller_name || 'Seller'}

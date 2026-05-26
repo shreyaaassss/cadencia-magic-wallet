@@ -98,7 +98,7 @@ export default function DashboardPage() {
     <AppShell>
       <div className="p-6">
         {/* Section 1: Page Header */}
-        <div className="flex items-start justify-between mb-8">
+        <div className="flex items-start justify-between flex-col sm:flex-row gap-4 mb-8">
           <div>
             <p className="text-sm text-muted-foreground">Welcome back,</p>
             <h1 className="text-2xl font-semibold text-foreground">
@@ -290,7 +290,7 @@ export default function DashboardPage() {
               title="System Health"
               description={`Last checked: ${formatDateTime(healthData.timestamp)}`}
             />
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {SERVICE_META.map(({ key, label, icon: SIcon }) => {
                 const svcStatus = healthData.services?.[key] ?? 'unknown';
                 return (

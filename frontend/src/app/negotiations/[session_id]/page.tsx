@@ -234,7 +234,7 @@ export default function NegotiationRoomPage() {
               </p>
 
               {/* Round progress */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">Round</span>
                   <span className="text-sm font-mono font-bold text-foreground">{latestRound}</span>
@@ -257,7 +257,7 @@ export default function NegotiationRoomPage() {
               <GapMeter buyerOffers={buyerOffers} sellerOffers={sellerOffers} />
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
               {/* Chart toggle button */}
               {offers.length >= 2 && (
                 <Button

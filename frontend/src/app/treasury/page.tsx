@@ -139,13 +139,13 @@ export default function TreasuryPage() {
             </div>
           ) : forecast && forecast.forecast.length > 0 ? (
             <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="grid grid-cols-3 px-4 py-2 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 px-4 py-2 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 <span>Date</span>
                 <span className="text-right">INR Balance</span>
                 <span className="text-right">USDC Balance</span>
               </div>
               {forecast.forecast.slice(0, 14).map((day, i) => (
-                <div key={day.date} className={`grid grid-cols-3 px-4 py-2 text-sm ${i < forecast.forecast.length - 1 ? 'border-b border-border' : ''}`}>
+                <div key={day.date} className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 px-4 py-2 text-sm ${i < forecast.forecast.length - 1 ? 'border-b border-border' : ''}`}>
                   <span className="text-foreground">{formatDate(day.date)}</span>
                   <span className="text-right text-foreground">₹{Number(day.projected_inr_balance).toLocaleString('en-IN')}</span>
                   <span className="text-right text-foreground">${Number(day.projected_usdc_balance).toLocaleString()}</span>

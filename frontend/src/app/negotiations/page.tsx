@@ -151,7 +151,7 @@ export default function NegotiationsPage() {
       <div className="p-6">
 
         {/* Section 1: Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard
             label="Active Sessions"
             value={counts.ACTIVE}
@@ -206,6 +206,7 @@ export default function NegotiationsPage() {
             <span className="text-xs text-muted-foreground">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</span>
           </div>
 
+          <div className="w-full overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="bg-muted border-b border-border">
@@ -329,6 +330,7 @@ export default function NegotiationsPage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
 
         {/* Terminate Confirm Dialog */}

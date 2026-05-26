@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { Bell, Settings, Wallet, LogOut, Circle } from 'lucide-react';
+import { Bell, Settings, Wallet, LogOut, Circle, Menu } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -34,7 +34,7 @@ const healthDisplay: Record<string, { fill: string; text: string; label: string 
   unknown:  { fill: 'fill-muted-foreground text-muted-foreground', text: 'text-muted-foreground', label: 'Checking...' },
 };
 
-export function TopBar() {
+export function TopBar({ onMenuClick }: { onMenuClick?: () => void } = {}) {
   const pathname = usePathname();
   const { user, enterprise, logout } = useAuth();
   const { status } = useHealthStatus();
@@ -47,14 +47,21 @@ export function TopBar() {
   const hd = healthDisplay[status] ?? healthDisplay.unknown;
 
   return (
-    <header className="h-16 border-b border-hairline bg-background flex items-center justify-between px-6 shrink-0">
+    <header className="h-14 sm:h-16 border-b border-hairline bg-background flex items-center justify-between px-3 sm:px-6 shrink-0">
 
-      <h1 className="text-base font-medium text-ink">{title}</h1>
+      <div className="flex items-center gap-2">
+        {onMenuClick && (
+          <Button variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={onMenuClick}>
+            <Menu className="h-5 w-5" />
+          </Button>
+        )}
+        <h1 className="text-sm sm:text-base font-medium text-ink truncate">{title}</h1>
+      </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3">
 
         {/* Health indicator */}
-        <div className="flex items-center gap-1.5">
+        <div className="hidden sm:flex items-center gap-1.5">
           <Circle className={`h-2 w-2 ${hd.fill}`} />
           <span className={`text-xs ${hd.text}`}>{hd.label}</span>
         </div>

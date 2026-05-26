@@ -41,7 +41,7 @@ const TRADE_ROLE_BADGE: Record<string, { label: string; className: string }> = {
   BOTH:   { label: 'Buyer & Seller', className: 'bg-amber-50 text-amber-700 border-amber-200' },
 };
 
-export function Sidebar() {
+export function Sidebar({ onNavClick }: { onNavClick?: () => void } = {}) {
   const pathname = usePathname();
   const { enterprise, user, logout, isAdmin, isBuyer, isSeller } = useAuth();
 
@@ -108,6 +108,7 @@ export function Sidebar() {
             <Link
               key={href}
               href={href}
+              onClick={onNavClick}
               className={cn(
                 'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
                 isActive

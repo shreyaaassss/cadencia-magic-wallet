@@ -190,7 +190,7 @@ export default function SettingsPage() {
             <SectionHeader title="Enterprise Profile" />
             {enterprise ? (
               <div className="space-y-4">
-                <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+                <div className="flex flex-wrap items-baseline gap-x-3 sm:gap-x-6 gap-y-2">
                   <h2 className="text-xl font-semibold text-foreground">{enterprise.legal_name}</h2>
                   <span className="text-sm font-mono text-muted-foreground">PAN: {enterprise.pan}</span>
                   <span className="text-sm font-mono text-muted-foreground">GSTIN: {enterprise.gstin}</span>
@@ -365,7 +365,7 @@ export default function SettingsPage() {
             <SectionHeader title="API Keys" description="Machine-to-machine authentication keys for external integrations" />
 
             {/* Create key form */}
-            <div className="flex gap-2 items-end mb-6">
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-end mb-6">
               <div className="flex-1">
                 <label className="text-sm font-medium text-foreground mb-1.5 block">Label</label>
                 <Input

@@ -219,7 +219,7 @@ export default function AdminPage() {
           </div>
 
           {/* Section 1: Platform Stat Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
             <StatCard label="Total Enterprises" value={stats?.total_enterprises ?? '-'} icon={Building2} trend={{ direction: 'up', value: "+3 this month"}} />
             <StatCard label="Total Users" value={stats?.total_users ?? '-'} icon={Users} trend={{ direction: 'up', value: "+8 this month"}} />
             <StatCard label="Active Sessions" value={stats?.active_sessions ?? '-'} icon={Play} />
@@ -317,7 +317,7 @@ export default function AdminPage() {
           {/* TAB: Enterprises */}
           {activeTab === 'enterprises' && (
             <div className="space-y-4">
-              <div className="bg-card border border-border rounded-lg p-4 flex flex-wrap gap-4 items-end">
+              <div className="bg-card border border-border rounded-lg p-4 flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 items-start sm:items-end">
                 <div>
                   <label className="text-xs font-semibold text-muted-foreground uppercase mb-1.5 block">KYC Status</label>
                   <FilterChips options={[{value: 'All', label: 'All'}, {value: 'ACTIVE', label: 'ACTIVE'}, {value: 'PENDING', label: 'PENDING'}, {value: 'REJECTED', label: 'REJECTED'}]} selected={entKycFilter} onChange={setEntKycFilter} />
@@ -342,7 +342,7 @@ export default function AdminPage() {
                     <input 
                       type="text" 
                       placeholder="Search company name..." 
-                      className="bg-muted border border-border rounded-md text-sm pl-9 pr-3 py-1.5 outline-none w-full text-foreground max-w-sm"
+                      className="bg-muted border border-border rounded-md text-sm pl-9 pr-3 py-1.5 outline-none w-full text-foreground sm:max-w-sm"
                       value={entSearch}
                       onChange={(e) => setEntSearch(e.target.value)}
                     />
@@ -412,7 +412,7 @@ export default function AdminPage() {
           {/* TAB: Users */}
           {activeTab === 'users' && (
             <div className="space-y-4">
-              <div className="bg-card border border-border rounded-lg p-4 flex flex-wrap gap-4 items-end">
+              <div className="bg-card border border-border rounded-lg p-4 flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 items-start sm:items-end">
                 <div>
                   <label className="text-xs font-semibold text-muted-foreground uppercase mb-1.5 block">Status</label>
                   <FilterChips options={[{value: 'All', label: 'All'}, {value: 'ACTIVE', label: 'ACTIVE'}, {value: 'SUSPENDED', label: 'SUSPENDED'}]} selected={userStatusFilter} onChange={setUserStatusFilter} />
@@ -428,7 +428,7 @@ export default function AdminPage() {
                     <input 
                       type="text" 
                       placeholder="Search name or email..." 
-                      className="bg-muted border border-border rounded-md text-sm pl-9 pr-3 py-1.5 outline-none w-full text-foreground max-w-sm"
+                      className="bg-muted border border-border rounded-md text-sm pl-9 pr-3 py-1.5 outline-none w-full text-foreground sm:max-w-sm"
                       value={userSearch}
                       onChange={(e) => setUserSearch(e.target.value)}
                     />

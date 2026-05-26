@@ -586,7 +586,7 @@ function Step1Form({ initialData, onSubmit, defaultTradeRole }: { initialData: S
         <Input {...register('legal_name')} />
       </FormField>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="PAN" required error={touchedFields.pan ? errors.pan?.message : undefined}>
           <Input {...register('pan')} className="uppercase" />
         </FormField>
@@ -595,7 +595,7 @@ function Step1Form({ initialData, onSubmit, defaultTradeRole }: { initialData: S
         </FormField>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="Trade Role" required error={errors.trade_role?.message}>
           <Controller
             control={control}
@@ -627,7 +627,7 @@ function Step1Form({ initialData, onSubmit, defaultTradeRole }: { initialData: S
             <TagInput value={commodities} onChange={v => setValue('commodities', v, { shouldValidate: true, shouldDirty: true })} />
           </FormField>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Min Order Value" required error={errors.min_order_value?.message}>
               <div className="relative">
                 <span className="absolute left-3 top-2.5 text-sm font-medium text-muted-foreground">INR</span>
@@ -674,7 +674,7 @@ function SellerFacilityForm({ initialData, onSubmit, onBack }: { initialData: Se
         <Input {...register('address_line2')} placeholder="Landmark, floor (optional)" />
       </FormField>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="City" required error={touchedFields.city ? errors.city?.message : undefined}>
           <Input {...register('city')} />
         </FormField>
@@ -694,7 +694,7 @@ function SellerFacilityForm({ initialData, onSubmit, onBack }: { initialData: Se
         </FormField>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="Pincode" hint="6-digit" required error={touchedFields.pincode ? errors.pincode?.message : undefined}>
           <Input {...register('pincode')} maxLength={6} />
         </FormField>
@@ -744,7 +744,7 @@ function SellerCapacityForm({ initialData, onSubmit, onBack }: { initialData: Se
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 animate-in fade-in slide-in-from-bottom-2">
       <h3 className="text-sm font-semibold text-foreground">Production & Capacity</h3>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="Monthly Capacity" hint="MT/month" required error={errors.monthly_production_capacity_mt?.message}>
           <Input type="number" step="0.01" {...register('monthly_production_capacity_mt', { valueAsNumber: true })} />
         </FormField>
@@ -767,7 +767,7 @@ function SellerCapacityForm({ initialData, onSubmit, onBack }: { initialData: Se
         </FormField>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="Avg Dispatch Days" error={errors.avg_dispatch_days?.message}>
           <Input type="number" {...register('avg_dispatch_days', { valueAsNumber: true })} />
         </FormField>
@@ -843,7 +843,7 @@ function BuyerLocationForm({ initialData, onSubmit, onBack }: { initialData: Buy
         <Input {...register('address_line2')} placeholder="Landmark, floor (optional)" />
       </FormField>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="City" required error={touchedFields.city ? errors.city?.message : undefined}>
           <Input {...register('city')} />
         </FormField>
@@ -863,7 +863,7 @@ function BuyerLocationForm({ initialData, onSubmit, onBack }: { initialData: Buy
         </FormField>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField label="Pincode" hint="6-digit" required error={touchedFields.pincode ? errors.pincode?.message : undefined}>
           <Input {...register('pincode')} maxLength={6} />
         </FormField>

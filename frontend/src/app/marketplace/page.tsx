@@ -237,7 +237,7 @@ export default function MarketplacePage() {
 
           {/* Left: RFQ List */}
           <div className="lg:col-span-2">
-            <div className="flex items-center justify-between border-b border-border pb-3 mb-4">
+            <div className="flex items-center justify-between flex-col sm:flex-row gap-3 border-b border-border pb-3 mb-4">
               <h3 className="text-base font-semibold text-foreground">Your RFQs</h3>
               <div className="flex items-center gap-2">
                 {/* Filter dropdown */}

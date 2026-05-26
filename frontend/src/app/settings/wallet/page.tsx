@@ -120,7 +120,7 @@ export default function WalletPage() {
                     <p className="text-2xl font-semibold text-foreground">{balance.algo_balance_algo} ALGO</p>
                     <p className="text-xs text-muted-foreground">{balance.algo_balance_microalgo.toLocaleString()} microALGO</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                     <div>
                       <p className="text-xs text-muted-foreground">Min Balance</p>
                       <p className="text-foreground">{(balance.min_balance / 1_000_000).toFixed(3)} ALGO</p>
