@@ -49,8 +49,8 @@ def _metadata_field(metadata: object, *names: str) -> str | None:
     return None
 
 
-def _verify_magic_did_token(did_token: str) -> tuple[str, str]:
-    """Validate DID and return (email, algorand_address) from Magic metadata."""
+def _verify_magic_did_token(did_token: str) -> str:
+    """Validate DID token and return verified email from Magic metadata."""
     magic_secret = os.environ.get("MAGIC_SECRET_KEY")
     if not magic_secret:
         raise HTTPException(status_code=500, detail="MAGIC_SECRET_KEY not configured")
@@ -63,17 +63,11 @@ def _verify_magic_did_token(did_token: str) -> tuple[str, str]:
         raise HTTPException(status_code=401, detail="Invalid or expired Magic token")
 
     magic_email = _metadata_field(metadata, "email")
-    magic_address = _metadata_field(
-        metadata, "public_address", "publicAddress", "issuer"
-    )
-    if not magic_email or not magic_address:
-        log.warning(
-            "magic_metadata_incomplete",
-            has_email=bool(magic_email),
-            has_address=bool(magic_address),
-        )
-        raise HTTPException(status_code=401, detail="Magic token missing email or wallet address")
-    return magic_email.lower(), magic_address
+    if not magic_email:
+        log.warning("magic_metadata_incomplete", has_email=False)
+        raise HTTPException(status_code=401, detail="Magic token missing email")
+
+    return magic_email.lower()
 
 
 class MagicLoginRequest(BaseModel):
@@ -105,15 +99,15 @@ async def magic_login(
     3. Auto-link their Magic Algorand address if enterprise has no wallet yet
     4. Return Cadencia JWT (same RS256 system as /v1/auth/login)
     """
-    magic_email, magic_address = _verify_magic_did_token(body.did_token)
+    magic_email = _verify_magic_did_token(body.did_token)
     if body.email.strip().lower() != magic_email:
         raise HTTPException(status_code=401, detail="Email does not match Magic session")
-    if body.algo_address.strip() != magic_address:
-        raise HTTPException(status_code=401, detail="Wallet address does not match Magic session")
 
+    # Use the address from the frontend (magic.user.getInfo().publicAddress)
+    # The admin SDK returns the DID issuer string, not the Algorand address
     result = await svc.magic_login(
         email=magic_email,
-        algo_address=magic_address,
+        algo_address=body.algo_address.strip(),
     )
 
     _set_refresh_cookie(response, result["refresh_token"])
@@ -162,9 +156,8 @@ async def magic_register(
     3. Auto-link Magic publicAddress as enterprise wallet
     4. Return Cadencia JWT
     """
-    magic_email, magic_address = _verify_magic_did_token(body.did_token)
-    if body.algo_address.strip() != magic_address:
-        raise HTTPException(status_code=401, detail="Wallet address does not match Magic session")
+    magic_email = _verify_magic_did_token(body.did_token)
+    magic_address = body.algo_address.strip()  # Use address from frontend directly
 
     from decimal import Decimal
     from src.identity.application.commands import RegisterEnterpriseCommand
