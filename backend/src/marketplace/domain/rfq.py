@@ -33,6 +33,7 @@ class RFQ(BaseEntity):
     confirmed_match_id: uuid.UUID | None = None
     expires_at: datetime | None = None
     embedding: list[float] | None = None
+    all_products: list | None = None  # All product names from multi-product RFQ
 
     def mark_parsed(self, parsed_fields: dict) -> dict:
         """

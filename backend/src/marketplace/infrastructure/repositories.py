@@ -48,7 +48,7 @@ def _rfq_model_to_domain(m: RFQModel) -> RFQ:
         except Exception:
             budget = None
 
-    return RFQ(
+    rfq = RFQ(
         id=m.id,
         buyer_enterprise_id=m.enterprise_id,
         raw_document=m.raw_text,
@@ -60,6 +60,8 @@ def _rfq_model_to_domain(m: RFQModel) -> RFQ:
         geography_pref=m.geography or "IN",
         created_at=m.created_at,
     )
+    rfq.all_products = getattr(m, "all_products", None)
+    return rfq
 
 
 def _match_model_to_domain(m: MatchModel) -> Match:
@@ -133,6 +135,9 @@ class PostgresRFQRepository:
         # Persist embedding when available (critical for pgvector matching)
         if rfq.embedding is not None:
             values["embedding"] = rfq.embedding
+        # Persist all_products for multi-product RFQs
+        if getattr(rfq, "all_products", None) is not None:
+            values["all_products"] = rfq.all_products
         stmt = (
             update(RFQModel)
             .where(RFQModel.id == rfq.id)
@@ -186,6 +191,7 @@ class PostgresMatchRepository:
                 seller_enterprise_id=m.seller_enterprise_id,
                 score=float(m.similarity_score.value),
                 rank=m.rank,
+                matched_rfq_variant=getattr(m, "matched_rfq_variant", None),
             )
             for m in matches
         ]

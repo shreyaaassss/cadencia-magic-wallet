@@ -245,10 +245,15 @@ class MarketplaceService:
                         else:
                             _kw = KeywordMatchmaker(session)
                             _kw_results = await _kw.find_matches(rfq, embedding, self._top_n)
+                            prod_key_kw = variant.get("product", "unknown")
+                            per_product_variant[prod_key_kw] = variant
+                            if prod_key_kw not in per_product_matches:
+                                per_product_matches[prod_key_kw] = []
                             for eid, sc in _kw_results:
                                 if eid not in merged_raw_scores or sc > merged_raw_scores[eid]:
                                     merged_raw_scores[eid] = sc
                                     best_variant_by_seller[eid] = variant  # Track which product
+                                per_product_matches[prod_key_kw].append((eid, sc))
                     else:
                         variant_raw = await matchmaker.find_matches(
                             rfq, embedding, self._top_n
@@ -318,16 +323,18 @@ class MarketplaceService:
                         rfq_matched_data = rfq.mark_matched(len(multi_matches))
                         await rfq_repo.update(rfq)
                         await session.commit()
-                        if rfq_matched_data:
-                            from src.marketplace.domain.events import RFQMatched
-                            await self._event_publisher.publish(
-                                RFQMatched(
+                        try:
+                            from src.marketplace.domain.events import RFQMatched as _RFQMatched
+                            await self._publisher.publish(
+                                _RFQMatched(
                                     aggregate_id=rfq.id,
                                     event_type="RFQMatched",
-                                    match_count=len(multi_matches),
-                                    top_seller_id=str(multi_matches[0].seller_enterprise_id),
+                                    top_score=max(m.similarity_score.value for m in multi_matches),
+                                    **(rfq_matched_data or {}),
                                 )
                             )
+                        except Exception:
+                            pass  # Event publish is non-fatal
                         log.info("rfq_multi_product_matched", rfq_id=str(rfq_id),
                                  products=all_prods, match_count=len(multi_matches))
                         return  # ← Skip single-product path
