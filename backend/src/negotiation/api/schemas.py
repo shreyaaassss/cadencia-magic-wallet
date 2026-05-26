@@ -62,6 +62,8 @@ class SessionResponse(BaseModel):
     expires_at: datetime
     schema_failure_count: int = 0
     stall_counter: int = 0
+    deal_quality_score: dict | None = None   # ZOPA position + surplus breakdown
+    product_context: dict | None = None      # Per-product context (multi-product RFQs)
 
     @field_serializer('agreed_price')
     def serialize_agreed_price(self, value: Decimal | None) -> float | None:

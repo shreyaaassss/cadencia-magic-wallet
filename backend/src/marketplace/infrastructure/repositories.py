@@ -65,14 +65,16 @@ def _rfq_model_to_domain(m: RFQModel) -> RFQ:
 
 
 def _match_model_to_domain(m: MatchModel) -> Match:
-    return Match(
+    match = Match(
         id=m.id,
         rfq_id=m.rfq_id,
         seller_enterprise_id=m.seller_enterprise_id,
         similarity_score=SimilarityScore(value=float(m.score)),
         rank=m.rank,
         created_at=m.created_at,
+        matched_rfq_variant=getattr(m, "matched_rfq_variant", None),
     )
+    return match
 
 
 def _profile_model_to_domain(m: CapabilityProfileModel) -> CapabilityProfile:

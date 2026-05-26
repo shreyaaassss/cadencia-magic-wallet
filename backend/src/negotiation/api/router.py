@@ -85,6 +85,8 @@ def _session_to_response(session: object) -> SessionResponse:
         expires_at=session.expires_at,  # type: ignore[union-attr]
         schema_failure_count=getattr(session, "schema_failure_count", 0),
         stall_counter=getattr(session, "stall_counter", 0),
+        deal_quality_score=getattr(session, "deal_quality_score", None),
+        product_context=getattr(session, "product_context", None),
     )
 
 
