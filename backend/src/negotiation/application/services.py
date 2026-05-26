@@ -111,6 +111,8 @@ class NegotiationService:
             seller_enterprise_id=cmd.seller_enterprise_id,
             status=SessionStatus.INIT,
             expires_at=datetime.now(tz=timezone.utc) + timedelta(hours=self.session_ttl_hours),
+            # Store per-product override for multi-product RFQs
+            product_context=cmd.override_rfq_parsed_fields,
         )
 
         # Activate: INIT → SELLER_ANCHOR (seller quotes catalog price first)
@@ -141,12 +143,18 @@ class NegotiationService:
         rfq_parsed_fields: dict | None = None
         catalogue_price: Decimal | None = None
 
+        # Use per-product context override when this session was created from
+        # a multi-product RFQ (e.g. camera + tripod + lens → separate sessions).
+        # This ensures each session negotiates the correct product/budget,
+        # not the RFQ's primary product.
+        product_ctx = getattr(session, "product_context", None)
+
         try:
             # Access the underlying DB session from session_repo
             db_session = self.session_repo.get_db_session()  # type: ignore[union-attr]
             from sqlalchemy import select as sa_select
 
-            # 1. Load RFQ parsed_fields
+            # 1. Load RFQ parsed_fields (or use per-product override)
             from src.marketplace.infrastructure.models import RFQModel
             rfq_result = await db_session.execute(
                 sa_select(RFQModel.parsed_fields).where(RFQModel.id == session.rfq_id)
@@ -154,6 +162,19 @@ class NegotiationService:
             rfq_row = rfq_result.scalar_one_or_none()
             if rfq_row and isinstance(rfq_row, dict):
                 rfq_parsed_fields = rfq_row
+
+            # Override with per-product context if this is a multi-product session.
+            # Merge: start with RFQ base fields, then overlay product-specific ones.
+            if product_ctx:
+                base = dict(rfq_parsed_fields) if rfq_parsed_fields else {}
+                base.update({k: v for k, v in product_ctx.items() if v is not None})
+                rfq_parsed_fields = base
+                log.info(
+                    "rfq_product_context_applied",
+                    session_id=str(session.id),
+                    product=product_ctx.get("product"),
+                    budget_max=product_ctx.get("budget_max"),
+                )
 
             # 2. Load this seller's match record (contains matched_catalogue_item_id)
             from src.marketplace.infrastructure.models import MatchModel, CatalogueItemModel

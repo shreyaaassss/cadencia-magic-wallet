@@ -159,6 +159,10 @@ class NegotiationSession(BaseEntity):
     deal_quality_score: dict | None = None
 
     conversation_transcript: dict | None = None  # Populated at session completion
+    # Product context override for multi-product RFQs.
+    # When set, the negotiation engine uses THIS product/budget instead of RFQ.parsed_fields.
+    # Enables per-product sessions from a single multi-product RFQ.
+    product_context: dict | None = None
 
     # ── DANP State Transitions ─────────────────────────────────────────────────
 

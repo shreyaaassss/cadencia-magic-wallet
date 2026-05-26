@@ -13,6 +13,10 @@ class CreateSessionCommand:
     rfq_id: uuid.UUID
     buyer_enterprise_id: uuid.UUID
     seller_enterprise_id: uuid.UUID
+    # Optional: override the RFQ's primary parsed_fields with a specific product variant.
+    # Used when a multi-product RFQ spawns per-product sessions — ensures each session
+    # negotiates the correct product/budget instead of the primary product.
+    override_rfq_parsed_fields: dict | None = None
 
 
 @dataclass(frozen=True)

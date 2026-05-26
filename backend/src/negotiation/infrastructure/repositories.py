@@ -88,6 +88,7 @@ def _session_model_to_domain(m: NegotiationSessionModel) -> NegotiationSession:
         stall_counter=getattr(m, "stall_counter", 0) or 0,
         # BUG-12 FIX: restore persisted Bayesian beliefs
         opponent_beliefs=getattr(m, "opponent_beliefs", None),
+        product_context=getattr(m, "product_context", None),
     )
 
 
@@ -161,6 +162,7 @@ class PostgresSessionRepository:
             schema_failure_count=session.schema_failure_count,
             stall_counter=session.stall_counter,
             opponent_beliefs=session.opponent_beliefs,  # BUG-12 FIX
+            product_context=getattr(session, "product_context", None),
         )
         self._session.add(model)
         await self._session.flush()
@@ -198,6 +200,7 @@ class PostgresSessionRepository:
                 schema_failure_count=session.schema_failure_count,
                 stall_counter=session.stall_counter,
                 opponent_beliefs=session.opponent_beliefs,  # BUG-12 FIX
+                product_context=getattr(session, "product_context", None),
             )
         )
         await self._session.execute(stmt)

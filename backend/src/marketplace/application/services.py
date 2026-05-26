@@ -171,7 +171,7 @@ class MarketplaceService:
 
                 # 4. Find matches — loop variants for multi-product RFQs
                 import re as _re
-                from sqlalchemy import select as sa_select
+                from sqlalchemy import select as sa_select  # noqa: E402 — must be before address query
                 from src.marketplace.infrastructure.models import AddressModel, MatchModel
 
                 parsed_variants = build_parsed_variants(parsed)
@@ -189,8 +189,13 @@ class MarketplaceService:
                 if buyer_addr:
                     buyer_pincode = buyer_addr.pincode
 
-                # Track which variant produced the best score per seller
+                # Track which variant produced the best score per seller (for single-product logic)
                 best_variant_by_seller: dict = {}
+
+                # Per-product top matches: { product_name → [(seller_id, score), ...] }
+                # Used to create per-product sessions for multi-product RFQs
+                per_product_matches: dict = {}   # product → [(eid, score)]
+                per_product_variant: dict = {}   # product → parsed_variant dict
 
                 for variant in parsed_variants:
                     rfq.parsed_fields = variant
@@ -226,12 +231,17 @@ class MarketplaceService:
                             top_n=self._top_n,
                         )
                         if enhanced_results:
+                            prod_key = variant.get("product", "unknown")
+                            per_product_variant[prod_key] = variant
+                            if prod_key not in per_product_matches:
+                                per_product_matches[prod_key] = []
                             for m_data in enhanced_results:
                                 eid = m_data["enterprise_id"]
                                 prev = merged_enhanced_by_seller.get(eid)
                                 if not prev or m_data["composite_score"] > prev["composite_score"]:
                                     merged_enhanced_by_seller[eid] = m_data
                                     best_variant_by_seller[eid] = variant  # Track which product
+                                per_product_matches[prod_key].append((eid, m_data["composite_score"]))
                         else:
                             _kw = KeywordMatchmaker(session)
                             _kw_results = await _kw.find_matches(rfq, embedding, self._top_n)
@@ -252,12 +262,75 @@ class MarketplaceService:
                             if eid not in merged_raw_scores or sc > merged_raw_scores[eid]:
                                 merged_raw_scores[eid] = sc
                                 best_variant_by_seller[eid] = variant  # Track which product
+                        # Track per-product top sellers
+                        prod_key = variant.get("product", "unknown")
+                        per_product_variant[prod_key] = variant
+                        if prod_key not in per_product_matches:
+                            per_product_matches[prod_key] = []
+                        for eid, sc in variant_raw:
+                            per_product_matches[prod_key].append((eid, sc))
 
                 rfq.parsed_fields = parsed
                 # Persist all product names for multi-product RFQs
                 all_prods = list({v.get("product") for v in parsed_variants if v.get("product")})
-                if len(all_prods) > 1:
+                is_multi_product = len(all_prods) > 1
+                if is_multi_product:
                     rfq.all_products = all_prods
+
+                # ── Multi-product: create per-product matches ─────────────────
+                # For a 3-product RFQ (camera + tripod + lens), build a flat
+                # list of (seller, product_variant) pairs — best seller per product.
+                # Each pair becomes its own Match so sessions can negotiate the
+                # correct product/budget independently.
+                # Single-product RFQs fall through to the original global top-N path.
+                if is_multi_product and per_product_matches:
+                    # Collect top-3 sellers per product, deduplicate bundle sellers
+                    multi_matches: list = []
+                    seen_seller_products: set = set()  # (eid, product) dedup
+                    rank_counter = 0
+                    for prod_key, prod_scores in per_product_matches.items():
+                        variant = per_product_variant.get(prod_key, {})
+                        # Sort by score descending, take top 3 per product
+                        top_sellers = sorted(prod_scores, key=lambda x: x[1], reverse=True)[:3]
+                        for eid, sc in top_sellers:
+                            pair = (str(eid), prod_key)
+                            if pair in seen_seller_products:
+                                continue
+                            seen_seller_products.add(pair)
+                            rank_counter += 1
+                            multi_matches.append(Match(
+                                rfq_id=rfq.id,
+                                seller_enterprise_id=eid,
+                                similarity_score=SimilarityScore(value=sc),
+                                rank=rank_counter,
+                                matched_rfq_variant={
+                                    "product": variant.get("product"),
+                                    "quantity": variant.get("quantity"),
+                                    "budget_max": variant.get("budget_max"),
+                                    "budget_min": variant.get("budget_min"),
+                                    "budget_per_unit": variant.get("budget_per_unit"),
+                                    "budget_per_unit_min": variant.get("budget_per_unit_min"),
+                                    "hsn_code": variant.get("hsn_code"),
+                                },
+                            ))
+                    if multi_matches:
+                        await match_repo.save_bulk(multi_matches)
+                        rfq_matched_data = rfq.mark_matched(len(multi_matches))
+                        await rfq_repo.update(rfq)
+                        await session.commit()
+                        if rfq_matched_data:
+                            from src.marketplace.domain.events import RFQMatched
+                            await self._event_publisher.publish(
+                                RFQMatched(
+                                    aggregate_id=rfq.id,
+                                    event_type="RFQMatched",
+                                    match_count=len(multi_matches),
+                                    top_seller_id=str(multi_matches[0].seller_enterprise_id),
+                                )
+                            )
+                        log.info("rfq_multi_product_matched", rfq_id=str(rfq_id),
+                                 products=all_prods, match_count=len(multi_matches))
+                        return  # ← Skip single-product path
 
                 enhanced_results = sorted(
                     merged_enhanced_by_seller.values(),
@@ -523,6 +596,8 @@ class MarketplaceService:
                     rfq_id=rfq.id,
                     buyer_enterprise_id=rfq.buyer_enterprise_id,
                     seller_enterprise_id=match.seller_enterprise_id,
+                    # Pass per-product context so the session negotiates the correct product
+                    override_rfq_parsed_fields=getattr(match, "matched_rfq_variant", None),
                 )
                 session_ids.append(str(session_id))
                 log.info(
@@ -568,6 +643,7 @@ class MarketplaceService:
         rfq_id: uuid.UUID,
         buyer_enterprise_id: uuid.UUID,
         seller_enterprise_id: uuid.UUID,
+        override_rfq_parsed_fields: dict | None = None,
     ) -> uuid.UUID:
         """Create a negotiation session synchronously with its own DB session."""
         from src.shared.infrastructure.db.session import get_session_factory
@@ -607,6 +683,7 @@ class MarketplaceService:
                     rfq_id=rfq_id,
                     buyer_enterprise_id=buyer_enterprise_id,
                     seller_enterprise_id=seller_enterprise_id,
+                    override_rfq_parsed_fields=override_rfq_parsed_fields,
                 )
             )
             return session.id
