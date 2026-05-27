@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Landmark, CheckCircle2, Clock, Rocket, AlertCircle, Wallet, Package, ExternalLink, Loader2 } from 'lucide-react';
+import { Landmark, CheckCircle2, Clock, Rocket, AlertCircle, Wallet, Package, ExternalLink, Loader2, Bell, ShoppingBag, Tag, Hash } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { AppShell } from '@/components/layout/AppShell';
@@ -15,7 +15,7 @@ import { AuthGuard } from '@/components/shared/AuthGuard';
 import { useAuth } from '@/hooks/useAuth';
 import { useWalletContext } from '@/context/WalletContext';
 import { api } from '@/lib/api';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils';
 import type { NegotiationSession, Escrow } from '@/types';
 
 function TxLink({ txId, type = 'tx' }: { txId: string | number | null; type?: 'tx' | 'app' }) {
@@ -227,6 +227,26 @@ export default function EscrowPage() {
             </p>
           </div>
 
+          {/* ── SELLER: New Order Notification Banner ─────────────────────── */}
+          {isSeller && escrows.filter(e => e.status === 'PENDING_APPROVAL').length > 0 && (
+            <div className="flex items-start gap-4 bg-[#0a2e0e] dark:bg-[rgba(90,185,138,.1)] border border-[#0a2e0e]/30 dark:border-[rgba(90,185,138,.25)] rounded-xl p-4 animate-in slide-in-from-top-2 duration-300">
+              <div className="shrink-0 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                <Bell className="h-5 w-5 text-white dark:text-[#5ab98a] animate-bounce" />
+              </div>
+              <div className="flex-1">
+                <p className="text-base font-semibold text-white dark:text-[#5ab98a]">
+                  New order awaiting your approval!
+                </p>
+                <p className="text-sm text-white/70 dark:text-[rgba(90,185,138,.75)] mt-0.5">
+                  {escrows.filter(e => e.status === 'PENDING_APPROVAL').length} deal{escrows.filter(e => e.status === 'PENDING_APPROVAL').length > 1 ? 's' : ''} selected by buyers — review the details below and accept to deploy the smart contract.
+                </p>
+              </div>
+              <span className="shrink-0 text-xs font-bold bg-white/20 dark:bg-[rgba(90,185,138,.2)] text-white dark:text-[#5ab98a] px-2.5 py-1 rounded-full">
+                {escrows.filter(e => e.status === 'PENDING_APPROVAL').length} New
+              </span>
+            </div>
+          )}
+
           {/* ── BUYER: Select a Deal ──────────────────────────────────────── */}
           {isBuyer && agreedWithoutEscrow.length > 0 && (
             <div className="bg-card border border-border rounded-lg p-6">
@@ -273,12 +293,84 @@ export default function EscrowPage() {
                         <p className="text-sm font-semibold text-foreground">
                           {escrow.buyer_name || 'Buyer'} &rarr; {escrow.seller_name || 'Seller'}
                         </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {escrow.amount_algo} ALGO &middot; Session {escrow.session_id.slice(0, 8)}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                          <span className="text-xs text-muted-foreground">
+                            {escrow.amount_algo} ALGO &middot; Session {escrow.session_id.slice(0, 8)}
+                          </span>
+                          <span className="text-muted-foreground/40 text-xs">·</span>
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {formatDateTime(escrow.created_at)}
+                          </span>
+                        </div>
                       </div>
                       <StatusBadge status={escrow.status} />
                     </div>
+
+                    {/* ── RFQ / Deal Details Panel (seller needs to see what they're accepting) */}
+                    {session && (
+                      <div className="px-6 py-4 border-b border-border bg-muted/30">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Order Details</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {/* Product */}
+                          {session.product_context?.product && (
+                            <div className="flex items-start gap-2.5 bg-background border border-border rounded-lg p-3">
+                              <ShoppingBag className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                              <div className="min-w-0">
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Product</p>
+                                <p className="text-sm font-medium text-foreground mt-0.5 truncate">{session.product_context.product}</p>
+                              </div>
+                            </div>
+                          )}
+                          {/* Quantity */}
+                          {session.product_context?.quantity && (
+                            <div className="flex items-start gap-2.5 bg-background border border-border rounded-lg p-3">
+                              <Hash className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Quantity</p>
+                                <p className="text-sm font-medium text-foreground mt-0.5">{session.product_context.quantity} units</p>
+                              </div>
+                            </div>
+                          )}
+                          {/* Agreed Price */}
+                          {session.agreed_price && (
+                            <div className="flex items-start gap-2.5 bg-background border border-border rounded-lg p-3">
+                              <Tag className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Agreed Price</p>
+                                <p className="text-sm font-semibold text-foreground mt-0.5">{formatCurrency(session.agreed_price)}</p>
+                              </div>
+                            </div>
+                          )}
+                          {/* Buyer */}
+                          <div className="flex items-start gap-2.5 bg-background border border-border rounded-lg p-3">
+                            <Wallet className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Buyer</p>
+                              <p className="text-sm font-medium text-foreground mt-0.5 truncate">
+                                {escrow.buyer_name || session.buyer_enterprise_id?.slice(0, 12) || 'Unknown'}
+                              </p>
+                            </div>
+                          </div>
+                          {/* Negotiation rounds */}
+                          <div className="flex items-start gap-2.5 bg-background border border-border rounded-lg p-3">
+                            <CheckCircle2 className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Negotiated In</p>
+                              <p className="text-sm font-medium text-foreground mt-0.5">{session.round_count} rounds</p>
+                            </div>
+                          </div>
+                          {/* Escrow created */}
+                          <div className="flex items-start gap-2.5 bg-background border border-border rounded-lg p-3">
+                            <Clock className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Order Created</p>
+                              <p className="text-sm font-medium text-foreground mt-0.5">{formatDateTime(escrow.created_at)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Progress Stepper */}
                     <div className="px-6 py-5">
