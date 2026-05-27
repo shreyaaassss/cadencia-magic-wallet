@@ -140,6 +140,14 @@ export interface NegotiationSession {
   expires_at: string;
   schema_failure_count: number;
   stall_counter: number;
+  deal_quality_score?: Record<string, unknown> | null;
+  product_context?: {
+    product?: string;
+    quantity?: number;
+    budget_max?: number;
+    budget_min?: number;
+    budget_per_unit?: number;
+  } | null;
   // Enriched by list endpoint
   buyer_name?: string;
   seller_name?: string;

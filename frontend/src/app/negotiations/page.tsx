@@ -125,13 +125,13 @@ export default function NegotiationsPage() {
     return { left, right };
   };
 
-  // ─── Row highlight class ────────────────────────────────────────────────────
+  // ─── Row highlight class (light-theme safe) ────────────────────────────────
   const getRowClass = (status: SessionStatus) => {
     switch (status) {
-      case 'ACTIVE': return 'border-l-4 border-l-green-500 bg-green-50';
-      case 'WALK_AWAY': return 'border-l-4 border-l-amber-500 bg-amber-50';
-      case 'AGREED': return 'bg-green-50';
-      default: return '';
+      case 'ACTIVE':    return 'border-l-4 border-l-green-500 bg-green-50/60 dark:bg-green-950/20';
+      case 'WALK_AWAY': return 'border-l-4 border-l-amber-500 bg-amber-50/60 dark:bg-amber-950/20';
+      case 'AGREED':    return 'border-l-4 border-l-green-400 bg-green-50/40 dark:bg-green-950/10';
+      default:          return '';
     }
   };
 
@@ -200,21 +200,21 @@ export default function NegotiationsPage() {
         </div>
 
         {/* Section 3: Sessions Table */}
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-            <h3 className="text-base font-semibold text-foreground">Sessions</h3>
+        <div className="bg-white border border-hairline rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b border-hairline flex items-center justify-between">
+            <h3 className="text-base font-medium text-ink">Sessions</h3>
             <span className="text-xs text-muted-foreground">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</span>
           </div>
 
           <div className="w-full overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-muted border-b border-border">
-                <th className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3 text-left" style={{ width: '12%' }}>Session ID</th>
-                <th className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3 text-left" style={{ width: '28%' }}>Parties</th>
-                <th className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3 text-left" style={{ width: '16%' }}>Status</th>
-                <th className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3 text-left" style={{ width: '10%' }}>Rounds</th>
-                <th className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3 text-left" style={{ width: '14%' }}>Agreed Price</th>
+              <tr className="bg-surface-soft border-b border-hairline">
+                <th className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3 text-left" style={{ width: '11%' }}>Session ID</th>
+                <th className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3 text-left" style={{ width: '32%' }}>Parties &amp; Product</th>
+                <th className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3 text-left" style={{ width: '15%' }}>Status</th>
+                <th className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3 text-left" style={{ width: '9%' }}>Rounds</th>
+                <th className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3 text-left" style={{ width: '13%' }}>Agreed Price</th>
                 <th className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3 text-left" style={{ width: '12%' }}>Created</th>
                 <th className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3 text-right" style={{ width: '8%' }}>Actions</th>
               </tr>
@@ -222,10 +222,10 @@ export default function NegotiationsPage() {
             <tbody>
               {isLoading ? (
                 Array.from({ length: 8 }).map((_, i) => (
-                  <tr key={i} className="border-b border-border last:border-0">
+                  <tr key={i} className="border-b border-hairline last:border-0">
                     {skeletonWidths.map((w, j) => (
                       <td key={j} className="px-4 py-3">
-                        <div className={cn('bg-muted animate-pulse rounded h-4', w)} />
+                        <div className={cn('bg-surface-strong/60 animate-pulse rounded h-4', w)} />
                       </td>
                     ))}
                   </tr>
@@ -243,20 +243,29 @@ export default function NegotiationsPage() {
                     <tr
                       key={session.session_id}
                       className={cn(
-                        'border-b border-border last:border-0 hover:bg-accent/50 transition-colors cursor-pointer',
+                        'border-b border-hairline last:border-0 hover:bg-surface-soft/50 transition-colors cursor-pointer',
                         getRowClass(session.status)
                       )}
                       onClick={() => router.push(`${ROUTES.NEGOTIATIONS}/${session.session_id}`)}
                     >
                       <td className="px-4 py-3">
-                        <span className="text-primary font-mono text-xs">{session.session_id.slice(0, 12)}</span>
+                        <span className="text-ink/60 font-mono text-xs">{session.session_id.slice(0, 12)}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-sm font-medium text-foreground">
-                          {parties.left}
-                          <span className="text-muted-foreground mx-1">&harr;</span>
-                          {parties.right}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-sm font-medium text-ink">
+                            {parties.left}
+                            <span className="text-muted-foreground mx-1">&harr;</span>
+                            {parties.right}
+                          </span>
+                          {session.product_context?.product && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200 w-fit truncate max-w-[220px]" title={session.product_context.product}>
+                              {session.product_context.product.length > 32
+                                ? session.product_context.product.slice(0, 32) + '…'
+                                : session.product_context.product}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <SessionStatusPill
@@ -266,10 +275,10 @@ export default function NegotiationsPage() {
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-xs text-muted-foreground">{session.round_count}</span>
+                        <span className="text-xs text-body font-medium">{session.round_count}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-sm font-medium text-foreground">
+                        <span className={cn('text-sm font-medium', session.agreed_price ? 'text-ink' : 'text-muted-foreground')}>
                           {session.agreed_price ? formatCurrency(session.agreed_price) : '\u2014'}
                         </span>
                       </td>
