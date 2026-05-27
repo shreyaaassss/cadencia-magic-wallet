@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button';
 
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
-import { formatCurrency, formatDate, cn } from '@/lib/utils';
+import { formatCurrency, formatDate, formatDateTime, cn } from '@/lib/utils';
 import { ROUTES } from '@/lib/constants';
 import type { NegotiationSession, SessionStatus } from '@/types';
 
@@ -90,6 +90,24 @@ export default function NegotiationsPage() {
 
     return result;
   }, [sessions, statusFilter, dateRange]);
+
+  // ─── Group sessions by RFQ ───────────────────────────────────────────────────
+  const groupedByRfq = React.useMemo(() => {
+    const groups = new Map<string, { sessions: typeof filtered; earliest: string }>();
+    for (const s of filtered) {
+      const key = s.rfq_id;
+      if (!groups.has(key)) {
+        groups.set(key, { sessions: [], earliest: s.created_at });
+      }
+      const g = groups.get(key)!;
+      g.sessions.push(s);
+      if (new Date(s.created_at) < new Date(g.earliest)) g.earliest = s.created_at;
+    }
+    // Sort groups newest-first
+    return Array.from(groups.entries()).sort(
+      ([, a], [, b]) => new Date(b.earliest).getTime() - new Date(a.earliest).getTime()
+    );
+  }, [filtered]);
 
   // ─── Stats ──────────────────────────────────────────────────────────────────
   const counts = React.useMemo(() => {
@@ -237,106 +255,111 @@ export default function NegotiationsPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((session) => {
-                  const parties = formatParties(session);
+                groupedByRfq.map(([rfqId, group], groupIndex) => {
+                  const agreedCount = group.sessions.filter(s => s.status === 'AGREED').length;
+                  const totalAgreed = group.sessions.reduce((sum, s) => sum + (s.agreed_price ?? 0), 0);
                   return (
-                    <tr
-                      key={session.session_id}
-                      className={cn(
-                        'border-b border-border last:border-0 hover:bg-accent transition-colors cursor-pointer',
-                        getRowClass(session.status)
-                      )}
-                      onClick={() => router.push(`${ROUTES.NEGOTIATIONS}/${session.session_id}`)}
-                    >
-                      <td className="px-4 py-3">
-                        <span className="text-muted-foreground font-mono text-xs">{session.session_id.slice(0, 12)}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col gap-1.5">
-                          <span className="text-sm font-medium text-foreground">
-                            {parties.left}
-                            <span className="text-muted-foreground mx-1">&harr;</span>
-                            {parties.right}
-                          </span>
-                          {session.product_context?.product && (
-                            <span
-                              className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-primary/10 text-primary border border-primary/20 w-fit max-w-[240px]"
-                              title={session.product_context.product}
-                            >
-                              {session.product_context.product.length > 30
-                                ? session.product_context.product.slice(0, 30) + '…'
-                                : session.product_context.product}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <SessionStatusPill
-                          status={session.status}
-                          currentRound={session.round_count}
-                          maxRounds={20}
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-xs font-medium text-foreground">{session.round_count}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={cn('text-sm font-semibold', session.agreed_price ? 'text-foreground' : 'text-muted-foreground')}>
-                          {session.agreed_price ? formatCurrency(session.agreed_price) : '\u2014'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-muted-foreground text-xs">{formatDate(session.created_at)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                          {session.status === 'ACTIVE' && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => router.push(`${ROUTES.NEGOTIATIONS}/${session.session_id}`)}
-                              className="h-8 w-8 p-0 text-green-600 hover:bg-green-50 hover:text-green-600"
-                              title="Live Room"
-                            >
-                              <Play className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {(session.status === 'AGREED' || session.status === 'FAILED' || session.status === 'TIMEOUT') && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => router.push(`${ROUTES.NEGOTIATIONS}/${session.session_id}`)}
-                              className="h-8 w-8 p-0 text-muted-foreground hover:bg-accent hover:text-foreground"
-                              title="Details"
-                            >
-                              <FileText className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {session.status === 'WALK_AWAY' && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => router.push(`${ROUTES.NEGOTIATIONS}/${session.session_id}`)}
-                              className="h-8 w-8 p-0 text-amber-600 hover:bg-amber-50 hover:text-amber-600"
-                              title="Walk Away - Review"
-                            >
-                              <AlertTriangle className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {isAdmin && session.status === 'ACTIVE' && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setTerminateTarget(session)}
-                              className="h-8 w-8 p-0 text-muted-foreground hover:bg-red-50 hover:text-destructive"
-                              title="Terminate"
-                            >
-                              <StopCircle className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                    <React.Fragment key={rfqId}>
+                      {/* ── RFQ Group Header ── */}
+                      <tr className={cn(groupIndex > 0 ? 'border-t-2 border-primary/20' : '')}>
+                        <td colSpan={7} className="px-4 py-2.5 bg-muted/60">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-3">
+                              <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">RFQ</span>
+                              <span className="font-mono text-xs font-medium text-foreground">{rfqId.slice(0, 16)}…</span>
+                              <span className="text-[10px] text-muted-foreground">Started {formatDateTime(group.earliest)}</span>
+                            </div>
+                            <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                              <span>{group.sessions.length} session{group.sessions.length !== 1 ? 's' : ''}</span>
+                              {agreedCount > 0 && (
+                                <span className="text-green-600 dark:text-green-400 font-medium">
+                                  {agreedCount} agreed · {formatCurrency(totalAgreed)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                      {/* ── Sessions in this RFQ ── */}
+                      {group.sessions.map((session) => {
+                        const parties = formatParties(session);
+                        return (
+                          <tr
+                            key={session.session_id}
+                            className={cn(
+                              'border-b border-border last:border-0 hover:bg-accent transition-colors cursor-pointer',
+                              getRowClass(session.status)
+                            )}
+                            onClick={() => router.push(`${ROUTES.NEGOTIATIONS}/${session.session_id}`)}
+                          >
+                            <td className="px-4 py-3">
+                              <span className="text-muted-foreground font-mono text-xs">{session.session_id.slice(0, 12)}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-col gap-1.5">
+                                <span className="text-sm font-medium text-foreground">
+                                  {parties.left}
+                                  <span className="text-muted-foreground mx-1">&harr;</span>
+                                  {parties.right}
+                                </span>
+                                {session.product_context?.product && (
+                                  <span
+                                    className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-primary/10 text-primary border border-primary/20 w-fit max-w-[240px]"
+                                    title={session.product_context.product}
+                                  >
+                                    {session.product_context.product.length > 30
+                                      ? session.product_context.product.slice(0, 30) + '…'
+                                      : session.product_context.product}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <SessionStatusPill
+                                status={session.status}
+                                currentRound={session.round_count}
+                                maxRounds={20}
+                              />
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-xs font-medium text-foreground">{session.round_count}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={cn('text-sm font-semibold', session.agreed_price ? 'text-foreground' : 'text-muted-foreground')}>
+                                {session.agreed_price ? formatCurrency(session.agreed_price) : '\u2014'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-muted-foreground text-xs">{formatDateTime(session.created_at)}</span>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                                {session.status === 'ACTIVE' && (
+                                  <Button variant="ghost" size="sm" onClick={() => router.push(`${ROUTES.NEGOTIATIONS}/${session.session_id}`)} className="h-8 w-8 p-0 text-green-600 hover:bg-green-50 hover:text-green-600" title="Live Room">
+                                    <Play className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {(session.status === 'AGREED' || session.status === 'FAILED' || session.status === 'TIMEOUT') && (
+                                  <Button variant="ghost" size="sm" onClick={() => router.push(`${ROUTES.NEGOTIATIONS}/${session.session_id}`)} className="h-8 w-8 p-0 text-muted-foreground hover:bg-accent hover:text-foreground" title="Details">
+                                    <FileText className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {session.status === 'WALK_AWAY' && (
+                                  <Button variant="ghost" size="sm" onClick={() => router.push(`${ROUTES.NEGOTIATIONS}/${session.session_id}`)} className="h-8 w-8 p-0 text-amber-600 hover:bg-amber-50 hover:text-amber-600" title="Walk Away - Review">
+                                    <AlertTriangle className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {isAdmin && session.status === 'ACTIVE' && (
+                                  <Button variant="ghost" size="sm" onClick={() => setTerminateTarget(session)} className="h-8 w-8 p-0 text-muted-foreground hover:bg-red-50 hover:text-destructive" title="Terminate">
+                                    <StopCircle className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
                   );
                 })
               )}
