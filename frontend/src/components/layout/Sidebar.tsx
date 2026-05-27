@@ -2,22 +2,22 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, ShoppingCart, Handshake, Landmark, Banknote,
   ClipboardList, Settings, ShieldCheck, LogOut, Building2, Store,
-  ShoppingBag, PackageSearch,
+  PackageSearch,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { cn } from '@/lib/utils';
 import { ROUTES } from '@/lib/constants';
+import { api } from '@/lib/api';
 
-// Define nav items with role visibility
 type NavItem = {
   label: string;
   href: string;
   icon: React.ElementType;
-  /** Which trade roles can see this item. undefined = everyone */
   roles?: ('BUYER' | 'SELLER' | 'BOTH' | 'ADMIN')[];
 };
 
@@ -43,33 +43,33 @@ const TRADE_ROLE_BADGE: Record<string, { label: string; className: string }> = {
 
 export function Sidebar({ onNavClick }: { onNavClick?: () => void } = {}) {
   const pathname = usePathname();
-  const { enterprise, user, logout, isAdmin, isBuyer, isSeller } = useAuth();
-
+  const { enterprise, user, logout, isAdmin, isSeller } = useAuth();
   const tradeRole = enterprise?.trade_role;
 
-  // Filter nav items based on user's trade role
+  // Poll for pending escrow approvals (sellers only) — drives badge count
+  const { data: escrows = [] } = useQuery<any[]>({
+    queryKey: ['escrows-sidebar'],
+    queryFn: () =>
+      api.get('/v1/escrow').then(r => r.data.data).catch(() => []),
+    refetchInterval: 10000,
+    enabled: isSeller,
+  });
+
+  const pendingApprovals = isSeller
+    ? escrows.filter((e: any) => e.status === 'PENDING_APPROVAL').length
+    : 0;
+
   const visibleItems = navItems.filter((item) => {
-    // Admin users only see Dashboard from regular nav
     if (isAdmin) return item.href === ROUTES.DASHBOARD;
-    // Items without role restrictions are shown to everyone
     if (!item.roles) return true;
-    // 'BOTH' trade_role can see both BUYER and SELLER items
     if (tradeRole === 'BOTH') {
       return item.roles.includes('BUYER') || item.roles.includes('SELLER') || item.roles.includes('BOTH');
     }
-    // BUYER trade_role: only see items marked for BUYER
-    if (tradeRole === 'BUYER') {
-      return item.roles.includes('BUYER');
-    }
-    // SELLER trade_role: only see items marked for SELLER
-    if (tradeRole === 'SELLER') {
-      return item.roles.includes('SELLER');
-    }
-    // Fallback: show all non-admin items
+    if (tradeRole === 'BUYER') return item.roles.includes('BUYER');
+    if (tradeRole === 'SELLER') return item.roles.includes('SELLER');
     return !item.roles.includes('ADMIN');
   });
 
-  // Add admin item if user is admin
   const allItems = isAdmin ? [...visibleItems, adminItem] : visibleItems;
 
   return (
@@ -104,6 +104,9 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void } = {}) {
       <nav className="flex-1 p-3 space-y-0.5">
         {allItems.map(({ label, href, icon: Icon }) => {
           const isActive = pathname === href || pathname.startsWith(href + '/');
+          const isEscrow = href === ROUTES.ESCROW;
+          const badge = isEscrow && pendingApprovals > 0 ? pendingApprovals : 0;
+
           return (
             <Link
               key={href}
@@ -117,7 +120,12 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void } = {}) {
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              {label}
+              <span className="flex-1">{label}</span>
+              {badge > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold bg-[#0a2e0e] text-white dark:bg-[#5ab98a] dark:text-[#0a2e0e] leading-none">
+                  {badge}
+                </span>
+              )}
             </Link>
           );
         })}

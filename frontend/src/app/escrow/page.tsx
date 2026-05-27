@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Landmark, CheckCircle2, Clock, Rocket, AlertCircle, Wallet, Package, ExternalLink, Loader2, Bell, ShoppingBag, Tag, Hash } from 'lucide-react';
+import { Landmark, CheckCircle2, Clock, Rocket, AlertCircle, Wallet, Package, ExternalLink, Loader2, ShoppingBag, Tag, Hash } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { AppShell } from '@/components/layout/AppShell';
@@ -227,25 +227,6 @@ export default function EscrowPage() {
             </p>
           </div>
 
-          {/* ── SELLER: New Order Notification Banner ─────────────────────── */}
-          {isSeller && escrows.filter(e => e.status === 'PENDING_APPROVAL').length > 0 && (
-            <div className="flex items-start gap-4 bg-[#0a2e0e] dark:bg-[rgba(90,185,138,.1)] border border-[#0a2e0e]/30 dark:border-[rgba(90,185,138,.25)] rounded-xl p-4 animate-in slide-in-from-top-2 duration-300">
-              <div className="shrink-0 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-                <Bell className="h-5 w-5 text-white dark:text-[#5ab98a] animate-bounce" />
-              </div>
-              <div className="flex-1">
-                <p className="text-base font-semibold text-white dark:text-[#5ab98a]">
-                  New order awaiting your approval!
-                </p>
-                <p className="text-sm text-white/70 dark:text-[rgba(90,185,138,.75)] mt-0.5">
-                  {escrows.filter(e => e.status === 'PENDING_APPROVAL').length} deal{escrows.filter(e => e.status === 'PENDING_APPROVAL').length > 1 ? 's' : ''} selected by buyers — review the details below and accept to deploy the smart contract.
-                </p>
-              </div>
-              <span className="shrink-0 text-xs font-bold bg-white/20 dark:bg-[rgba(90,185,138,.2)] text-white dark:text-[#5ab98a] px-2.5 py-1 rounded-full">
-                {escrows.filter(e => e.status === 'PENDING_APPROVAL').length} New
-              </span>
-            </div>
-          )}
 
           {/* ── BUYER: Select a Deal ──────────────────────────────────────── */}
           {isBuyer && agreedWithoutEscrow.length > 0 && (
