@@ -484,7 +484,7 @@ async def get_negotiation_stats(
         "total_in_vault": 0,
     }
     outcome_map = {"AGREED": "agreed", "REJECTED": "rejected", "STALLED": "stalled",
-                   "EXPIRED": "rejected", "UNKNOWN": "rejected"}
+                   "EXPIRED": "rejected", "UNKNOWN": "stalled"}
     for role, outcome, cnt in rows:
         bucket = "as_buyer" if role == "buyer" else "as_seller"
         key = outcome_map.get(outcome, "rejected")

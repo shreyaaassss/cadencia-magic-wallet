@@ -1029,8 +1029,37 @@ async def handle_session_completed_normalize(event: object) -> None:
         log.warning("handle_session_completed_normalize_missing_session_id")
         return
 
+    # Derive outcome from event type to avoid race condition:
+    # SessionAgreed fires before uow.commit(), so the session in DB may still
+    # show ROUND_LOOP. Use event class name as authoritative outcome source.
+    try:
+        from src.negotiation.domain.events import SessionAgreed as _SessionAgreed
+        outcome_override = "AGREED" if isinstance(event, _SessionAgreed) else "WALK_AWAY"
+    except Exception:
+        outcome_override = None
+
     buyer_enterprise_id = getattr(event, "buyer_enterprise_id", None)
     seller_enterprise_id = getattr(event, "seller_enterprise_id", None)
+
+    # SessionFailed doesn't carry enterprise IDs — look them up from the session
+    if not buyer_enterprise_id or not seller_enterprise_id:
+        try:
+            from src.shared.infrastructure.db.session import get_session_factory
+            from src.negotiation.infrastructure.models import NegotiationSessionModel
+            from sqlalchemy import select as _select
+            async with get_session_factory()() as _s:
+                res = await _s.execute(
+                    _select(
+                        NegotiationSessionModel.buyer_enterprise_id,
+                        NegotiationSessionModel.seller_enterprise_id,
+                    ).where(NegotiationSessionModel.id == session_id)
+                )
+                row = res.first()
+                if row:
+                    buyer_enterprise_id = row[0]
+                    seller_enterprise_id = row[1]
+        except Exception as _e:
+            log.warning("handle_session_normalize_lookup_failed", error=str(_e))
 
     if not buyer_enterprise_id or not seller_enterprise_id:
         log.warning(
@@ -1076,6 +1105,7 @@ async def handle_session_completed_normalize(event: object) -> None:
                 session=session,
                 enterprise_id=buyer_enterprise_id,
                 enterprise_role="buyer",
+                outcome_override=outcome_override,
             )
             await record_repo.save(buyer_record)
 
@@ -1084,6 +1114,7 @@ async def handle_session_completed_normalize(event: object) -> None:
                 session=session,
                 enterprise_id=seller_enterprise_id,
                 enterprise_role="seller",
+                outcome_override=outcome_override,
             )
             # Use a different UUID for the seller record
             import uuid as _uuid

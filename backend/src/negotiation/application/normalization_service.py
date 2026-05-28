@@ -126,19 +126,27 @@ class NormalizationService:
         enterprise_id: uuid.UUID,
         enterprise_role: str,
         rfq_parsed_fields: dict | None = None,
+        outcome_override: str | None = None,
     ) -> NegotiationRecord:
         """
         Convert a completed platform NegotiationSession into a canonical NegotiationRecord.
 
         Pure math extraction — no LLM needed for behavioral metrics.
         LLM used only for generating the conversation_summary (optional, non-fatal).
+
+        outcome_override: pass explicit outcome string when session may not yet be
+        committed to DB (event fires before uow.commit() — race condition avoidance).
         """
         transcript = getattr(session, "conversation_transcript", None) or {}
         rfq = rfq_parsed_fields or {}
 
         # ── Outcome mapping ──
-        status_val = session.status.value if hasattr(session.status, "value") else str(session.status)
-        outcome = SESSION_STATUS_TO_OUTCOME.get(status_val, NegotiationOutcome.UNKNOWN)
+        # Prefer explicit override (avoids race condition where event fires before commit)
+        if outcome_override:
+            outcome = SESSION_STATUS_TO_OUTCOME.get(outcome_override, NegotiationOutcome.UNKNOWN)
+        else:
+            status_val = session.status.value if hasattr(session.status, "value") else str(session.status)
+            outcome = SESSION_STATUS_TO_OUTCOME.get(status_val, NegotiationOutcome.UNKNOWN)
 
         # ── Price extraction ──
         agreed_price = None
