@@ -1009,3 +1009,163 @@ def register_phase_five_handlers(publisher: EventPublisher) -> None:
         ],
     )
 
+
+# ── Phase Six — Negotiation Memory Handlers ────────────────────────────────────
+
+
+async def handle_session_completed_normalize(event: object) -> None:
+    """
+    Phase Six: SessionAgreed | SessionFailed → NormalizationService.normalize_platform_session()
+
+    Creates a canonical NegotiationRecord for both buyer and seller enterprises.
+    Failed sessions (REJECTED/WALK_AWAY) also teach the agent — they are normalized.
+    """
+    session_id = getattr(event, "session_id", None)
+    if not session_id:
+        log.warning("handle_session_completed_normalize_missing_session_id")
+        return
+
+    buyer_enterprise_id = getattr(event, "buyer_enterprise_id", None)
+    seller_enterprise_id = getattr(event, "seller_enterprise_id", None)
+
+    if not buyer_enterprise_id or not seller_enterprise_id:
+        log.warning(
+            "handle_session_completed_normalize_missing_enterprise_ids",
+            session_id=str(session_id),
+        )
+        return
+
+    try:
+        from src.shared.infrastructure.db.session import get_session_factory
+        from src.negotiation.infrastructure.repositories import (
+            PostgresNegotiationRecordRepository,
+            PostgresSessionRepository,
+        )
+        from src.negotiation.application.normalization_service import NormalizationService
+
+        async with get_session_factory()() as db_session:
+            session_repo = PostgresSessionRepository(db_session)
+            record_repo = PostgresNegotiationRecordRepository(db_session)
+
+            # Idempotency: skip if already normalized
+            existing = await record_repo.get_by_session_id(session_id)
+            if existing:
+                log.info(
+                    "session_already_normalized",
+                    session_id=str(session_id),
+                    record_id=str(existing.id),
+                )
+                return
+
+            session = await session_repo.get_by_id(session_id)
+            if not session:
+                log.warning(
+                    "handle_session_completed_normalize_session_not_found",
+                    session_id=str(session_id),
+                )
+                return
+
+            normalization_svc = NormalizationService(embedding_service=None)
+
+            # Create buyer record
+            buyer_record = await normalization_svc.normalize_platform_session(
+                session=session,
+                enterprise_id=buyer_enterprise_id,
+                enterprise_role="buyer",
+            )
+            await record_repo.save(buyer_record)
+
+            # Create seller record (separate entry with seller perspective)
+            seller_record = await normalization_svc.normalize_platform_session(
+                session=session,
+                enterprise_id=seller_enterprise_id,
+                enterprise_role="seller",
+            )
+            # Use a different UUID for the seller record
+            import uuid as _uuid
+            seller_record.id = _uuid.uuid4()
+            await record_repo.save(seller_record)
+
+            await db_session.commit()
+
+            log.info(
+                "session_normalized",
+                session_id=str(session_id),
+                buyer_record_id=str(buyer_record.id),
+                seller_record_id=str(seller_record.id),
+            )
+
+    except Exception:
+        log.exception(
+            "handle_session_completed_normalize_failed",
+            session_id=str(session_id),
+        )
+
+
+async def handle_session_completed_compute_insights(event: object) -> None:
+    """
+    Phase Six: SessionAgreed → Recompute NegotiationInsight for both buyer and seller.
+
+    Only runs for AGREED sessions — insight quality doesn't warrant recomputing
+    on every failed session. Failed sessions are captured in records but insights
+    are recomputed lazily via the recompute API endpoint.
+    """
+    session_id = getattr(event, "session_id", None)
+    buyer_enterprise_id = getattr(event, "buyer_enterprise_id", None)
+    seller_enterprise_id = getattr(event, "seller_enterprise_id", None)
+
+    if not all([session_id, buyer_enterprise_id, seller_enterprise_id]):
+        return
+
+    try:
+        from src.shared.infrastructure.db.session import get_session_factory
+        from src.negotiation.infrastructure.repositories import (
+            PostgresNegotiationRecordRepository,
+            PostgresNegotiationInsightRepository,
+        )
+        from src.negotiation.application.insight_engine import InsightEngine
+
+        async with get_session_factory()() as db_session:
+            record_repo = PostgresNegotiationRecordRepository(db_session)
+            insight_repo = PostgresNegotiationInsightRepository(db_session)
+            engine = InsightEngine(record_repo=record_repo, insight_repo=insight_repo)
+
+            await engine.compute_enterprise_insights(buyer_enterprise_id)
+            await engine.compute_enterprise_insights(seller_enterprise_id)
+            await db_session.commit()
+
+            log.info(
+                "insights_recomputed_post_agreement",
+                session_id=str(session_id),
+                buyer_enterprise_id=str(buyer_enterprise_id),
+                seller_enterprise_id=str(seller_enterprise_id),
+            )
+
+    except Exception:
+        log.exception(
+            "handle_session_completed_compute_insights_failed",
+            session_id=str(session_id),
+        )
+
+
+def register_phase_six_handlers(publisher: EventPublisher) -> None:
+    """
+    Register negotiation memory normalization handlers.
+
+    Called in main.py lifespan AFTER register_phase_five_handlers().
+    - SessionAgreed → normalize + compute insights
+    - SessionFailed → normalize (failed sessions teach the agent too)
+    """
+    publisher.subscribe("SessionAgreed", handle_session_completed_normalize)
+    publisher.subscribe("SessionAgreed", handle_session_completed_compute_insights)
+    publisher.subscribe("SessionFailed", handle_session_completed_normalize)
+
+    log.info(
+        "phase_six_event_handlers_registered",
+        handlers=[
+            "SessionAgreed->normalize_records",
+            "SessionAgreed->compute_insights",
+            "SessionFailed->normalize_records",
+        ],
+    )
+

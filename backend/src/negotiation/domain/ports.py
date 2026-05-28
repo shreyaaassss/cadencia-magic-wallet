@@ -189,3 +189,57 @@ class IEmbeddingService(Protocol):
         self, text: str
     ) -> list[float]: ...
 
+
+# ── Phase 6: Negotiation Memory Repositories ─────────────────────────────────
+
+from src.negotiation.domain.negotiation_record import NegotiationRecord  # noqa: E402
+from src.negotiation.domain.negotiation_insight import NegotiationInsight  # noqa: E402
+
+
+@runtime_checkable
+class INegotiationRecordRepository(Protocol):
+    """
+    Repository for canonical NegotiationRecord entities.
+
+    All queries are tenant-scoped (enterprise_id mandatory filter) to
+    enforce strict data isolation — no cross-enterprise queries permitted.
+    """
+
+    async def save(self, record: NegotiationRecord) -> None: ...
+
+    async def get_by_id(
+        self, record_id: uuid.UUID
+    ) -> NegotiationRecord | None: ...
+
+    async def list_by_enterprise(
+        self,
+        enterprise_id: uuid.UUID,
+        filters: dict,
+        limit: int,
+        offset: int,
+    ) -> list[NegotiationRecord]: ...
+
+    async def get_by_session_id(
+        self, session_id: uuid.UUID
+    ) -> NegotiationRecord | None: ...
+
+    async def search_similar(
+        self,
+        enterprise_id: uuid.UUID,
+        query_embedding: list[float],
+        limit: int,
+    ) -> list[NegotiationRecord]: ...
+
+
+@runtime_checkable
+class INegotiationInsightRepository(Protocol):
+    """Repository for per-enterprise aggregate NegotiationInsight."""
+
+    async def get_by_enterprise(
+        self, enterprise_id: uuid.UUID
+    ) -> NegotiationInsight | None: ...
+
+    async def save(self, insight: NegotiationInsight) -> None: ...
+
+    async def upsert(self, insight: NegotiationInsight) -> None: ...
+

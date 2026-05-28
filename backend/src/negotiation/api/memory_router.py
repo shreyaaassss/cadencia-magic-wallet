@@ -14,6 +14,8 @@ from src.identity.domain.user import User
 from src.shared.api.responses import success_response
 
 router = APIRouter(prefix="/v1/agent-memory", tags=["agent-memory"])
+records_router = APIRouter(prefix="/v1/negotiation-records", tags=["negotiation-records"])
+insights_router = APIRouter(prefix="/v1/negotiation-insights", tags=["negotiation-insights"])
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -203,3 +205,283 @@ async def clear_memory(
     _check_tenant_access(user, tenant_id)
     deleted = await svc.clear_memory(tenant_id)  # type: ignore[union-attr]
     return success_response(data={"deleted": deleted, "tenant_id": str(tenant_id)})
+
+
+# ── Negotiation Records API ───────────────────────────────────────────────────
+
+
+class RecordListRequest(BaseModel):
+    outcome: str | None = None
+    record_type: str | None = None
+    product_category: str | None = None
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+
+
+class RecordSearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=2000)
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+async def _get_record_repo(db_session):
+    from src.negotiation.infrastructure.repositories import PostgresNegotiationRecordRepository
+    return PostgresNegotiationRecordRepository(db_session)
+
+
+async def _get_insight_repo(db_session):
+    from src.negotiation.infrastructure.repositories import PostgresNegotiationInsightRepository
+    return PostgresNegotiationInsightRepository(db_session)
+
+
+async def _get_db():
+    from src.shared.infrastructure.db.session import get_session_factory
+    async with get_session_factory()() as session:
+        yield session
+
+
+@records_router.get("/{enterprise_id}")
+async def list_negotiation_records(
+    enterprise_id: uuid.UUID,
+    outcome: str | None = None,
+    record_type: str | None = None,
+    product_category: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """
+    GET /v1/negotiation-records/{enterprise_id}
+    List normalized negotiation records with optional filters.
+    """
+    _check_tenant_access(user, enterprise_id)
+
+    filters = {}
+    if outcome:
+        filters["outcome"] = outcome
+    if record_type:
+        filters["record_type"] = record_type
+    if product_category:
+        filters["product_category"] = product_category
+
+    from src.shared.infrastructure.db.session import get_session_factory
+    from src.negotiation.infrastructure.repositories import PostgresNegotiationRecordRepository
+
+    async with get_session_factory()() as db_session:
+        repo = PostgresNegotiationRecordRepository(db_session)
+        records = await repo.list_by_enterprise(
+            enterprise_id=enterprise_id,
+            filters=filters,
+            limit=limit,
+            offset=offset,
+        )
+
+    return success_response(
+        data=[
+            {
+                "id": str(r.id),
+                "record_type": r.record_type.value,
+                "enterprise_role": r.enterprise_role,
+                "outcome": r.outcome.value,
+                "product_name": r.product_name,
+                "product_category": r.product_category,
+                "agreed_price_inr": float(r.agreed_price_inr) if r.agreed_price_inr else None,
+                "total_rounds": r.total_rounds,
+                "deal_quality_score": float(r.deal_quality_score) if r.deal_quality_score else None,
+                "buyer_style": r.buyer_style,
+                "seller_style": r.seller_style,
+                "conversation_summary": r.conversation_summary,
+                "created_at": r.created_at.isoformat() if hasattr(r.created_at, "isoformat") else str(r.created_at),
+            }
+            for r in records
+        ]
+    )
+
+
+@records_router.get("/{enterprise_id}/{record_id}")
+async def get_negotiation_record(
+    enterprise_id: uuid.UUID,
+    record_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """
+    GET /v1/negotiation-records/{enterprise_id}/{record_id}
+    Get a single normalized negotiation record with full detail.
+    """
+    _check_tenant_access(user, enterprise_id)
+
+    from src.shared.infrastructure.db.session import get_session_factory
+    from src.negotiation.infrastructure.repositories import PostgresNegotiationRecordRepository
+
+    async with get_session_factory()() as db_session:
+        repo = PostgresNegotiationRecordRepository(db_session)
+        record = await repo.get_by_id(record_id)
+
+    if not record or record.enterprise_id != enterprise_id:
+        raise HTTPException(status_code=404, detail="Negotiation record not found")
+
+    return success_response(
+        data={
+            "id": str(record.id),
+            "enterprise_id": str(record.enterprise_id),
+            "record_type": record.record_type.value,
+            "source_session_id": str(record.source_session_id) if record.source_session_id else None,
+            "counterparty_enterprise_id": str(record.counterparty_enterprise_id) if record.counterparty_enterprise_id else None,
+            "enterprise_role": record.enterprise_role,
+            "product_name": record.product_name,
+            "product_category": record.product_category,
+            "hsn_code": record.hsn_code,
+            "industry_vertical": record.industry_vertical,
+            "outcome": record.outcome.value,
+            "agreed_price_inr": float(record.agreed_price_inr) if record.agreed_price_inr else None,
+            "initial_ask_price_inr": float(record.initial_ask_price_inr) if record.initial_ask_price_inr else None,
+            "initial_bid_price_inr": float(record.initial_bid_price_inr) if record.initial_bid_price_inr else None,
+            "final_discount_pct": float(record.final_discount_pct) if record.final_discount_pct else None,
+            "total_rounds": record.total_rounds,
+            "duration_hours": float(record.duration_hours) if record.duration_hours else None,
+            "buyer_avg_concession_pct": float(record.buyer_avg_concession_pct) if record.buyer_avg_concession_pct else None,
+            "seller_avg_concession_pct": float(record.seller_avg_concession_pct) if record.seller_avg_concession_pct else None,
+            "buyer_style": record.buyer_style,
+            "seller_style": record.seller_style,
+            "deal_quality_score": float(record.deal_quality_score) if record.deal_quality_score else None,
+            "agreed_terms": record.agreed_terms,
+            "payment_terms": record.payment_terms,
+            "delivery_window_days": record.delivery_window_days,
+            "offer_sequence": record.offer_sequence,
+            "conversation_summary": record.conversation_summary,
+            "confidence_score": float(record.confidence_score) if record.confidence_score else None,
+            "source_filename": record.source_filename,
+            "normalized_at": record.normalized_at.isoformat() if record.normalized_at and hasattr(record.normalized_at, "isoformat") else str(record.normalized_at) if record.normalized_at else None,
+            "created_at": record.created_at.isoformat() if hasattr(record.created_at, "isoformat") else str(record.created_at),
+        }
+    )
+
+
+@records_router.post("/{enterprise_id}/search")
+async def search_negotiation_records(
+    enterprise_id: uuid.UUID,
+    body: RecordSearchRequest,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """
+    POST /v1/negotiation-records/{enterprise_id}/search
+    Semantic search across negotiation records via pgvector cosine similarity.
+    """
+    _check_tenant_access(user, enterprise_id)
+
+    import os as _os
+    from src.shared.infrastructure.db.session import get_session_factory
+    from src.negotiation.infrastructure.repositories import PostgresNegotiationRecordRepository
+    from src.negotiation.infrastructure.embedding_pipeline import GeminiEmbedder, StubEmbedder
+
+    if _os.environ.get("GEMINI_API_KEY"):
+        embedding_svc = GeminiEmbedder()
+    else:
+        embedding_svc = StubEmbedder()
+
+    try:
+        query_embedding = await embedding_svc.embed_query(body.query)
+    except Exception:
+        raise HTTPException(status_code=503, detail="Embedding service unavailable")
+
+    async with get_session_factory()() as db_session:
+        repo = PostgresNegotiationRecordRepository(db_session)
+        records = await repo.search_similar(
+            enterprise_id=enterprise_id,
+            query_embedding=query_embedding,
+            limit=body.limit,
+        )
+
+    return success_response(
+        data=[
+            {
+                "id": str(r.id),
+                "record_type": r.record_type.value,
+                "outcome": r.outcome.value,
+                "product_name": r.product_name,
+                "agreed_price_inr": float(r.agreed_price_inr) if r.agreed_price_inr else None,
+                "conversation_summary": r.conversation_summary,
+                "created_at": r.created_at.isoformat() if hasattr(r.created_at, "isoformat") else str(r.created_at),
+            }
+            for r in records
+        ]
+    )
+
+
+# ── Negotiation Insights API ──────────────────────────────────────────────────
+
+
+@insights_router.get("/{enterprise_id}")
+async def get_negotiation_insights(
+    enterprise_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """
+    GET /v1/negotiation-insights/{enterprise_id}
+    Get computed aggregate intelligence for an enterprise.
+    """
+    _check_tenant_access(user, enterprise_id)
+
+    from src.shared.infrastructure.db.session import get_session_factory
+    from src.negotiation.infrastructure.repositories import PostgresNegotiationInsightRepository
+
+    async with get_session_factory()() as db_session:
+        repo = PostgresNegotiationInsightRepository(db_session)
+        insight = await repo.get_by_enterprise(enterprise_id)
+
+    if not insight:
+        return success_response(data=None)
+
+    return success_response(
+        data={
+            "enterprise_id": str(insight.enterprise_id),
+            "role": insight.role,
+            "total_negotiations": insight.total_negotiations,
+            "success_rate": float(insight.success_rate),
+            "avg_rounds_to_close": float(insight.avg_rounds_to_close),
+            "avg_discount_achieved_pct": float(insight.avg_discount_achieved_pct),
+            "avg_deal_quality": float(insight.avg_deal_quality),
+            "dominant_style": insight.dominant_style,
+            "style_distribution": insight.style_distribution,
+            "top_products": insight.top_products,
+            "top_verticals": insight.top_verticals,
+            "counterparty_stats": insight.counterparty_stats,
+            "strategy_recommendations": insight.strategy_recommendations,
+            "last_computed_at": insight.last_computed_at.isoformat() if insight.last_computed_at and hasattr(insight.last_computed_at, "isoformat") else str(insight.last_computed_at) if insight.last_computed_at else None,
+        }
+    )
+
+
+@insights_router.post("/{enterprise_id}/recompute")
+async def recompute_negotiation_insights(
+    enterprise_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """
+    POST /v1/negotiation-insights/{enterprise_id}/recompute
+    Force recompute aggregate insights from all negotiation records.
+    """
+    _check_tenant_access(user, enterprise_id)
+
+    from src.shared.infrastructure.db.session import get_session_factory
+    from src.negotiation.infrastructure.repositories import (
+        PostgresNegotiationRecordRepository,
+        PostgresNegotiationInsightRepository,
+    )
+    from src.negotiation.application.insight_engine import InsightEngine
+
+    async with get_session_factory()() as db_session:
+        record_repo = PostgresNegotiationRecordRepository(db_session)
+        insight_repo = PostgresNegotiationInsightRepository(db_session)
+        engine = InsightEngine(record_repo=record_repo, insight_repo=insight_repo)
+        insight = await engine.compute_enterprise_insights(enterprise_id)
+        await db_session.commit()
+
+    return success_response(
+        data={
+            "enterprise_id": str(insight.enterprise_id),
+            "total_negotiations": insight.total_negotiations,
+            "success_rate": float(insight.success_rate),
+            "last_computed_at": insight.last_computed_at.isoformat() if insight.last_computed_at and hasattr(insight.last_computed_at, "isoformat") else str(insight.last_computed_at),
+            "status": "recomputed",
+        }
+    )

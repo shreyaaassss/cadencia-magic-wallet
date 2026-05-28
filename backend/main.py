@@ -52,6 +52,7 @@ from src.shared.infrastructure.events.handlers import (
     register_handlers,
     register_phase_five_handlers,
     register_phase_four_handlers,
+    register_phase_six_handlers,
     register_phase_three_handlers,
     register_phase_two_handlers,
 )
@@ -243,6 +244,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     register_phase_three_handlers(publisher)  # replaces Phase 2 stubs with compliance handlers
     register_phase_four_handlers(publisher)   # replaces SessionAgreedStub with real SessionAgreed handlers
     register_phase_five_handlers(publisher)    # marketplace → negotiation event wiring
+    register_phase_six_handlers(publisher)     # negotiation memory normalization + insights
     log.info("startup_event_handlers_registered")
 
     # 5. Enforce X402_SIMULATION_MODE — PROHIBITED in production
@@ -383,6 +385,11 @@ def create_app() -> FastAPI:
     # Phase Four: Agent Memory API (S3/RAG endpoints)
     from src.negotiation.api.memory_router import router as memory_router
     app.include_router(memory_router)
+
+    # Phase Six: Negotiation Records + Insights API
+    from src.negotiation.api.memory_router import records_router, insights_router
+    app.include_router(records_router)
+    app.include_router(insights_router)
 
     # Phase Five: Marketplace API
     from src.marketplace.api.router import router as marketplace_router

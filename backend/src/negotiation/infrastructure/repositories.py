@@ -27,10 +27,18 @@ from src.negotiation.infrastructure.models import (
     AgentMemoryModel,
     AgentProfileModel,
     IndustryPlaybookModel,
+    NegotiationRecordModel,
+    NegotiationInsightModel,
     NegotiationSessionModel,
     OfferModel,
     OpponentProfileModel,
 )
+from src.negotiation.domain.negotiation_record import (
+    NegotiationRecord,
+    NegotiationOutcome,
+    RecordType,
+)
+from src.negotiation.domain.negotiation_insight import NegotiationInsight
 
 
 # ── Domain ↔ ORM Mapping Helpers ─────────────────────────────────────────────
@@ -541,3 +549,262 @@ class PostgresAgentMemoryRepository:
         )
         result = await self._session.execute(stmt)
         return result.scalar() or 0
+
+
+# ── Phase 6: Negotiation Memory Repositories ─────────────────────────────────
+
+
+def _record_model_to_domain(m: NegotiationRecordModel) -> NegotiationRecord:
+    return NegotiationRecord(
+        id=m.id,
+        enterprise_id=m.enterprise_id,
+        record_type=RecordType(m.record_type),
+        source_session_id=m.source_session_id,
+        counterparty_enterprise_id=m.counterparty_enterprise_id,
+        enterprise_role=m.enterprise_role,
+        product_name=m.product_name,
+        product_category=m.product_category,
+        hsn_code=m.hsn_code,
+        industry_vertical=m.industry_vertical,
+        quantity=Decimal(str(m.quantity)) if m.quantity is not None else None,
+        quantity_unit=m.quantity_unit,
+        outcome=NegotiationOutcome(m.outcome),
+        agreed_price_inr=Decimal(str(m.agreed_price_inr)) if m.agreed_price_inr is not None else None,
+        initial_ask_price_inr=Decimal(str(m.initial_ask_price_inr)) if m.initial_ask_price_inr is not None else None,
+        initial_bid_price_inr=Decimal(str(m.initial_bid_price_inr)) if m.initial_bid_price_inr is not None else None,
+        final_discount_pct=Decimal(str(m.final_discount_pct)) if m.final_discount_pct is not None else None,
+        total_rounds=m.total_rounds,
+        duration_hours=Decimal(str(m.duration_hours)) if m.duration_hours is not None else None,
+        buyer_avg_concession_pct=Decimal(str(m.buyer_avg_concession_pct)) if m.buyer_avg_concession_pct is not None else None,
+        seller_avg_concession_pct=Decimal(str(m.seller_avg_concession_pct)) if m.seller_avg_concession_pct is not None else None,
+        buyer_style=m.buyer_style,
+        seller_style=m.seller_style,
+        deal_quality_score=Decimal(str(m.deal_quality_score)) if m.deal_quality_score is not None else None,
+        agreed_terms=m.agreed_terms,
+        payment_terms=m.payment_terms,
+        delivery_window_days=m.delivery_window_days,
+        offer_sequence=m.offer_sequence,
+        conversation_summary=m.conversation_summary,
+        raw_source_text=m.raw_source_text,
+        schema_version=m.schema_version,
+        confidence_score=Decimal(str(m.confidence_score)) if m.confidence_score is not None else None,
+        source_filename=m.source_filename,
+        normalized_at=m.normalized_at,
+        retention_expires_at=m.retention_expires_at,
+        created_at=m.created_at,
+        updated_at=m.updated_at,
+    )
+
+
+def _insight_model_to_domain(m: NegotiationInsightModel) -> NegotiationInsight:
+    return NegotiationInsight(
+        id=m.id,
+        enterprise_id=m.enterprise_id,
+        role=m.role,
+        total_negotiations=m.total_negotiations,
+        success_rate=Decimal(str(m.success_rate)),
+        avg_rounds_to_close=Decimal(str(m.avg_rounds_to_close)),
+        avg_discount_achieved_pct=Decimal(str(m.avg_discount_achieved_pct)),
+        avg_deal_quality=Decimal(str(m.avg_deal_quality)),
+        dominant_style=m.dominant_style or "collaborative",
+        style_distribution=m.style_distribution or {},
+        top_products=m.top_products or [],
+        top_verticals=m.top_verticals or [],
+        counterparty_stats=m.counterparty_stats or [],
+        seasonal_patterns=m.seasonal_patterns,
+        strategy_recommendations=m.strategy_recommendations or [],
+        last_computed_at=m.last_computed_at,
+        schema_version=m.schema_version,
+        created_at=m.created_at,
+        updated_at=m.updated_at,
+    )
+
+
+class PostgresNegotiationRecordRepository:
+    """Implements INegotiationRecordRepository — pgvector-backed canonical record storage."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def save(self, record: NegotiationRecord) -> None:
+        model = NegotiationRecordModel(
+            id=record.id,
+            enterprise_id=record.enterprise_id,
+            record_type=record.record_type.value,
+            source_session_id=record.source_session_id,
+            counterparty_enterprise_id=record.counterparty_enterprise_id,
+            enterprise_role=record.enterprise_role,
+            product_name=record.product_name,
+            product_category=record.product_category,
+            hsn_code=record.hsn_code,
+            industry_vertical=record.industry_vertical,
+            quantity=float(record.quantity) if record.quantity is not None else None,
+            quantity_unit=record.quantity_unit,
+            outcome=record.outcome.value,
+            agreed_price_inr=float(record.agreed_price_inr) if record.agreed_price_inr is not None else None,
+            initial_ask_price_inr=float(record.initial_ask_price_inr) if record.initial_ask_price_inr is not None else None,
+            initial_bid_price_inr=float(record.initial_bid_price_inr) if record.initial_bid_price_inr is not None else None,
+            final_discount_pct=float(record.final_discount_pct) if record.final_discount_pct is not None else None,
+            total_rounds=record.total_rounds,
+            duration_hours=float(record.duration_hours) if record.duration_hours is not None else None,
+            buyer_avg_concession_pct=float(record.buyer_avg_concession_pct) if record.buyer_avg_concession_pct is not None else None,
+            seller_avg_concession_pct=float(record.seller_avg_concession_pct) if record.seller_avg_concession_pct is not None else None,
+            buyer_style=record.buyer_style,
+            seller_style=record.seller_style,
+            deal_quality_score=float(record.deal_quality_score) if record.deal_quality_score is not None else None,
+            agreed_terms=record.agreed_terms,
+            payment_terms=record.payment_terms,
+            delivery_window_days=record.delivery_window_days,
+            offer_sequence=record.offer_sequence,
+            conversation_summary=record.conversation_summary,
+            raw_source_text=record.raw_source_text,
+            schema_version=record.schema_version,
+            confidence_score=float(record.confidence_score) if record.confidence_score is not None else None,
+            source_filename=record.source_filename,
+            normalized_at=record.normalized_at,
+            retention_expires_at=record.retention_expires_at,
+            embedding=record.embedding,
+        )
+        self._session.add(model)
+        await self._session.flush()
+
+    async def get_by_id(self, record_id: uuid.UUID) -> NegotiationRecord | None:
+        stmt = select(NegotiationRecordModel).where(NegotiationRecordModel.id == record_id)
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        return _record_model_to_domain(model) if model else None
+
+    async def get_by_session_id(self, session_id: uuid.UUID) -> NegotiationRecord | None:
+        stmt = select(NegotiationRecordModel).where(
+            NegotiationRecordModel.source_session_id == session_id
+        )
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        return _record_model_to_domain(model) if model else None
+
+    async def list_by_enterprise(
+        self,
+        enterprise_id: uuid.UUID,
+        filters: dict,
+        limit: int,
+        offset: int,
+    ) -> list[NegotiationRecord]:
+        stmt = select(NegotiationRecordModel).where(
+            NegotiationRecordModel.enterprise_id == enterprise_id
+        )
+        if filters.get("outcome"):
+            stmt = stmt.where(NegotiationRecordModel.outcome == filters["outcome"])
+        if filters.get("record_type"):
+            stmt = stmt.where(NegotiationRecordModel.record_type == filters["record_type"])
+        if filters.get("product_category"):
+            stmt = stmt.where(
+                NegotiationRecordModel.product_category == filters["product_category"]
+            )
+        stmt = stmt.order_by(NegotiationRecordModel.created_at.desc()).limit(limit).offset(offset)
+        result = await self._session.execute(stmt)
+        return [_record_model_to_domain(m) for m in result.scalars().all()]
+
+    async def search_similar(
+        self,
+        enterprise_id: uuid.UUID,
+        query_embedding: list[float],
+        limit: int = 5,
+    ) -> list[NegotiationRecord]:
+        """Semantic search via pgvector cosine similarity — tenant-scoped."""
+        from sqlalchemy import text
+
+        stmt = text(
+            "SELECT id FROM negotiation_records "
+            "WHERE enterprise_id = :enterprise_id "
+            "AND embedding IS NOT NULL "
+            "ORDER BY embedding <=> :query_embedding "
+            "LIMIT :limit"
+        )
+        result = await self._session.execute(
+            stmt,
+            {
+                "enterprise_id": str(enterprise_id),
+                "query_embedding": str(query_embedding),
+                "limit": limit,
+            },
+        )
+        ids = [row[0] for row in result.fetchall()]
+        if not ids:
+            return []
+        records_stmt = select(NegotiationRecordModel).where(
+            NegotiationRecordModel.id.in_(ids)
+        )
+        records_result = await self._session.execute(records_stmt)
+        return [_record_model_to_domain(m) for m in records_result.scalars().all()]
+
+
+class PostgresNegotiationInsightRepository:
+    """Implements INegotiationInsightRepository — one row per enterprise, upsert semantics."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get_by_enterprise(self, enterprise_id: uuid.UUID) -> NegotiationInsight | None:
+        stmt = select(NegotiationInsightModel).where(
+            NegotiationInsightModel.enterprise_id == enterprise_id
+        )
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        return _insight_model_to_domain(model) if model else None
+
+    async def save(self, insight: NegotiationInsight) -> None:
+        model = NegotiationInsightModel(
+            id=insight.id,
+            enterprise_id=insight.enterprise_id,
+            role=insight.role,
+            total_negotiations=insight.total_negotiations,
+            success_rate=float(insight.success_rate),
+            avg_rounds_to_close=float(insight.avg_rounds_to_close),
+            avg_discount_achieved_pct=float(insight.avg_discount_achieved_pct),
+            avg_deal_quality=float(insight.avg_deal_quality),
+            dominant_style=insight.dominant_style,
+            style_distribution=insight.style_distribution,
+            top_products=insight.top_products,
+            top_verticals=insight.top_verticals,
+            counterparty_stats=insight.counterparty_stats,
+            seasonal_patterns=insight.seasonal_patterns,
+            strategy_recommendations=insight.strategy_recommendations,
+            last_computed_at=insight.last_computed_at,
+            schema_version=insight.schema_version,
+        )
+        self._session.add(model)
+        await self._session.flush()
+
+    async def upsert(self, insight: NegotiationInsight) -> None:
+        """Insert or update — one row per enterprise."""
+        existing_stmt = select(NegotiationInsightModel).where(
+            NegotiationInsightModel.enterprise_id == insight.enterprise_id
+        )
+        result = await self._session.execute(existing_stmt)
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            stmt = (
+                update(NegotiationInsightModel)
+                .where(NegotiationInsightModel.enterprise_id == insight.enterprise_id)
+                .values(
+                    role=insight.role,
+                    total_negotiations=insight.total_negotiations,
+                    success_rate=float(insight.success_rate),
+                    avg_rounds_to_close=float(insight.avg_rounds_to_close),
+                    avg_discount_achieved_pct=float(insight.avg_discount_achieved_pct),
+                    avg_deal_quality=float(insight.avg_deal_quality),
+                    dominant_style=insight.dominant_style,
+                    style_distribution=insight.style_distribution,
+                    top_products=insight.top_products,
+                    top_verticals=insight.top_verticals,
+                    counterparty_stats=insight.counterparty_stats,
+                    seasonal_patterns=insight.seasonal_patterns,
+                    strategy_recommendations=insight.strategy_recommendations,
+                    last_computed_at=insight.last_computed_at,
+                    schema_version=insight.schema_version,
+                )
+            )
+            await self._session.execute(stmt)
+        else:
+            await self.save(insight)
