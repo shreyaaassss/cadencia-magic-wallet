@@ -81,6 +81,13 @@ export default function MarketplacePage() {
     return allRfqs.filter(r => r.status === filter);
   }, [allRfqs, filter]);
 
+  // ─── Pagination (10 per page) ────────────────────────────────────────────────
+  const PAGE_SIZE = 10;
+  const [rfqPage, setRfqPage] = React.useState(1);
+  const totalRfqPages = Math.max(1, Math.ceil(filteredRfqs.length / PAGE_SIZE));
+  const pagedRfqs = filteredRfqs.slice((rfqPage - 1) * PAGE_SIZE, rfqPage * PAGE_SIZE);
+  React.useEffect(() => { setRfqPage(1); }, [filter]);
+
   // ─── Selected RFQ ──────────────────────────────────────────────────────────
   const selectedRfq = allRfqs.find(r => r.id === selectedRfqId) ?? null;
 
@@ -298,12 +305,37 @@ export default function MarketplacePage() {
                   render: (v) => <span className="text-muted-foreground text-xs">{formatDate(String(v))}</span>,
                 },
               ]}
-              data={filteredRfqs}
+              data={pagedRfqs}
               isLoading={rfqsLoading}
               keyExtractor={(row) => row.id}
               onRowClick={handleRowClick}
               emptyState={{ icon: FileText, title: 'No RFQs yet', description: 'Submit your first RFQ above' }}
             />
+            {totalRfqPages > 1 && (
+              <div className="flex items-center justify-between px-1 pt-3 border-t border-border">
+                <span className="text-xs text-muted-foreground">
+                  Page {rfqPage} of {totalRfqPages} · {filteredRfqs.length} RFQ{filteredRfqs.length !== 1 ? 's' : ''}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRfqPage(p => Math.max(1, p - 1))}
+                    disabled={rfqPage === 1}
+                  >
+                    ← Prev
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRfqPage(p => Math.min(totalRfqPages, p + 1))}
+                    disabled={rfqPage === totalRfqPages}
+                  >
+                    Next →
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right: Detail Panel (desktop) */}
