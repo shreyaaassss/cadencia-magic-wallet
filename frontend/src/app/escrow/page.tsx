@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Landmark, CheckCircle2, Clock, Rocket, AlertCircle, Wallet, Package, ExternalLink, Loader2, ShoppingBag, Tag, Hash } from 'lucide-react';
+import { Landmark, CheckCircle2, Clock, Rocket, AlertCircle, Wallet, Package, ExternalLink, Loader2, ShoppingBag, Tag, Hash, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { AppShell } from '@/components/layout/AppShell';
@@ -127,6 +127,25 @@ export default function EscrowPage() {
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.detail || 'Failed to approve deal');
+    },
+  });
+
+  // ─── Seller Reject Deal ─────────────────────────────────────────────────
+  const [rejectConfirmId, setRejectConfirmId] = React.useState<string | null>(null);
+  const sellerRejectMutation = useMutation({
+    mutationFn: async (escrowId: string) => {
+      const res = await api.post(`/v1/escrow/${escrowId}/seller-reject`);
+      return res.data.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message);
+      setRejectConfirmId(null);
+      queryClient.invalidateQueries({ queryKey: ['escrows'] });
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.detail || 'Failed to reject deal');
+      setRejectConfirmId(null);
     },
   });
 
@@ -373,21 +392,58 @@ export default function EscrowPage() {
                       {/* Action Buttons */}
                       <div className="flex items-center justify-center gap-3">
 
-                        {/* Seller: Accept Deal */}
+                        {/* Seller: Accept + Reject Deal */}
                         {escrow.status === 'PENDING_APPROVAL' && isSeller && (
-                          <Button
-                            onClick={() => sellerApproveMutation.mutate(escrow.escrow_id)}
-                            disabled={sellerApproveMutation.isPending}
-                            className="bg-green-600 hover:bg-green-700 text-white"
-                          >
-                            {sellerApproveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                            Accept Deal
-                          </Button>
+                          rejectConfirmId === escrow.escrow_id ? (
+                            <div className="flex flex-col items-center gap-2 text-center">
+                              <p className="text-sm font-medium text-destructive">Reject this deal?</p>
+                              <p className="text-xs text-muted-foreground">The buyer will be notified and can select another seller.</p>
+                              <div className="flex gap-2 mt-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setRejectConfirmId(null)}
+                                  disabled={sellerRejectMutation.isPending}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  onClick={() => sellerRejectMutation.mutate(escrow.escrow_id)}
+                                  disabled={sellerRejectMutation.isPending}
+                                  className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                                >
+                                  {sellerRejectMutation.isPending ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <XCircle className="mr-2 h-3 w-3" />}
+                                  Yes, Reject
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex gap-2">
+                              <Button
+                                onClick={() => sellerApproveMutation.mutate(escrow.escrow_id)}
+                                disabled={sellerApproveMutation.isPending || sellerRejectMutation.isPending}
+                                className="bg-green-600 hover:bg-green-700 text-white"
+                              >
+                                {sellerApproveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                                Accept Deal
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => setRejectConfirmId(escrow.escrow_id)}
+                                disabled={sellerApproveMutation.isPending || sellerRejectMutation.isPending}
+                                className="border-destructive text-destructive hover:bg-destructive/10"
+                              >
+                                <XCircle className="mr-2 h-4 w-4" />
+                                Reject Deal
+                              </Button>
+                            </div>
+                          )
                         )}
                         {escrow.status === 'PENDING_APPROVAL' && isBuyer && (
                           <div className="flex items-center gap-2 text-amber-500">
                             <Clock className="h-4 w-4 animate-pulse" />
-                            <span className="text-sm">Waiting for seller to accept...</span>
+                            <span className="text-sm">Waiting for seller to accept or reject...</span>
                           </div>
                         )}
 

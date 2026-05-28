@@ -316,6 +316,61 @@ async def seller_approve_escrow(
     })
 
 
+# ── POST /v1/escrow/{escrow_id}/seller-reject — seller declines the deal ────────
+
+
+@router.post(
+    "/{escrow_id}/seller-reject",
+    response_model=ApiResponse[dict],
+    summary="Seller rejects the buyer's selected deal",
+    dependencies=[Depends(rate_limit)],
+)
+async def seller_reject_escrow(
+    escrow_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    svc: SettlementServiceDep = Depends(get_settlement_service),
+) -> ApiResponse[dict]:
+    """
+    Seller declines a deal that is pending their approval.
+    Transitions PENDING_APPROVAL → REJECTED.
+    Buyer will see the escrow as rejected and can select a different deal.
+    """
+    from fastapi import HTTPException
+    from src.settlement.application.queries import GetEscrowByIdQuery
+    from src.settlement.infrastructure.models import EscrowContractModel
+    from sqlalchemy import select as sql_select
+
+    # Verify escrow is in PENDING_APPROVAL
+    escrow = await svc.get_escrow_by_id(
+        GetEscrowByIdQuery(escrow_id=escrow_id, requesting_enterprise_id=current_user.enterprise_id)
+    )
+    if escrow.status.value != "PENDING_APPROVAL":
+        raise HTTPException(status_code=409, detail=f"Escrow is {escrow.status.value}, expected PENDING_APPROVAL")
+
+    # Verify caller is the seller
+    escrow_row = await svc._uow._session.execute(
+        sql_select(EscrowContractModel).where(EscrowContractModel.id == escrow_id)
+    )
+    escrow_model = escrow_row.scalar_one_or_none()
+    if not escrow_model or str(escrow_model.seller_enterprise_id) != str(current_user.enterprise_id):
+        raise HTTPException(status_code=403, detail="Only the seller can reject this deal")
+
+    # Reject via existing service method
+    await svc.reject_escrow(
+        RejectEscrowCommand(
+            escrow_id=escrow_id,
+            admin_user_id=current_user.id,
+            reason="Seller declined the deal",
+        )
+    )
+
+    return success_response({
+        "escrow_id": str(escrow_id),
+        "status": "REJECTED",
+        "message": "Deal declined. The buyer has been notified and can select another seller.",
+    })
+
+
 # ── POST /v1/escrow/{escrow_id}/seller-dispatch — seller marks order dispatched ─
 
 
