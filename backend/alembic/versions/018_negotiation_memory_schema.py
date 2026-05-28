@@ -21,7 +21,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 revision: str = "018"
-down_revision: Union[str, None] = "ea191f1c2d52"
+down_revision: Union[str, None] = "017"
 branch_labels = None
 depends_on = None
 

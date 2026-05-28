@@ -54,6 +54,12 @@ async def backfill(dry_run: bool = False, batch_size: int = 100) -> None:
     from src.negotiation.application.insight_engine import InsightEngine
     from sqlalchemy import select
 
+    # Load all models so SQLAlchemy metadata resolves cross-context FK references
+    # (enterprises table is in identity context; negotiation_records has FK to it)
+    import src.identity.infrastructure.models  # noqa: F401
+    import src.settlement.infrastructure.models  # noqa: F401 - pulls in more FK targets
+    import src.marketplace.infrastructure.models  # noqa: F401
+
     log.info(
         "backfill_started",
         dry_run=dry_run,
