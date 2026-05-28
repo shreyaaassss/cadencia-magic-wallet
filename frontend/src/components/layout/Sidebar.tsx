@@ -28,8 +28,8 @@ const navItems: NavItem[] = [
   { label: 'Catalogue',       href: '/marketplace/catalogue', icon: PackageSearch,  roles: ['SELLER'] },
   { label: 'Negotiations',    href: ROUTES.NEGOTIATIONS,    icon: Handshake },
   { label: 'Escrow',          href: ROUTES.ESCROW,          icon: Landmark },
-  { label: 'Treasury',        href: ROUTES.TREASURY,        icon: Banknote },
-  { label: 'Compliance',      href: ROUTES.COMPLIANCE,      icon: ClipboardList },
+  { label: 'Treasury',        href: ROUTES.TREASURY,        icon: Banknote,    roles: ['ADMIN'] },
+  { label: 'Compliance',      href: ROUTES.COMPLIANCE,      icon: ClipboardList, roles: ['ADMIN'] },
   { label: 'Settings',        href: ROUTES.SETTINGS,        icon: Settings },
 ];
 

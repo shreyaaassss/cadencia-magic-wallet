@@ -53,20 +53,20 @@ export default function DashboardPage() {
   const { isBuyer } = useAuth();
   const { data: rfqs = [], isLoading: rfqsLoading } = useQuery({
     queryKey: ['rfqs'],
-    queryFn: () => api.get('/v1/marketplace/rfqs?limit=5').then(r => r.data.data as RFQ[]),
+    queryFn: () => api.get('/v1/marketplace/rfqs?limit=10').then(r => r.data.data as RFQ[]),
     enabled: isBuyer,
   });
 
   // Sessions — fetch from list endpoint
   const { data: sessions = [], isLoading: sessionsLoading } = useQuery({
     queryKey: ['sessions'],
-    queryFn: () => api.get('/v1/sessions?limit=5').then(r => r.data.data as NegotiationSession[]),
+    queryFn: () => api.get('/v1/sessions?limit=10').then(r => r.data.data as NegotiationSession[]),
   });
 
   // Escrows — fetch from list endpoint
   const { data: escrows = [], isLoading: escrowsLoading } = useQuery({
     queryKey: ['escrows'],
-    queryFn: () => api.get('/v1/escrow?limit=5').then(r => r.data.data as Escrow[]),
+    queryFn: () => api.get('/v1/escrow?limit=10').then(r => r.data.data as Escrow[]),
   });
 
   // Negotiation vault stats
@@ -304,6 +304,7 @@ export default function DashboardPage() {
               title="Recent RFQs"
               action={{ label: 'View all', icon: ArrowRight, onClick: () => router.push(ROUTES.MARKETPLACE) }}
             />
+            <div className="max-h-[400px] overflow-y-auto pr-1">
             <DataTable<RFQ>
               columns={[
                 { key: 'id', label: 'RFQ ID', render: (v) => <span className="text-primary font-mono text-xs">{String(v).slice(0, 8)}</span> },
@@ -317,6 +318,7 @@ export default function DashboardPage() {
               onRowClick={() => router.push(ROUTES.MARKETPLACE)}
               emptyState={{ icon: FileText, title: 'No RFQs yet', description: 'Create your first RFQ in the Marketplace' }}
             />
+            </div>
           </div>
 
           {/* Active Sessions */}
@@ -325,6 +327,7 @@ export default function DashboardPage() {
               title="Negotiation Sessions"
               action={{ label: 'View all', icon: ArrowRight, onClick: () => router.push(ROUTES.NEGOTIATIONS) }}
             />
+            <div className="max-h-[400px] overflow-y-auto pr-1">
             <DataTable<NegotiationSession>
               columns={[
                 { key: 'session_id', label: 'Session', render: (v) => <span className="text-primary font-mono text-xs">{String(v).slice(0, 8)}</span> },
@@ -339,6 +342,7 @@ export default function DashboardPage() {
               onRowClick={(row) => router.push(`${ROUTES.NEGOTIATIONS}/${row.session_id}`)}
               emptyState={{ icon: Handshake, title: 'No sessions yet' }}
             />
+            </div>
           </div>
         </div>
 
@@ -348,6 +352,7 @@ export default function DashboardPage() {
             title="Escrow Activity"
             action={{ label: 'View all', icon: ArrowRight, onClick: () => router.push(ROUTES.ESCROW) }}
           />
+          <div className="max-h-[400px] overflow-y-auto pr-1">
           <DataTable<Escrow>
             columns={[
               { key: 'escrow_id', label: 'Escrow ID', render: (v) => <span className="text-primary font-mono text-xs">{String(v).slice(0, 8)}</span> },
@@ -380,6 +385,7 @@ export default function DashboardPage() {
             keyExtractor={(row) => row.escrow_id}
             emptyState={{ icon: Landmark, title: 'No escrow activity' }}
           />
+          </div>
         </div>
 
         {/* Section 5: Recent Activity Feed */}

@@ -89,6 +89,8 @@ export default function EscrowPage() {
         !rfqsWithSelectedDeal.has(s.rfq_id),
     );
 
+    if (agreed.length === 0) return [];
+
     // If we came from a specific session, scope to only that RFQ's deals
     if (sessionParam) {
       const sourceSession = sessions.find(s => s.session_id === sessionParam);
@@ -96,7 +98,13 @@ export default function EscrowPage() {
         return agreed.filter(s => s.rfq_id === sourceSession.rfq_id);
       }
     }
-    return agreed;
+
+    // Only show deals from the MOST RECENTLY created RFQ — prevents old test
+    // sessions from cluttering the "Select a Deal" panel when a new RFQ is active.
+    const mostRecent = agreed.reduce((latest, s) =>
+      new Date(s.created_at) > new Date(latest.created_at) ? s : latest
+    );
+    return agreed.filter(s => s.rfq_id === mostRecent.rfq_id);
   }, [sessions, escrows, sessionParam]);
 
   // ─── Select Deal (buyer picks one) ──────────────────────────────────────
@@ -278,7 +286,7 @@ export default function EscrowPage() {
 
           {/* ── Active Escrows ────────────────────────────────────────────── */}
           {escrows.length > 0 && (
-            <div className="space-y-6">
+            <div className="space-y-6 max-h-[720px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
               {escrows.map(escrow => {
                 const stepIdx = getStepIndex(escrow.status);
                 const session = sessions.find(s => s.session_id === escrow.session_id);

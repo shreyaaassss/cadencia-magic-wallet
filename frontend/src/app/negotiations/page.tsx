@@ -109,6 +109,15 @@ export default function NegotiationsPage() {
     );
   }, [filtered]);
 
+  // ─── Pagination (10 RFQ groups per page) ────────────────────────────────────
+  const PAGE_SIZE = 10;
+  const [page, setPage] = React.useState(1);
+  const totalGroups = groupedByRfq.length;
+  const totalPages = Math.max(1, Math.ceil(totalGroups / PAGE_SIZE));
+  const pagedGroups = groupedByRfq.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // Reset to page 1 when filters change
+  React.useEffect(() => { setPage(1); }, [statusFilter, dateRange]);
+
   // ─── Stats ──────────────────────────────────────────────────────────────────
   const counts = React.useMemo(() => {
     const c: Record<string, number> = { ACTIVE: 0, AGREED: 0, WALK_AWAY: 0, TIMEOUT: 0, POLICY_BREACH: 0, FAILED: 0 };
@@ -255,7 +264,7 @@ export default function NegotiationsPage() {
                   </td>
                 </tr>
               ) : (
-                groupedByRfq.map(([rfqId, group], groupIndex) => {
+                pagedGroups.map(([rfqId, group], groupIndex) => {
                   const agreedCount = group.sessions.filter(s => s.status === 'AGREED').length;
                   const totalAgreed = group.sessions.reduce((sum, s) => sum + (s.agreed_price ?? 0), 0);
                   return (
@@ -366,6 +375,33 @@ export default function NegotiationsPage() {
             </tbody>
           </table>
           </div>
+
+          {/* ── Pagination controls ─────────────────────────────────────── */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-2 py-3 border-t border-border">
+              <span className="text-xs text-muted-foreground">
+                Page {page} of {totalPages} · {totalGroups} RFQ{totalGroups !== 1 ? 's' : ''}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                >
+                  ← Prev
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                >
+                  Next →
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Terminate Confirm Dialog */}
