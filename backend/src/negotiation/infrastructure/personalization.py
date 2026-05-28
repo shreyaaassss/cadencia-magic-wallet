@@ -22,6 +22,8 @@ class PersonalizationBuilder:
         role: str,
         memory_context: list[str] | None = None,
         rfq_context: dict | None = None,
+        recent_records: list | None = None,      # list[NegotiationRecord]
+        enterprise_insight: object | None = None, # NegotiationInsight
     ) -> str:
         w = profile.strategy_weights
 
@@ -119,6 +121,39 @@ class PersonalizationBuilder:
         else:
             memory_section = "No past negotiation context available."
 
+        # ── Negotiation vault: structured history from NegotiationRecord store ──
+        vault_section = ""
+        if recent_records:
+            lines = []
+            for r in recent_records[:5]:
+                outcome = r.outcome.value if hasattr(r.outcome, "value") else str(r.outcome)
+                outcome_icon = "✅" if outcome == "AGREED" else "❌" if outcome == "REJECTED" else "⏸"
+                product = r.product_name or "commodity"
+                price_str = f"₹{float(r.agreed_price_inr):,.0f}" if r.agreed_price_inr else "no deal"
+                rounds_str = f"{r.total_rounds} rounds" if r.total_rounds else ""
+                discount_str = f"{float(r.final_discount_pct):.1f}% discount" if r.final_discount_pct else ""
+                style = (r.buyer_style if role == "buyer" else r.seller_style) or ""
+                parts = [p for p in [price_str, rounds_str, discount_str, style] if p]
+                lines.append(f"{outcome_icon} [{outcome}] {product} — {' · '.join(parts)}")
+            vault_section = (
+                "=== YOUR NEGOTIATION VAULT (private deal history) ===\n"
+                + "\n".join(lines)
+                + "\nUse these patterns to calibrate your opening anchor and concession pace."
+            )
+
+        # ── Enterprise insight summary ──
+        insight_section = ""
+        if enterprise_insight and getattr(enterprise_insight, "total_negotiations", 0) > 0:
+            ins = enterprise_insight
+            insight_section = (
+                f"=== YOUR ENTERPRISE PROFILE ({ins.total_negotiations} deals on record) ===\n"
+                f"Success rate: {float(ins.success_rate)*100:.0f}% | "
+                f"Avg rounds to close: {float(ins.avg_rounds_to_close):.1f} | "
+                f"Avg discount: {float(ins.avg_discount_achieved_pct):.1f}%\n"
+                f"Dominant style: {ins.dominant_style}"
+                + (f" | Best vertical: {ins.top_verticals[0]['vertical']} ({ins.top_verticals[0]['success_rate']*100:.0f}% success)" if ins.top_verticals else "")
+            )
+
         # ── Negotiation intelligence (from past sessions) ──
         intel = getattr(profile, "negotiation_intelligence", None)
         if intel:
@@ -180,6 +215,8 @@ class PersonalizationBuilder:
             f"=== YOUR CONSTRAINTS ===\n{risk_section}\n\n"
             f"=== INDUSTRY / MARKET CONTEXT ===\n{playbook_section}\n\n"
             f"=== PAST NEGOTIATION CONTEXT ===\n{memory_section}\n\n"
+            + (f"{vault_section}\n\n" if vault_section else "")
+            + (f"{insight_section}\n\n" if insight_section else "")
             + (f"\n{intelligence_section}\n" if intelligence_section else "")
             + f"{warmth_section}\n\n"
             f"=== RULES ===\n{rules_section}\n\n"

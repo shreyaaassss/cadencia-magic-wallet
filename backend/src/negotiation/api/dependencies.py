@@ -15,6 +15,8 @@ from src.negotiation.infrastructure.neutral_engine import NeutralEngine
 from src.negotiation.infrastructure.personalization import PersonalizationBuilder
 from src.negotiation.infrastructure.repositories import (
     PostgresAgentProfileRepository,
+    PostgresNegotiationInsightRepository,
+    PostgresNegotiationRecordRepository,
     PostgresOfferRepository,
     PostgresPlaybookRepository,
     PostgresSessionRepository,
@@ -83,6 +85,8 @@ def get_negotiation_service(
         personalization_service=personalization_service,
         opponent_profile_repo=opponent_profile_repo,
         analysis_driver=analysis_driver,
+        record_repo=PostgresNegotiationRecordRepository(session),
+        insight_repo=PostgresNegotiationInsightRepository(session),
     )
 
     return NegotiationService(

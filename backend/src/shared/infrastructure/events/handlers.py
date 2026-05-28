@@ -757,6 +757,8 @@ async def handle_rfq_confirmed(event: object) -> None:
         from src.negotiation.infrastructure.personalization import PersonalizationBuilder
         from src.negotiation.infrastructure.repositories import (
             PostgresAgentProfileRepository,
+            PostgresNegotiationInsightRepository,
+            PostgresNegotiationRecordRepository,
             PostgresOfferRepository,
             PostgresPlaybookRepository,
             PostgresSessionRepository,
@@ -779,6 +781,8 @@ async def handle_rfq_confirmed(event: object) -> None:
                 agent_driver=get_agent_driver(),
                 personalization_builder=PersonalizationBuilder(),
                 sse_publisher=None,
+                record_repo=PostgresNegotiationRecordRepository(db_session),
+                insight_repo=PostgresNegotiationInsightRepository(db_session),
             )
             svc = NegotiationService(
                 session_repo=session_repo,

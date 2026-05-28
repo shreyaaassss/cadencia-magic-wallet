@@ -663,6 +663,8 @@ class MarketplaceService:
         from src.negotiation.infrastructure.personalization import PersonalizationBuilder
         from src.negotiation.infrastructure.repositories import (
             PostgresAgentProfileRepository,
+            PostgresNegotiationInsightRepository,
+            PostgresNegotiationRecordRepository,
             PostgresOfferRepository,
             PostgresPlaybookRepository,
             PostgresSessionRepository,
@@ -673,6 +675,8 @@ class MarketplaceService:
                 agent_driver=get_agent_driver(),
                 personalization_builder=PersonalizationBuilder(),
                 sse_publisher=None,
+                record_repo=PostgresNegotiationRecordRepository(db_session),
+                insight_repo=PostgresNegotiationInsightRepository(db_session),
             )
             svc = NegotiationService(
                 session_repo=PostgresSessionRepository(db_session),
@@ -706,6 +710,8 @@ class MarketplaceService:
         from src.negotiation.infrastructure.personalization import PersonalizationBuilder
         from src.negotiation.infrastructure.repositories import (
             PostgresAgentProfileRepository,
+            PostgresNegotiationInsightRepository,
+            PostgresNegotiationRecordRepository,
             PostgresOfferRepository,
             PostgresPlaybookRepository,
             PostgresSessionRepository,
@@ -721,6 +727,8 @@ class MarketplaceService:
                     agent_driver=get_agent_driver(),
                     personalization_builder=PersonalizationBuilder(),
                     sse_publisher=None,
+                    record_repo=PostgresNegotiationRecordRepository(db_session),
+                    insight_repo=PostgresNegotiationInsightRepository(db_session),
                 )
                 svc = NegotiationService(
                     session_repo=PostgresSessionRepository(db_session),

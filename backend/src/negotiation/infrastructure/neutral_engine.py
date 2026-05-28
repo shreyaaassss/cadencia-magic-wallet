@@ -87,6 +87,8 @@ class NeutralEngine:
         analysis_driver: object | None = None,   # Lightweight LLM for pre-analysis (GPT-4.1-nano)
         opponent_profile_repo: object | None = None,  # IOpponentProfileRepository
         market_feed: object | None = None,  # IMarketPriceFeed (optional)
+        record_repo: object | None = None,   # INegotiationRecordRepository (vault)
+        insight_repo: object | None = None,  # INegotiationInsightRepository (vault)
     ) -> None:
         self.agent_driver = agent_driver
         self.personalization = personalization_builder or PersonalizationBuilder()
@@ -98,6 +100,8 @@ class NeutralEngine:
         self.analysis_driver = analysis_driver  # None = falls back to self.agent_driver
         self.opponent_profile_repo = opponent_profile_repo
         self.market_feed = market_feed
+        self.record_repo = record_repo
+        self.insight_repo = insight_repo
         # Per-session belief cache (session_id → {role → belief})
         self._belief_cache: dict[str, dict[str, OpponentBelief]] = {}
         # Per-session ZOPA cache: stores true seller_reservation for convergence
@@ -338,12 +342,39 @@ class NeutralEngine:
                         catalogue_price * Decimal(str(quantity_for_ctx))
                     )
 
+        # ── VAULT INJECTION: pull structured deal history + enterprise insights ──
+        recent_records = None
+        enterprise_insight = None
+        if self.record_repo is not None:
+            try:
+                enterprise_id = (
+                    session.buyer_enterprise_id if is_buyer else session.seller_enterprise_id
+                )
+                recent_records = await self.record_repo.list_by_enterprise(
+                    enterprise_id=enterprise_id,
+                    filters={"enterprise_role": current_role.value.lower()},
+                    limit=5,
+                    offset=0,
+                )
+            except Exception as _e:
+                log.warning("vault_records_fetch_failed", error=str(_e))
+        if self.insight_repo is not None:
+            try:
+                enterprise_id = (
+                    session.buyer_enterprise_id if is_buyer else session.seller_enterprise_id
+                )
+                enterprise_insight = await self.insight_repo.get_by_enterprise(enterprise_id)
+            except Exception as _e:
+                log.warning("vault_insight_fetch_failed", error=str(_e))
+
         system_prompt = self.personalization.build(
             profile=current_profile,
             playbook=current_playbook,
             role=current_role.value,
             memory_context=memory_chunks if memory_chunks else None,
             rfq_context=rfq_ctx,
+            recent_records=recent_records or None,
+            enterprise_insight=enterprise_insight,
         )
         offer_history = self._serialize_offer_history(session.offers)
         session_context: dict = {

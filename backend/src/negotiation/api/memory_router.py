@@ -451,6 +451,50 @@ async def get_negotiation_insights(
     )
 
 
+@insights_router.get("/{enterprise_id}/stats")
+async def get_negotiation_stats(
+    enterprise_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """
+    GET /v1/negotiation-insights/{enterprise_id}/stats
+    Quick breakdown of agreed/rejected counts for buyer and seller role.
+    Used by the dashboard Vault stat card.
+    """
+    _check_tenant_access(user, enterprise_id)
+
+    from sqlalchemy import text as _text
+    from src.shared.infrastructure.db.session import get_session_factory
+
+    async with get_session_factory()() as db_session:
+        result = await db_session.execute(
+            _text(
+                "SELECT enterprise_role, outcome, COUNT(*) as cnt "
+                "FROM negotiation_records "
+                "WHERE enterprise_id = :eid "
+                "GROUP BY enterprise_role, outcome"
+            ),
+            {"eid": str(enterprise_id)},
+        )
+        rows = result.fetchall()
+
+    stats: dict = {
+        "as_buyer": {"agreed": 0, "rejected": 0, "stalled": 0, "total": 0},
+        "as_seller": {"agreed": 0, "rejected": 0, "stalled": 0, "total": 0},
+        "total_in_vault": 0,
+    }
+    outcome_map = {"AGREED": "agreed", "REJECTED": "rejected", "STALLED": "stalled",
+                   "EXPIRED": "rejected", "UNKNOWN": "rejected"}
+    for role, outcome, cnt in rows:
+        bucket = "as_buyer" if role == "buyer" else "as_seller"
+        key = outcome_map.get(outcome, "rejected")
+        stats[bucket][key] += cnt
+        stats[bucket]["total"] += cnt
+        stats["total_in_vault"] += cnt
+
+    return success_response(data=stats)
+
+
 @insights_router.post("/{enterprise_id}/recompute")
 async def recompute_negotiation_insights(
     enterprise_id: uuid.UUID,

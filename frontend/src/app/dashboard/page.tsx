@@ -1,10 +1,12 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   FileText, Landmark, Handshake, BarChart3, ArrowRight,
   ExternalLink, Database, Layers, Link as LinkIcon, Brain,
+  BookOpen, CheckCircle2, XCircle, PauseCircle, X,
 } from 'lucide-react';
 
 import { AppShell } from '@/components/layout/AppShell';
@@ -36,6 +38,7 @@ const SERVICE_META: { key: string; label: string; icon: React.ElementType }[] = 
 export default function DashboardPage() {
   const router = useRouter();
   const { user, enterprise } = useAuth();
+  const [vaultOpen, setVaultOpen] = useState(false);
   const { status: healthOverall } = useHealthStatus();
 
   // Health detail
@@ -64,6 +67,15 @@ export default function DashboardPage() {
   const { data: escrows = [], isLoading: escrowsLoading } = useQuery({
     queryKey: ['escrows'],
     queryFn: () => api.get('/v1/escrow?limit=5').then(r => r.data.data as Escrow[]),
+  });
+
+  // Negotiation vault stats
+  const { data: vaultStats, isLoading: vaultLoading } = useQuery({
+    queryKey: ['vault-stats', enterprise?.id],
+    queryFn: () =>
+      api.get(`/v1/negotiation-insights/${enterprise?.id}/stats`).then(r => r.data.data),
+    enabled: !!enterprise?.id,
+    staleTime: 30_000,
   });
 
   // Admin stats (if admin)
@@ -133,7 +145,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Section 2: Stat Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <StatCard
             label="Active RFQs"
             value={activeRfqs}
@@ -165,7 +177,124 @@ export default function DashboardPage() {
             trend={{ value: 'current', direction: 'neutral' }}
             isLoading={anyLoading}
           />
+          <StatCard
+            label="Negotiation Vault"
+            value={vaultStats?.total_in_vault ?? 0}
+            icon={BookOpen}
+            trend={{ value: 'deals stored', direction: 'neutral' }}
+            isLoading={vaultLoading}
+            onClick={() => setVaultOpen(true)}
+          />
         </div>
+
+        {/* Vault modal */}
+        {vaultOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+            onClick={() => setVaultOpen(false)}
+          >
+            <div
+              className="relative bg-background border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 p-6"
+              onClick={e => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setVaultOpen(false)}
+                className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <div className="flex items-center gap-2 mb-1">
+                <BookOpen className="h-5 w-5 text-primary" />
+                <h2 className="text-base font-semibold text-foreground">Negotiation Memory Vault</h2>
+              </div>
+              <p className="text-xs text-muted-foreground mb-5">
+                Every completed negotiation is privately stored in your vault.
+                Your AI agent reads this history to personalise each new deal.
+              </p>
+
+              <div className="grid grid-cols-2 gap-3 mb-5">
+                {/* As Buyer */}
+                <div className="rounded-lg border border-border bg-muted/30 p-4">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">As Buyer</p>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-sm text-foreground">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Agreed
+                      </span>
+                      <span className="text-sm font-semibold text-foreground">
+                        {vaultStats?.as_buyer?.agreed ?? 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-sm text-foreground">
+                        <XCircle className="h-3.5 w-3.5 text-red-400" /> Rejected
+                      </span>
+                      <span className="text-sm font-semibold text-foreground">
+                        {vaultStats?.as_buyer?.rejected ?? 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-sm text-foreground">
+                        <PauseCircle className="h-3.5 w-3.5 text-amber-400" /> Stalled
+                      </span>
+                      <span className="text-sm font-semibold text-foreground">
+                        {vaultStats?.as_buyer?.stalled ?? 0}
+                      </span>
+                    </div>
+                    <div className="border-t border-border pt-2 flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Total</span>
+                      <span className="text-xs font-semibold text-foreground">
+                        {vaultStats?.as_buyer?.total ?? 0}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* As Seller */}
+                <div className="rounded-lg border border-border bg-muted/30 p-4">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">As Seller</p>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-sm text-foreground">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Agreed
+                      </span>
+                      <span className="text-sm font-semibold text-foreground">
+                        {vaultStats?.as_seller?.agreed ?? 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-sm text-foreground">
+                        <XCircle className="h-3.5 w-3.5 text-red-400" /> Rejected
+                      </span>
+                      <span className="text-sm font-semibold text-foreground">
+                        {vaultStats?.as_seller?.rejected ?? 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-sm text-foreground">
+                        <PauseCircle className="h-3.5 w-3.5 text-amber-400" /> Stalled
+                      </span>
+                      <span className="text-sm font-semibold text-foreground">
+                        {vaultStats?.as_seller?.stalled ?? 0}
+                      </span>
+                    </div>
+                    <div className="border-t border-border pt-2 flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Total</span>
+                      <span className="text-xs font-semibold text-foreground">
+                        {vaultStats?.as_seller?.total ?? 0}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-primary/5 border border-primary/20 px-4 py-3 text-xs text-muted-foreground">
+                🔒 Records are stored privately per enterprise — never shared with counterparties.
+                Your AI agent uses this history to anchor prices and calibrate concessions.
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Section 3: Recent RFQs + Active Sessions */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
