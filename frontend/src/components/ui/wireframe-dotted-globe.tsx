@@ -244,9 +244,6 @@ export default function RotatingEarth({ width = 800, height = 600, className = "
         className="rounded-2xl"
         style={{ maxWidth: "100%", height: "auto", display: "block" }}
       />
-      <div className="globe-hint">
-        Drag to rotate · Scroll to zoom
-      </div>
     </div>
   )
 }

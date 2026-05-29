@@ -14,6 +14,14 @@
 .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
 .nav-logo-img { border-radius: 7px; display: block; }
 .nav-logo-text { font-size: 1.1rem; font-weight: 500; color: var(--ink); letter-spacing: .01em; }
+
+/* ── Theme-aware logo swap ── */
+/* Light mode (default): show light logo, hide dark logo */
+.logo-for-light { display: block; }
+.logo-for-dark  { display: none; }
+/* Dark mode: swap */
+.dark .logo-for-light { display: none; }
+.dark .logo-for-dark  { display: block; }
 .nav-links { display: flex; gap: 2rem; list-style: none; }
 .nav-links a { text-decoration: none; color: var(--body); font-size: .875rem; font-weight: 400; transition: color .2s; }
 .nav-links a:hover { color: var(--ink); }
@@ -131,14 +139,6 @@
   animation: spin .8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-.globe-hint {
-  position: absolute; bottom: 12px; left: 12px;
-  font-size: .68rem; color: var(--text-muted);
-  background: var(--surface-soft);
-  border: 1px solid var(--hairline);
-  padding: .2rem .6rem; border-radius: 6px;
-  pointer-events: none;
-}
 
 /* Responsive — stack on mobile */
 @media (max-width: 960px) {

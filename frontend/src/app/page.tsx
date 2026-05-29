@@ -63,7 +63,8 @@ export default function LandingPage() {
       {/* NAV */}
       <nav ref={navRef} className="landing-nav">
         <Link href="/" className="nav-logo">
-          <Image src="/cadencia-logo.png" alt="Cadencia" width={40} height={40} className="nav-logo-img" />
+          <Image src="/logo-light.png" alt="Cadencia" width={40} height={40} className="nav-logo-img logo-for-light" />
+          <Image src="/logo-dark.png"  alt="Cadencia" width={40} height={40} className="nav-logo-img logo-for-dark" />
         </Link>
         <ul className="nav-links">
           <li><a href="#how">How it works</a></li>
@@ -344,8 +345,8 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* CREAM CALLOUT BAND */}
-      <div className="cream-band reveal">
+      {/* CALLOUT BAND */}
+      <div className="signature-coral-band reveal">
         <div className="section-inner" style={{ textAlign: 'center' }}>
           <h2 className="section-title" style={{ maxWidth: '560px', margin: '0 auto 1rem' }}>
             The path to 10x every person in your procurement team

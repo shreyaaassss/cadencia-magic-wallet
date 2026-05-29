@@ -132,7 +132,8 @@ export default function PricingPage() {
       {/* NAV */}
       <nav ref={navRef} className="landing-nav">
         <Link href="/" className="nav-logo">
-          <Image src="/cadencia-logo.png" alt="Cadencia" width={40} height={40} className="nav-logo-img" />
+          <Image src="/logo-light.png" alt="Cadencia" width={40} height={40} className="nav-logo-img logo-for-light" />
+          <Image src="/logo-dark.png"  alt="Cadencia" width={40} height={40} className="nav-logo-img logo-for-dark" />
         </Link>
         <ul className="nav-links">
           <li><Link href="/#how">How it works</Link></li>

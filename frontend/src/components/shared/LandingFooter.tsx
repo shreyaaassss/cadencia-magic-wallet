@@ -13,13 +13,8 @@ export function LandingFooter() {
       <div className="lfc-inner">
         {/* Brand + contact */}
         <div className="lfc-brand">
-          <Image
-            src="/cadencia-logo.png"
-            alt="Cadencia"
-            width={52}
-            height={52}
-            className="lfc-logo-img"
-          />
+          <Image src="/logo-light.png" alt="Cadencia" width={52} height={52} className="lfc-logo-img logo-for-light" />
+          <Image src="/logo-dark.png"  alt="Cadencia" width={52} height={52} className="lfc-logo-img logo-for-dark" />
           <p className="lfc-tagline">
             AI-powered B2B trade platform.<br />
             From RFQ to settlement, automated.
