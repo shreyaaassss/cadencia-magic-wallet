@@ -54,6 +54,9 @@ export default function LoginPage() {
   const [adminError, setAdminError] = React.useState<string | null>(null);
   const [adminSubmitting, setAdminSubmitting] = React.useState(false);
   const [web3Status, setWeb3Status] = React.useState<'idle' | 'connecting' | 'signing' | 'verifying'>('idle');
+  // Local wallet address — only set after user explicitly clicks Connect.
+  // Prevents stale WalletConnect sessions from auto-showing a wallet.
+  const [web3Address, setWeb3Address] = React.useState<string | null>(null);
 
   const {
     register,
@@ -99,7 +102,8 @@ export default function LoginPage() {
   };
 
   const handleWeb3Login = async () => {
-    if (!txnLab.activeAddress) return;
+    const addr = web3Address || txnLab.activeAddress;
+    if (!addr) return;
     setGlobalError(null);
     setWeb3Status('signing');
 
@@ -114,8 +118,8 @@ export default function LoginPage() {
       const sp = await algod.getTransactionParams().do();
 
       const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-        sender: txnLab.activeAddress,
-        receiver: txnLab.activeAddress,
+        sender: addr,
+        receiver: addr,
         amount: 0,
         note: new TextEncoder().encode(challenge.message_to_sign),
         suggestedParams: sp,
@@ -129,7 +133,7 @@ export default function LoginPage() {
 
       // 4. Verify with backend
       setWeb3Status('verifying');
-      await web3Login(txnLab.activeAddress, challenge.challenge_id, signedB64);
+      await web3Login(addr, challenge.challenge_id, signedB64);
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
       const msg =
@@ -140,9 +144,10 @@ export default function LoginPage() {
     }
   };
 
-  // Auto-trigger login flow when wallet connects
+  // Only accept wallet address when user explicitly clicked Connect (not auto-restored)
   React.useEffect(() => {
     if (txnLab.activeAddress && web3Status === 'connecting') {
+      setWeb3Address(txnLab.activeAddress);
       handleWeb3Login();
     }
   }, [txnLab.activeAddress, web3Status]);
@@ -269,11 +274,11 @@ export default function LoginPage() {
                   {web3Status === 'verifying' && 'Verifying ownership...'}
                 </p>
               </div>
-            ) : txnLab.activeAddress ? (
+            ) : web3Address ? (
               <div className="space-y-4">
                 <div className="bg-surface-soft border border-hairline rounded-md p-3">
                   <p className="text-xs text-muted-foreground mb-1">Connected</p>
-                  <p className="text-sm font-mono text-ink truncate">{txnLab.activeAddress}</p>
+                  <p className="text-sm font-mono text-ink truncate">{web3Address}</p>
                 </div>
                 <Button onClick={handleWeb3Login} className="w-full">
                   Sign & Verify
