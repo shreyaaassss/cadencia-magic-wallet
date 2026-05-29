@@ -403,6 +403,10 @@ export default function RegisterPage() {
                     setWeb3Status('connecting');
                     setGlobalError(null);
                     try {
+                      // Disconnect stale sessions first
+                      for (const w of txnLab.wallets || []) {
+                        if (w.isConnected) { try { await w.disconnect(); } catch {} }
+                      }
                       await wallet.connect();
                     } catch (err: any) {
                       setGlobalError(err?.message || 'Failed to connect wallet');

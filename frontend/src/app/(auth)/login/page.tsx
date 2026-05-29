@@ -91,7 +91,14 @@ export default function LoginPage() {
     setGlobalError(null);
     setWeb3Status('connecting');
     try {
-      // Find the wallet provider and connect
+      // Disconnect all stale wallet sessions first so WC doesn't reuse
+      // a "disconnected" session from the relay
+      for (const w of txnLab.wallets || []) {
+        if (w.isConnected) {
+          try { await w.disconnect(); } catch {}
+        }
+      }
+      // Find the wallet provider and connect fresh
       const wallet = txnLab.wallets?.find((w: any) => w.id === walletId);
       if (!wallet) throw new Error('Wallet not found');
       await wallet.connect();
