@@ -16,26 +16,34 @@ import './landing.css';
 export default function LandingPage() {
   const navRef = useRef<HTMLElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const orbA = useRef<HTMLDivElement>(null);
+  const orbB = useRef<HTMLDivElement>(null);
+  const orbC = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleScroll = () => {
-      if (navRef.current) {
-        if (window.scrollY > 20) {
-          navRef.current.classList.add('scrolled');
-        } else {
-          navRef.current.classList.remove('scrolled');
-        }
-      }
+      const y = window.scrollY;
+      if (navRef.current) navRef.current.classList.toggle('scrolled', y > 20);
+      // scroll parallax on orbs
+      if (orbA.current) orbA.current.style.transform = `translateY(${y * 0.15}px)`;
+      if (orbB.current) orbB.current.style.transform = `translateY(${y * -0.1}px)`;
+      if (orbC.current) orbC.current.style.transform = `translateY(${y * 0.07}px)`;
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
+
+    // Mouse parallax — moves orbs subtly with cursor
+    const handleMouse = (e: MouseEvent) => {
+      const nx = (e.clientX / window.innerWidth - 0.5);
+      const ny = (e.clientY / window.innerHeight - 0.5);
+      document.documentElement.style.setProperty('--mx', String(nx));
+      document.documentElement.style.setProperty('--my', String(ny));
+    };
+    window.addEventListener('mousemove', handleMouse, { passive: true });
 
     const obs = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
-          if (e.isIntersecting) {
-            e.target.classList.add('visible');
-            obs.unobserve(e.target);
-          }
+          if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); }
         });
       },
       { threshold: 0.12 }
@@ -44,6 +52,7 @@ export default function LandingPage() {
 
     return () => {
       window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('mousemove', handleMouse);
       obs.disconnect();
     };
   }, []);
@@ -104,6 +113,13 @@ export default function LandingPage() {
         </div>
       )}
 
+      {/* Background parallax orbs */}
+      <div className="hero-orbs" aria-hidden="true">
+        <div className="hero-orb hero-orb-a" ref={orbA} />
+        <div className="hero-orb hero-orb-b" ref={orbB} />
+        <div className="hero-orb hero-orb-c" ref={orbC} />
+      </div>
+
       {/* HERO — white canvas, clean whitespace */}
       <section className="hero">
         <h1 className="hero-title reveal">
@@ -142,7 +158,20 @@ export default function LandingPage() {
 
       {/* PREVIEW — app mockup */}
       <div className="preview-section">
-        <div className="preview-wrapper reveal">
+        <div
+          className="preview-wrapper reveal"
+          onMouseMove={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            const x = (e.clientX - r.left) / r.width - 0.5;
+            const y = (e.clientY - r.top) / r.height - 0.5;
+            (e.currentTarget as HTMLElement).style.transform =
+              `perspective(1200px) rotateY(${x * 5}deg) rotateX(${y * -5}deg) scale(1.01)`;
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.transform =
+              'perspective(1200px) rotateY(0deg) rotateX(0deg) scale(1)';
+          }}
+        >
           <div className="preview-frame">
             <div className="preview-bar">
               <div className="preview-dots">
@@ -426,21 +455,6 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-
-      {/* DARK CTA CARD */}
-      <div className="dark-cta-band reveal">
-        <div className="section-eyebrow">Ready to transform procurement?</div>
-        <h2 className="section-title">
-          Start closing deals intelligently
-        </h2>
-        <p className="section-body">
-          Join 200+ enterprises already using Cadencia. Free to start, no credit card required.
-        </p>
-        <Link href="/register" className="btn-on-dark">
-          Get early access
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
-      </div>
 
       {/* FOOTER */}
       <LandingFooter />
