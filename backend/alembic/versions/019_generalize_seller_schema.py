@@ -23,7 +23,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ARRAY
 
 revision = "019"
-down_revision = "018_negotiation_memory_schema"
+down_revision = "018"
 branch_labels = None
 depends_on = None
 
