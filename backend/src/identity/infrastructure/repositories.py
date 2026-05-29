@@ -55,7 +55,7 @@ def _enterprise_to_domain(m: EnterpriseModel) -> Enterprise:
         algorand_wallet=algo_wallet,
         industry_vertical=m.kyc_documents.get("industry_vertical") if m.kyc_documents else None,
         geography=m.kyc_documents.get("geography", "IN") if m.kyc_documents else "IN",
-        products_services=list(m.kyc_documents.get("products_services", m.kyc_documents.get("commodities", []))) if m.kyc_documents else [],
+        commodities=list(m.kyc_documents.get("commodities", [])) if m.kyc_documents else [],
         min_order_value=Decimal(str(m.kyc_documents["min_order_value"]))
             if m.kyc_documents and m.kyc_documents.get("min_order_value") is not None else None,
         max_order_value=Decimal(str(m.kyc_documents["max_order_value"]))
@@ -84,8 +84,8 @@ def _enterprise_to_model(e: Enterprise, existing: EnterpriseModel | None = None)
         agent_config["industry_vertical"] = e.industry_vertical
     if e.geography:
         agent_config["geography"] = e.geography
-    if e.products_services:
-        agent_config["products_services"] = e.products_services
+    if e.commodities:
+        agent_config["commodities"] = e.commodities
     if e.min_order_value is not None:
         agent_config["min_order_value"] = float(e.min_order_value)
     if e.max_order_value is not None:

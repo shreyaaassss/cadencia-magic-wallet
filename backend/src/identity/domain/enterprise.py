@@ -50,7 +50,7 @@ class Enterprise(BaseEntity):
     geography: str = "IN"
     min_order_value: Decimal | None = None
     max_order_value: Decimal | None = None
-    products_services: list[str] = field(default_factory=list)
+    commodities: list[str] = field(default_factory=list)
     listing_active: bool = True
     # KYC documents payload — stored as JSONB
     kyc_documents: dict | None = None
@@ -153,8 +153,8 @@ class Enterprise(BaseEntity):
 
         if "industry_vertical" in config:
             self.industry_vertical = config["industry_vertical"]
-        if "products_services" in config:
-            self.products_services = list(config["products_services"])
+        if "commodities" in config:
+            self.commodities = list(config["commodities"])
         if "geography" in config:
             self.geography = str(config["geography"])
 

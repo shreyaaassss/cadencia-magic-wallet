@@ -109,7 +109,7 @@ class IdentityService:
             trade_role=TradeRole(cmd.trade_role),
             industry_vertical=cmd.industry_vertical,
             geography=cmd.geography,
-            products_services=list(cmd.products_services),
+            commodities=list(cmd.commodities),
         )
 
         if cmd.min_order_value is not None:

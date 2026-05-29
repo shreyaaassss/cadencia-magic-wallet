@@ -82,7 +82,7 @@ def _profile_model_to_domain(m: CapabilityProfileModel) -> CapabilityProfile:
         id=m.id,
         enterprise_id=m.enterprise_id,
         industry_vertical=m.industry_vertical,
-        product_categories=m.products_services or [],
+        product_categories=m.commodities or [],
         geography_scope=m.geographies_served or [],
         trade_volume_min=Decimal(str(m.min_order_value)) if m.min_order_value else None,
         trade_volume_max=Decimal(str(m.max_order_value)) if m.max_order_value else None,
@@ -286,13 +286,13 @@ class PostgresMatchRepository:
         cap_stmt = (
             select(
                 CapabilityProfileModel.enterprise_id,
-                CapabilityProfileModel.products_services,
+                CapabilityProfileModel.commodities,
             )
             .where(CapabilityProfileModel.enterprise_id.in_(seller_ids))
         )
         cap_result = await self._session.execute(cap_stmt)
         cap_map = {
-            row.enterprise_id: row.products_services or []
+            row.enterprise_id: row.commodities or []
             for row in cap_result.fetchall()
         }
 
@@ -321,7 +321,7 @@ class PostgresCapabilityProfileRepository:
             id=profile.id,
             enterprise_id=profile.enterprise_id,
             industry_vertical=profile.industry_vertical,
-            products_services=profile.product_categories,
+            commodities=profile.product_categories,
             geographies_served=profile.geography_scope,
             min_order_value=float(profile.trade_volume_min) if profile.trade_volume_min else None,
             max_order_value=float(profile.trade_volume_max) if profile.trade_volume_max else None,
@@ -347,7 +347,7 @@ class PostgresCapabilityProfileRepository:
             .where(CapabilityProfileModel.id == profile.id)
             .values(
                 industry_vertical=profile.industry_vertical,
-                products_services=profile.product_categories,
+                commodities=profile.product_categories,
                 geographies_served=profile.geography_scope,
                 min_order_value=float(profile.trade_volume_min) if profile.trade_volume_min else None,
                 max_order_value=float(profile.trade_volume_max) if profile.trade_volume_max else None,

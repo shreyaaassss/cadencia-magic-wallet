@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cadencia — Negotiation Room</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Design Tokens ─────────────────────────────────────────────────────── */
+    :root {
+      --bg:             #0e0d0b;
+      --bg-card:        #141310;
+      --bg-raised:      #1a1814;
+      --fg:             #e8e2d9;
+      --fg-muted:       #7a7268;
+      --fg-faint:       #3a3830;
+      --border:         #252219;
+      --border-soft:    #1e1c16;
+      --accent:         #e8c99a;      /* warm peach — Cadencia brand */
+      --accent-dim:     rgba(232,201,154,.12);
+      --accent-border:  rgba(232,201,154,.22);
+      --buyer:          #6bbf9e;      /* softer emerald */
+      --buyer-dim:      rgba(107,191,158,.08);
+      --buyer-border:   rgba(107,191,158,.18);
+      --seller:         #7aaedf;      /* softer blue */
+      --seller-dim:     rgba(122,174,223,.08);
+      --seller-border:  rgba(122,174,223,.18);
+      --red:            #c96b5a;
+      --amber:          #c9a05a;
+      --green:          #5ab98a;
+
+      --font-serif: 'Cormorant Garamond', Georgia, serif;
+      --font-body:  'DM Sans', system-ui, sans-serif;
+      --font-mono:  'DM Mono', 'Courier New', monospace;
+
+      --r-sm:  0.375rem;
+      --r-md:  0.625rem;
+      --r-lg:  0.875rem;
+      --r-xl:  1.25rem;
+    }
+
+    /* ── Reset ─────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--fg);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Grain overlay — matches Cadencia's dark atmosphere */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      opacity: 0.025;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+      background-size: 256px 256px;
+    }
+
+    /* ── Page shell ────────────────────────────────────────────────────────── */
+    .page {
+      position: relative; z-index: 1;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 6rem;
+    }
+
+    /* ── Wordmark ──────────────────────────────────────────────────────────── */
+    .wordmark {
+      display: flex; align-items: center; gap: 0.625rem;
+      margin-bottom: 2rem;
+    }
+    .wordmark-logo {
+      width: 28px; height: 28px; border-radius: 6px;
+      background: var(--accent-dim); border: 1px solid var(--accent-border);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .wordmark-logo svg { width: 14px; height: 14px; color: var(--accent); }
+    .wordmark-name {
+      font-family: var(--font-serif);
+      font-size: 1.125rem; font-weight: 400; letter-spacing: 0.02em;
+      color: var(--fg);
+    }
+    .wordmark-tag {
+      font-size: 0.625rem; font-weight: 500; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--fg-muted);
+      border: 1px solid var(--border); border-radius: 999px;
+      padding: 0.1875rem 0.5rem; margin-left: 0.25rem;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       SESSION HEADER
+    ═══════════════════════════════════════════════════════════════════════ */
+    .session-header {
+      border: 1px solid var(--border);
+      border-radius: var(--r-xl);
+      background: var(--bg-card);
+      overflow: hidden;
+      margin-bottom: 0.875rem;
+    }
+
+    /* Top strip */
+    .session-strip {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.625rem 1.25rem;
+      border-bottom: 1px solid var(--border-soft);
+      background: rgba(255,255,255,.015);
+      flex-wrap: wrap; gap: 0.5rem;
+    }
+    .session-strip-left { display: flex; align-items: center; gap: 0.875rem; }
+    .session-id {
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      color: var(--fg-muted); letter-spacing: 0.04em;
+    }
+
+    /* Status pill */
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 0.375rem;
+      font-size: 0.625rem; font-weight: 500; letter-spacing: 0.08em;
+      text-transform: uppercase; padding: 0.1875rem 0.625rem;
+      border-radius: 999px; border: 1px solid;
+    }
+    .status-pill.active  { color: var(--green); background: rgba(90,185,138,.08); border-color: rgba(90,185,138,.25); }
+    .status-pill.agreed  { color: var(--green); background: rgba(90,185,138,.1);  border-color: rgba(90,185,138,.3); }
+    .status-pill.failed  { color: var(--red);   background: rgba(201,107,90,.08); border-color: rgba(201,107,90,.3); }
+    .status-pill.stalled { color: var(--amber); background: rgba(201,160,90,.08); border-color: rgba(201,160,90,.3); }
+
+    .live-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--green); box-shadow: 0 0 5px var(--green);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .strip-actions { display: flex; gap: 0.5rem; align-items: center; }
+
+    /* Body */
+    .session-body {
+      padding: 1.125rem 1.25rem 1rem;
+    }
+
+    /* Participants line */
+    .participants-line {
+      font-family: var(--font-serif);
+      font-size: 1.375rem; font-weight: 400;
+      line-height: 1.3; margin-bottom: 1rem; color: var(--fg);
+    }
+    .participants-line .buyer-n  { color: var(--buyer); }
+    .participants-line .sep      { color: var(--fg-muted); padding: 0 0.5rem; font-style: italic; }
+    .participants-line .seller-n { color: var(--seller); }
+
+    /* Stats row */
+    .stats-row {
+      display: flex; align-items: stretch; gap: 0; flex-wrap: wrap;
+      border: 1px solid var(--border-soft);
+      border-radius: var(--r-lg); overflow: hidden;
+    }
+    .stat-cell {
+      flex: 1; min-width: 100px;
+      padding: 0.625rem 0.875rem;
+      border-right: 1px solid var(--border-soft);
+    }
+    .stat-cell:last-child { border-right: none; }
+    .stat-label {
+      font-size: 0.5625rem; font-weight: 500; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--fg-muted); margin-bottom: 0.25rem;
+    }
+    .stat-val {
+      font-family: var(--font-mono); font-size: 0.875rem;
+      font-weight: 500; color: var(--fg);
+    }
+    .stat-val.accent { color: var(--accent); }
+    .stat-sub {
+      font-size: 0.5625rem; color: var(--fg-muted); margin-top: 0.125rem;
+    }
+
+    /* Round progress */
+    .round-progress {
+      display: flex; align-items: center; gap: 0.625rem;
+    }
+    .round-progress-track {
+      flex: 1; height: 3px; background: var(--bg-raised); border-radius: 999px; overflow: hidden;
+    }
+    .round-progress-fill {
+      height: 100%; border-radius: 999px; background: var(--accent);
+      transition: width 0.6s cubic-bezier(.4,0,.2,1);
+    }
+
+    /* Gap meter */
+    .gap-row {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.625rem 0.875rem; flex: 2; min-width: 200px;
+    }
+    .gap-price {
+      font-family: var(--font-mono); font-size: 0.8125rem; font-weight: 500;
+    }
+    .gap-price.seller { color: var(--seller); }
+    .gap-price.buyer  { color: var(--buyer); }
+    .gap-bar-track {
+      flex: 1; height: 3px; background: var(--bg-raised); border-radius: 999px;
+      position: relative; overflow: hidden;
+    }
+    .gap-bar-fill {
+      position: absolute; height: 100%; border-radius: 999px;
+      transition: all 0.6s ease;
+    }
+    .gap-pct {
+      font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500;
+      padding: 0.125rem 0.375rem; border-radius: var(--r-sm); border: 1px solid;
+      white-space: nowrap;
+    }
+    .gap-tight  { color: var(--green); background: rgba(90,185,138,.1);  border-color: rgba(90,185,138,.25); }
+    .gap-close  { color: var(--green); background: rgba(90,185,138,.07); border-color: rgba(90,185,138,.2); }
+    .gap-medium { color: var(--amber); background: rgba(201,160,90,.08); border-color: rgba(201,160,90,.25); }
+    .gap-wide   { color: var(--red);   background: rgba(201,107,90,.08); border-color: rgba(201,107,90,.25); }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       BANNERS
+    ═══════════════════════════════════════════════════════════════════════ */
+    .banner {
+      display: flex; align-items: flex-start; gap: 0.875rem;
+      border-radius: var(--r-lg); padding: 0.875rem 1.125rem;
+      margin-bottom: 0.875rem; border: 1px solid;
+      animation: fadeIn 0.3s ease;
+    }
+    .banner-info    { background: rgba(122,174,223,.04); border-color: rgba(122,174,223,.18); }
+    .banner-success { background: rgba(90,185,138,.04);  border-color: rgba(90,185,138,.2); }
+    .banner-warning { background: rgba(201,160,90,.04);  border-color: rgba(201,160,90,.2); }
+    .banner-error   { background: rgba(201,107,90,.04);  border-color: rgba(201,107,90,.2); }
+    .banner-icon { flex-shrink: 0; width: 1.125rem; height: 1.125rem; margin-top: 0.0625rem; }
+    .banner-icon svg { width: 100%; height: 100%; }
+    .banner-info    .banner-icon { color: var(--seller); }
+    .banner-success .banner-icon { color: var(--green); }
+    .banner-warning .banner-icon { color: var(--amber); }
+    .banner-error   .banner-icon { color: var(--red); }
+    .banner-content { flex: 1; }
+    .banner-title {
+      font-family: var(--font-serif); font-size: 1rem; font-weight: 500;
+      margin-bottom: 0.125rem;
+    }
+    .banner-info    .banner-title { color: var(--seller); }
+    .banner-success .banner-title { color: var(--green); }
+    .banner-warning .banner-title { color: var(--amber); }
+    .banner-error   .banner-title { color: var(--red); }
+    .banner-desc  { font-size: 0.75rem; color: var(--fg-muted); }
+    .banner-action { flex-shrink: 0; margin-top: 0.125rem; }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       CHAT CARD
+    ═══════════════════════════════════════════════════════════════════════ */
+    .chat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--r-xl);
+      overflow: hidden;
+      margin-bottom: 0.875rem;
+    }
+
+    .chat-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.875rem 1.25rem;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .chat-head-title {
+      font-family: var(--font-serif); font-size: 1.0625rem; font-weight: 400;
+      color: var(--fg);
+    }
+    .chat-head-sub { font-size: 0.6875rem; color: var(--fg-muted); margin-top: 0.125rem; }
+    .chat-legend   { display: flex; gap: 1rem; align-items: center; }
+    .legend-item   { display: flex; align-items: center; gap: 0.375rem; font-size: 0.6875rem; color: var(--fg-muted); }
+    .legend-dot    { width: 6px; height: 6px; border-radius: 50%; }
+
+    .chat-feed {
+      max-height: 580px; overflow-y: auto;
+      padding: 1.25rem;
+      display: flex; flex-direction: column; gap: 1.25rem;
+      scroll-behavior: smooth;
+    }
+    .chat-feed::-webkit-scrollbar { width: 3px; }
+    .chat-feed::-webkit-scrollbar-track { background: transparent; }
+    .chat-feed::-webkit-scrollbar-thumb { background: var(--fg-faint); border-radius: 999px; }
+
+    /* ── Offer rows ─────────────────────────────────────────────────────── */
+    .offer-row {
+      display: flex; gap: 0.875rem; align-items: flex-start;
+      animation: slideUp 0.28s cubic-bezier(.4,0,.2,1) both;
+    }
+    .offer-row.buyer  { flex-direction: row-reverse; }
+    .offer-row.seller { flex-direction: row; }
+
+    /* Avatar */
+    .agent-av {
+      width: 2rem; height: 2rem; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      margin-top: 0.375rem; border: 1px solid;
+    }
+    .agent-av.buyer  { background: var(--buyer-dim);  border-color: var(--buyer-border); }
+    .agent-av.seller { background: var(--seller-dim); border-color: var(--seller-border); }
+    .agent-av svg { width: 0.875rem; height: 0.875rem; }
+    .agent-av.buyer  svg { color: var(--buyer); }
+    .agent-av.seller svg { color: var(--seller); }
+
+    /* Bubble */
+    .bubble {
+      max-width: 70%; min-width: 240px;
+      border-radius: var(--r-lg); padding: 1rem 1.125rem;
+      border: 1px solid; position: relative;
+    }
+    .bubble.buyer {
+      border-radius: var(--r-lg) var(--r-sm) var(--r-lg) var(--r-lg);
+      background: var(--buyer-dim); border-color: var(--buyer-border);
+    }
+    .bubble.seller {
+      border-radius: var(--r-sm) var(--r-lg) var(--r-lg) var(--r-lg);
+      background: var(--seller-dim); border-color: var(--seller-border);
+    }
+    .bubble.human {
+      outline: 1px solid var(--accent-border);
+      outline-offset: 2px;
+    }
+
+    /* Bubble header */
+    .b-head {
+      display: flex; align-items: center; gap: 0.5rem;
+      margin-bottom: 0.625rem; flex-wrap: wrap;
+    }
+    .offer-row.buyer  .b-head { justify-content: flex-end; }
+    .offer-row.seller .b-head { justify-content: flex-start; }
+
+    .b-agent {
+      font-size: 0.5625rem; font-weight: 600; letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .b-agent.buyer  { color: var(--buyer); }
+    .b-agent.seller { color: var(--seller); }
+
+    .b-round {
+      font-family: var(--font-mono); font-size: 0.5625rem;
+      color: var(--fg-muted); background: var(--bg-raised);
+      padding: 0.0625rem 0.3125rem; border-radius: 0.25rem;
+    }
+
+    /* Strategy — subtle, editorial */
+    .b-strat {
+      font-size: 0.5rem; font-weight: 500; letter-spacing: 0.08em;
+      text-transform: uppercase; padding: 0.0625rem 0.3125rem;
+      border-radius: 0.25rem; border: 1px solid;
+      color: var(--fg-muted); background: transparent;
+      border-color: var(--fg-faint);
+    }
+    /* Colour per strategy — only tint, keep it whisper-quiet */
+    .st-anchor     { color: #7aaedf; border-color: rgba(122,174,223,.25); }
+    .st-aggressive { color: #d4876a; border-color: rgba(212,135,106,.25); }
+    .st-concessive { color: #a891d8; border-color: rgba(168,145,216,.25); }
+    .st-boulware   { color: #a891d8; border-color: rgba(168,145,216,.25); }
+    .st-constrained{ color: var(--amber); border-color: rgba(201,160,90,.25); }
+    .st-deadline   { color: var(--amber); border-color: rgba(201,160,90,.25); }
+    .st-conservative { color: var(--fg-muted); border-color: var(--fg-faint); }
+
+    .b-human { color: var(--accent); border-color: var(--accent-border); }
+
+    /* Price — big, serif, editorial */
+    .b-price-row {
+      display: flex; align-items: baseline; gap: 0.625rem;
+      margin-bottom: 0.5rem;
+    }
+    .offer-row.buyer  .b-price-row { justify-content: flex-end; }
+    .offer-row.seller .b-price-row { justify-content: flex-start; }
+
+    .b-price {
+      font-family: var(--font-serif);
+      font-size: 2rem; font-weight: 300; line-height: 1;
+      letter-spacing: -0.01em;
+    }
+    .b-price.buyer  { color: var(--buyer); }
+    .b-price.seller { color: var(--seller); }
+
+    .b-unit {
+      font-size: 0.6875rem; color: var(--fg-muted); font-weight: 400;
+    }
+
+    .b-delta {
+      display: inline-flex; align-items: center; gap: 0.25rem;
+      font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500;
+      padding: 0.125rem 0.375rem; border-radius: 0.3125rem; border: 1px solid;
+    }
+    .b-delta.up   { color: var(--red);   background: rgba(201,107,90,.07); border-color: rgba(201,107,90,.2); }
+    .b-delta.down { color: var(--green); background: rgba(90,185,138,.07); border-color: rgba(90,185,138,.2); }
+    .b-delta svg { width: 10px; height: 10px; }
+
+    /* Reasoning */
+    .b-reason {
+      font-size: 0.75rem; color: var(--fg-muted); line-height: 1.55;
+      margin-bottom: 0.625rem;
+    }
+    .offer-row.buyer  .b-reason { text-align: right; }
+    .offer-row.seller .b-reason { text-align: left; }
+
+    /* Confidence */
+    .b-conf-row {
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .offer-row.buyer  .b-conf-row { justify-content: flex-end; }
+    .offer-row.seller .b-conf-row { justify-content: flex-start; }
+    .b-conf-bar {
+      width: 60px; height: 2px; background: var(--bg-raised); border-radius: 999px; overflow: hidden;
+    }
+    .b-conf-fill { height: 100%; border-radius: 999px; }
+    .b-conf-label { font-family: var(--font-mono); font-size: 0.5625rem; color: var(--fg-muted); }
+
+    /* Thinking indicator */
+    .thinking-row {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.5rem 0;
+    }
+    .thinking-av {
+      width: 2rem; height: 2rem; border-radius: 50%;
+      background: var(--bg-raised); border: 1px solid var(--border-soft);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .thinking-av svg { width: 0.875rem; height: 0.875rem; color: var(--fg-muted); }
+    .thinking-dots { display: flex; gap: 0.3rem; }
+    .thinking-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--fg-faint); animation: bounce 1.2s infinite;
+    }
+    .thinking-dot:nth-child(2) { animation-delay: 200ms; }
+    .thinking-dot:nth-child(3) { animation-delay: 400ms; }
+    .thinking-text { font-size: 0.6875rem; color: var(--fg-muted); font-style: italic; }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center; padding: 3rem 1rem; color: var(--fg-muted);
+    }
+    .empty-state svg { width: 2rem; height: 2rem; margin: 0 auto 0.75rem; opacity: .2; display: block; }
+    .empty-state p {
+      font-family: var(--font-serif); font-size: 1rem; font-weight: 300;
+      color: var(--fg-muted);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       CHART
+    ═══════════════════════════════════════════════════════════════════════ */
+    .chart-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--r-xl); padding: 1.125rem 1.25rem;
+      margin-bottom: 0.875rem;
+    }
+    .chart-card-title {
+      font-family: var(--font-serif); font-size: 1rem; font-weight: 400;
+      margin-bottom: 0.875rem; color: var(--fg);
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .chart-card-title svg { width: 0.875rem; height: 0.875rem; color: var(--accent); }
+    .chart-wrap {
+      border: 1px solid var(--border-soft); border-radius: var(--r-md);
+      overflow: hidden; background: var(--bg-raised);
+    }
+    .chart-wrap svg { width: 100%; height: auto; display: block; }
+    .chart-legend {
+      display: flex; justify-content: center; gap: 1.5rem;
+      margin-top: 0.875rem; flex-wrap: wrap;
+    }
+    .chart-legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.6875rem; color: var(--fg-muted); }
+    .chart-legend-line { width: 16px; height: 2px; border-radius: 999px; }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       ACTION BAR
+    ═══════════════════════════════════════════════════════════════════════ */
+    .action-bar {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--r-xl); padding: 0.875rem 1.25rem;
+      margin-bottom: 0.875rem;
+    }
+    .action-buttons {
+      display: flex; flex-wrap: wrap; align-items: center;
+      justify-content: center; gap: 0.625rem;
+    }
+
+    /* Override panel */
+    .override-panel {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--r-xl); padding: 1.125rem 1.25rem; margin-bottom: 0.875rem;
+    }
+    .override-panel h3 {
+      font-family: var(--font-serif); font-size: 1rem; font-weight: 400;
+      margin-bottom: 0.25rem;
+    }
+    .override-panel p { font-size: 0.75rem; color: var(--fg-muted); margin-bottom: 0.875rem; }
+    .override-form { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .override-input {
+      flex: 1; min-width: 150px;
+      padding: 0.5rem 0.875rem;
+      background: var(--bg-raised); border: 1px solid var(--border);
+      border-radius: var(--r-md); color: var(--fg);
+      font-family: var(--font-mono); font-size: 0.875rem;
+    }
+    .override-input::placeholder { color: var(--fg-muted); }
+    .override-input:focus { outline: none; border-color: var(--accent-border); }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       BUTTONS
+    ═══════════════════════════════════════════════════════════════════════ */
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.375rem;
+      font-family: var(--font-body); font-size: 0.8125rem; font-weight: 500;
+      padding: 0.5rem 1.125rem; border-radius: var(--r-md);
+      border: 1px solid transparent; cursor: pointer;
+      transition: all 0.15s ease; white-space: nowrap;
+      text-decoration: none;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn svg { width: 13px; height: 13px; }
+
+    .btn-primary {
+      background: var(--accent); color: #0e0d0b; border-color: var(--accent);
+      font-weight: 600;
+    }
+    .btn-primary:hover:not(:disabled) { background: #f0d5a8; }
+
+    .btn-outline {
+      background: transparent; border-color: var(--border); color: var(--fg);
+    }
+    .btn-outline:hover:not(:disabled) { background: var(--bg-raised); border-color: rgba(255,255,255,.12); }
+
+    .btn-ghost {
+      background: transparent; border-color: transparent; color: var(--fg-muted);
+    }
+    .btn-ghost:hover:not(:disabled) { background: var(--bg-raised); color: var(--fg); }
+
+    .btn-danger {
+      background: transparent; border-color: rgba(201,107,90,.3); color: var(--red);
+    }
+    .btn-danger:hover:not(:disabled) { background: rgba(201,107,90,.07); }
+
+    .btn-sm { padding: 0.3125rem 0.75rem; font-size: 0.75rem; }
+    .btn-green {
+      background: rgba(90,185,138,.15); color: var(--green);
+      border-color: rgba(90,185,138,.3); font-weight: 600;
+    }
+    .btn-green:hover:not(:disabled) { background: rgba(90,185,138,.22); }
+
+
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       ANIMATIONS
+    ═══════════════════════════════════════════════════════════════════════ */
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(1); }
+      40%           { transform: scale(1.5); }
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    .spin { animation: spin 1s linear infinite; }
+
+    /* ── Responsive ──────────────────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .participants-line { font-size: 1.125rem; }
+      .b-price { font-size: 1.625rem; }
+      .bubble { max-width: 86%; }
+      .stats-row { flex-direction: column; }
+      .stat-cell { border-right: none; border-bottom: 1px solid var(--border-soft); }
+      .sandbox-controls { width: calc(100vw - 1.5rem); right: 0.75rem; }
+    }
+  </style>
+</head>
+
+<body>
+<div class="page" id="app">
+
+  <!-- Wordmark -->
+  <div class="wordmark">
+    <div class="wordmark-logo">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+    </div>
+    <span class="wordmark-name">Cadencia</span>
+    <span class="wordmark-tag">Negotiation Room</span>
+  </div>
+
+  <!-- ── SESSION HEADER ──────────────────────────────────────────────────── -->
+  <div class="session-header">
+    <div class="session-strip">
+      <div class="session-strip-left">
+        <span class="session-id">a3f7b2e1…4c09</span>
+        <span class="status-pill active" id="status-pill">
+          <span class="live-dot"></span> Active
+        </span>
+      </div>
+      <div class="strip-actions">
+        <button class="btn btn-ghost btn-sm" onclick="toggleChart()">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+          Chart
+        </button>
+        <button class="btn btn-ghost btn-sm">← Leave</button>
+      </div>
+    </div>
+
+    <div class="session-body">
+      <div class="participants-line">
+        <span class="buyer-n">You (Buyer)</span>
+        <span class="sep">×</span>
+        <span class="seller-n">Bharat Steel Corp</span>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-cell">
+          <div class="stat-label">Round</div>
+          <div class="stat-val accent">
+            <span id="round-display">7</span>
+            <span style="color:var(--fg-muted);font-size:.75rem;"> / 20</span>
+          </div>
+          <div class="round-progress" style="margin-top:.375rem;">
+            <div class="round-progress-track">
+              <div class="round-progress-fill" id="round-bar" style="width:35%"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stat-cell">
+          <div class="stat-label">Offers</div>
+          <div class="stat-val" id="offer-count">7 exchanged</div>
+        </div>
+
+        <div class="stat-cell gap-row">
+          <span class="gap-price seller" id="gm-seller">₹5,20,000</span>
+          <div class="gap-bar-track">
+            <div class="gap-bar-fill" id="gm-bar" style="background:var(--amber);width:62%;left:19%;"></div>
+          </div>
+          <span class="gap-price buyer" id="gm-buyer">₹4,80,000</span>
+          <span class="gap-pct gap-medium" id="gm-pct">7.7% gap</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── BANNERS ──────────────────────────────────────────────────────────── -->
+  <div id="banner-negotiating" class="banner banner-info" style="display:none;">
+    <div class="banner-icon">
+      <svg class="spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+    </div>
+    <div class="banner-content">
+      <p class="banner-title">AI negotiation in progress</p>
+      <p class="banner-desc">Agents are exchanging offers in real time.</p>
+    </div>
+  </div>
+
+  <div id="banner-agreed" class="banner banner-success" style="display:none;">
+    <div class="banner-icon">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+    </div>
+    <div class="banner-content">
+      <p class="banner-title">Deal agreed</p>
+      <p class="banner-desc">Final price: ₹4,98,500 · Ready for on-chain settlement.</p>
+    </div>
+    <div class="banner-action">
+      <button class="btn btn-green btn-sm">Proceed to escrow →</button>
+    </div>
+  </div>
+
+  <div id="banner-stall" class="banner banner-warning" style="display:none;">
+    <div class="banner-icon">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+      </svg>
+    </div>
+    <div class="banner-content">
+      <p class="banner-title">Stall detected</p>
+      <p class="banner-desc">Agents have not made meaningful concessions — consider a manual override.</p>
+    </div>
+    <div class="banner-action">
+      <button class="btn btn-outline btn-sm" onclick="toggleOverride()">Override</button>
+    </div>
+  </div>
+
+  <div id="banner-failed" class="banner banner-error" style="display:none;">
+    <div class="banner-icon">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+    </div>
+    <div class="banner-content">
+      <p class="banner-title">Negotiation failed</p>
+      <p class="banner-desc">Maximum rounds reached without agreement.</p>
+    </div>
+  </div>
+
+  <!-- ── CHAT ────────────────────────────────────────────────────────────── -->
+  <div class="chat-card">
+    <div class="chat-head">
+      <div>
+        <div class="chat-head-title">Live Negotiation</div>
+        <div class="chat-head-sub" id="offer-count-sub">7 offers exchanged</div>
+      </div>
+      <div class="chat-legend">
+        <div class="legend-item"><span class="legend-dot" style="background:var(--seller)"></span>Seller</div>
+        <div class="legend-item"><span class="legend-dot" style="background:var(--buyer)"></span>Buyer</div>
+      </div>
+    </div>
+    <div class="chat-feed" id="chat-feed"></div>
+  </div>
+
+  <!-- ── CHART ───────────────────────────────────────────────────────────── -->
+  <div class="chart-card" id="chart-section" style="display:none;">
+    <div class="chart-card-title">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+      </svg>
+      Price Convergence
+    </div>
+    <div class="chart-wrap" id="chart-container"></div>
+    <div class="chart-legend">
+      <div class="chart-legend-item"><div class="chart-legend-line" style="background:var(--seller)"></div>Seller</div>
+      <div class="chart-legend-item"><div class="chart-legend-line" style="background:var(--buyer)"></div>Buyer</div>
+    </div>
+  </div>
+
+  <!-- ── ACTION BAR ─────────────────────────────────────────────────────── -->
+  <div class="action-bar" id="action-bar">
+    <div class="action-buttons">
+      <button class="btn btn-primary" onclick="addOffer()">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/>
+        </svg>
+        Auto-Negotiate
+      </button>
+      <button class="btn btn-outline" onclick="addSingleOffer()">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        Next Round
+      </button>
+      <button class="btn btn-ghost" onclick="toggleOverride()">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+        </svg>
+        Override
+      </button>
+      <button class="btn btn-danger" onclick="simulateFail()">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/>
+        </svg>
+        End
+      </button>
+    </div>
+  </div>
+
+  <!-- ── OVERRIDE PANEL ─────────────────────────────────────────────────── -->
+  <div class="override-panel" id="override-panel" style="display:none;">
+    <h3>Human Override</h3>
+    <p>Submit a manual price to override the AI agent for the next round.</p>
+    <div class="override-form">
+      <input class="override-input" type="number" id="override-price" placeholder="e.g. 495000" />
+      <button class="btn btn-primary" onclick="submitOverride()">Submit</button>
+      <button class="btn btn-ghost" onclick="toggleOverride()">Cancel</button>
+    </div>
+  </div>
+
+</div><!-- /.page -->
+
+
+
+
+<script>
+  /* ── Data & State ───────────────────────────────────────────────────────── */
+  const INR = new Intl.NumberFormat('en-IN', { style:'currency', currency:'INR', maximumFractionDigits:0 });
+  const fmt = v => INR.format(v);
+
+  const STRATEGIES = [
+    { label:'ANCHOR',       css:'st-anchor'      },
+    { label:'BOULWARE',     css:'st-boulware'    },
+    { label:'AGGRESSIVE',   css:'st-aggressive'  },
+    { label:'CONCESSIVE',   css:'st-concessive'  },
+    { label:'CONSTRAINED',  css:'st-constrained' },
+    { label:'CONSERVATIVE', css:'st-conservative'},
+    { label:'DEADLINE',     css:'st-deadline'    },
+  ];
+
+  const BUYER_REASONS = [
+    "Market rate analysis supports this offer. Moving closer while protecting budget.",
+    "Adjusting upward to show good faith — still within our procurement ceiling.",
+    "Boulware concession: small step forward, testing seller flexibility.",
+    "Budget ceiling approaching. This is near our walk-away threshold.",
+    "Deadline pressure increasing — making a decisive move toward agreement.",
+    "Opponent showing cooperative signals. Matching pace with a reasonable concession.",
+    "Tit-for-tat response: mirroring seller's last concession magnitude.",
+  ];
+
+  const SELLER_REASONS = [
+    "Opening anchor at 10% above target to allow negotiation room.",
+    "Holding firm on margin — a modest concession to signal engagement.",
+    "Buyer is within ZOPA range. Reducing to accelerate convergence.",
+    "Strategic pace: matching the buyer's last concession rate.",
+    "Cost basis doesn't allow further reduction at this volume.",
+    "Delivery timeline risk warrants this price level. Final position.",
+    "Consistent concession pattern — maintaining negotiation credibility.",
+  ];
+
+  let state = { offers:[], round:0, buyerLast:null, sellerLast:null, status:'ACTIVE' };
+
+  const SEED_OFFERS = [
+    { role:'SELLER', price:580000, stratIdx:0, reasonIdx:0, conf:0.90 },
+    { role:'BUYER',  price:440000, stratIdx:0, reasonIdx:0, conf:0.85 },
+    { role:'SELLER', price:560000, stratIdx:1, reasonIdx:1, conf:0.82 },
+    { role:'BUYER',  price:455000, stratIdx:3, reasonIdx:1, conf:0.76 },
+    { role:'SELLER', price:545000, stratIdx:1, reasonIdx:2, conf:0.79 },
+    { role:'BUYER',  price:468000, stratIdx:6, reasonIdx:6, conf:0.72 },
+    { role:'SELLER', price:520000, stratIdx:1, reasonIdx:3, conf:0.74 },
+  ];
+
+  /* ── Render helpers ─────────────────────────────────────────────────────── */
+  function priceDelta(current, prev) {
+    if (prev === null || Math.abs(current - prev) < 1) return '';
+    const delta = current - prev;
+    const cls = delta > 0 ? 'up' : 'down';
+    const arrow = delta > 0
+      ? `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 17L17 7M17 7H7M17 7v10"/></svg>`
+      : `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 7L7 17M7 17h10M7 17V7"/></svg>`;
+    return `<span class="b-delta ${cls}">${arrow}${fmt(Math.abs(delta))}</span>`;
+  }
+
+  function buildBubble(offer) {
+    const isBuyer = offer.role === 'BUYER';
+    const side    = isBuyer ? 'buyer' : 'seller';
+    const strat   = STRATEGIES[offer.stratIdx];
+    const reason  = isBuyer
+      ? BUYER_REASONS[offer.reasonIdx % BUYER_REASONS.length]
+      : SELLER_REASONS[offer.reasonIdx % SELLER_REASONS.length];
+    const prev    = isBuyer ? (offer.prevBuyer ?? null) : (offer.prevSeller ?? null);
+    const confColor = offer.conf >= 0.75 ? 'var(--green)' : offer.conf >= 0.5 ? 'var(--amber)' : 'var(--red)';
+    const humanCls  = offer.isHuman ? ' human' : '';
+    const humanTag  = offer.isHuman ? `<span class="b-strat b-human">Human</span>` : '';
+
+    return `
+      <div class="offer-row ${side}" id="offer-${offer.round}-${offer.role}">
+        <div class="agent-av ${side}">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+              d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+          </svg>
+        </div>
+        <div class="bubble ${side}${humanCls}">
+          <div class="b-head">
+            <span class="b-agent ${side}">${isBuyer ? 'Buyer Agent' : 'Seller Agent'}</span>
+            <span class="b-round">R${offer.round}</span>
+            <span class="b-strat ${strat.css}">${strat.label}</span>
+            ${humanTag}
+          </div>
+          <div class="b-price-row">
+            <span class="b-price ${side}">${fmt(offer.price)}</span>
+            <span class="b-unit">total</span>
+            ${priceDelta(offer.price, prev)}
+          </div>
+          <p class="b-reason">${reason}</p>
+          <div class="b-conf-row">
+            <div class="b-conf-bar">
+              <div class="b-conf-fill" style="width:${Math.round(offer.conf*100)}%;background:${confColor};"></div>
+            </div>
+            <span class="b-conf-label">${Math.round(offer.conf*100)}% confidence</span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  const THINKING_HTML = `
+    <div class="thinking-row" id="thinking-indicator">
+      <div class="thinking-av">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+        </svg>
+      </div>
+      <div class="thinking-dots">
+        <div class="thinking-dot"></div>
+        <div class="thinking-dot"></div>
+        <div class="thinking-dot"></div>
+      </div>
+      <span class="thinking-text">Agent is calculating…</span>
+    </div>`;
+
+  const EMPTY_HTML = `
+    <div class="empty-state">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
+          d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+      </svg>
+      <p>Waiting for the first offer…</p>
+    </div>`;
+
+  /* ── Chart ──────────────────────────────────────────────────────────────── */
+  function renderChart() {
+    const buyerOffers  = state.offers.filter(o=>o.role==='BUYER').map(o=>o.price);
+    const sellerOffers = state.offers.filter(o=>o.role==='SELLER').map(o=>o.price);
+    const all = [...buyerOffers,...sellerOffers];
+    if (!all.length) {
+      document.getElementById('chart-container').innerHTML='<p style="padding:2rem;text-align:center;color:var(--fg-muted);font-size:.875rem;">No data yet</p>';
+      return;
+    }
+    const W=640, H=220, pX=70, pY=20;
+    const cW=W-pX*2, cH=H-pY*2;
+    const buf=(Math.max(...all)-Math.min(...all))*0.12||Math.max(...all)*0.05;
+    const minP=Math.min(...all)-buf, maxP=Math.max(...all)+buf, rangeP=maxP-minP||1;
+    const maxR=Math.max(buyerOffers.length,sellerOffers.length);
+    const total=Math.max(maxR,2);
+    const tx=i=>pX+(i/(total-1))*cW, ty=p=>pY+cH-((p-minP)/rangeP)*cH;
+    const bPath=buyerOffers.map((p,i)=>`${i===0?'M':'L'}${tx(i)},${ty(p)}`).join(' ');
+    const sPath=sellerOffers.map((p,i)=>`${i===0?'M':'L'}${tx(i)},${ty(p)}`).join(' ');
+    const lastB=buyerOffers[buyerOffers.length-1];
+    const lastS=sellerOffers[sellerOffers.length-1];
+    const gap=lastB&&lastS?Math.abs(lastS-lastB)/Math.min(lastB,lastS)*100:null;
+    const gapColor=gap===null?'#6b7280':gap<=2?'#5ab98a':gap<=5?'#5ab98a':gap<=10?'#c9a05a':'#c96b5a';
+    const yLabels=Array.from({length:5},(_,i)=>{const p=minP+(rangeP/4)*i;return{p,y:ty(p)};});
+    document.getElementById('chart-container').innerHTML=`
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+        ${yLabels.map(({p,y})=>`
+          <line x1="${pX}" y1="${y}" x2="${W-pX}" y2="${y}" stroke="#252219" stroke-width="1" stroke-dasharray="4 6"/>
+          <text x="${pX-8}" y="${y+4}" text-anchor="end" font-size="9" fill="#7a7268" font-family="DM Mono,monospace">
+            ${p>=100000?'₹'+(p/100000).toFixed(1)+'L':'₹'+(p/1000).toFixed(0)+'K'}
+          </text>`).join('')}
+        ${sellerOffers.length>1?`<path d="${sPath}" fill="none" stroke="#7aaedf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>`:''}
+        ${buyerOffers.length>1?`<path d="${bPath}" fill="none" stroke="#6bbf9e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>`:''}
+        ${sellerOffers.map((p,i)=>`<circle cx="${tx(i)}" cy="${ty(p)}" r="${i===sellerOffers.length-1?4.5:3}" fill="${i===sellerOffers.length-1?'#7aaedf':'#1a1814'}" stroke="#7aaedf" stroke-width="1.5"/>`).join('')}
+        ${buyerOffers.map((p,i)=>`<circle cx="${tx(i)}" cy="${ty(p)}" r="${i===buyerOffers.length-1?4.5:3}" fill="${i===buyerOffers.length-1?'#6bbf9e':'#1a1814'}" stroke="#6bbf9e" stroke-width="1.5"/>`).join('')}
+        ${gap!==null?`<text x="${W/2}" y="${pY-4}" text-anchor="middle" font-size="10" fill="${gapColor}" font-family="DM Mono,monospace" font-weight="500">${gap.toFixed(1)}% gap</text>`:''}
+      </svg>`;
+  }
+
+  /* ── Render loop ────────────────────────────────────────────────────────── */
+  function render() {
+    const feed = document.getElementById('chat-feed');
+    if (!state.offers.length) { feed.innerHTML = EMPTY_HTML; return; }
+    const buyerH=[], sellerH=[];
+    let html = state.offers.map(o=>{
+      const history = o.role==='BUYER'?buyerH:sellerH;
+      const prev = history.length?history[history.length-1]:null;
+      history.push(o.price);
+      return buildBubble({...o, prevBuyer:o.role==='BUYER'?prev:null, prevSeller:o.role==='SELLER'?prev:null});
+    }).join('');
+    if (state.status==='ACTIVE') html += THINKING_HTML;
+    feed.innerHTML = html;
+    feed.scrollTop = feed.scrollHeight;
+    const cnt = `${state.offers.length} offer${state.offers.length!==1?'s':''} exchanged`;
+    document.getElementById('offer-count').textContent = cnt;
+    document.getElementById('offer-count-sub').textContent = cnt;
+    document.getElementById('round-display').textContent = state.round;
+    document.getElementById('round-bar').style.width = `${(state.round/20)*100}%`;
+    renderChart();
+  }
+
+  function updateGapMeter() {
+    if (!state.buyerLast||!state.sellerLast) return;
+    const gap=Math.abs(state.sellerLast-state.buyerLast)/Math.min(state.buyerLast,state.sellerLast)*100;
+    document.getElementById('gm-seller').textContent = fmt(state.sellerLast);
+    document.getElementById('gm-buyer').textContent  = fmt(state.buyerLast);
+    const chip = document.getElementById('gm-pct');
+    chip.textContent = `${gap.toFixed(1)}% gap`;
+    chip.className = 'gap-pct '+(gap<=2?'gap-tight':gap<=5?'gap-close':gap<=10?'gap-medium':'gap-wide');
+    const barColor = gap<=5?'var(--green)':gap<=10?'var(--amber)':'var(--red)';
+    document.getElementById('gm-bar').style.background = barColor;
+  }
+
+  /* ── Action handlers ────────────────────────────────────────────────────── */
+  function getNextOffer() {
+    state.round++;
+    const lastOffer = state.offers[state.offers.length-1];
+    const isNextBuyer = !lastOffer || lastOffer.role==='SELLER';
+    const role = isNextBuyer?'BUYER':'SELLER';
+    let price;
+    if (isNextBuyer){
+      const lb=state.buyerLast??440000, ls=state.sellerLast??580000;
+      price = Math.round(lb+(((lb+ls)/2)-lb)*0.25);
+      state.buyerLast=price;
+    } else {
+      const ls=state.sellerLast??580000, lb=state.buyerLast??440000;
+      price = Math.round(ls-(ls-((lb+ls)/2))*0.2);
+      state.sellerLast=price;
+    }
+    return {role,price,round:state.round,stratIdx:Math.floor(Math.random()*STRATEGIES.length),reasonIdx:Math.floor(Math.random()*7),conf:0.5+Math.random()*0.45,isHuman:false};
+  }
+
+  function addSingleOffer() {
+    if (state.status!=='ACTIVE') return;
+    state.offers.push(getNextOffer());
+    updateGapMeter(); render();
+  }
+
+  function addOffer() {
+    if (state.status!=='ACTIVE') return;
+    let count=0;
+    const iv=setInterval(()=>{
+      if(count>=3||state.status!=='ACTIVE'){clearInterval(iv);return;}
+      state.offers.push(getNextOffer());
+      updateGapMeter(); render(); count++;
+      if(state.buyerLast&&state.sellerLast){
+        const g=Math.abs(state.sellerLast-state.buyerLast)/Math.min(state.buyerLast,state.sellerLast)*100;
+        if(g<=2){clearInterval(iv);simulateAgree();}
+      }
+    },800);
+  }
+
+  function simulateAgree() {
+    state.status='AGREED';
+    hideBanner('banner-negotiating'); hideBanner('banner-stall');
+    showBanner('banner-agreed');
+    document.getElementById('action-bar').style.display='none';
+    const th=document.getElementById('thinking-indicator'); if(th)th.remove();
+    const pill=document.getElementById('status-pill');
+    pill.className='status-pill agreed';
+    pill.innerHTML='<svg width="10" height="10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> Agreed';
+  }
+
+  function simulateStall()  { showBanner('banner-stall'); }
+
+  function simulateFail() {
+    state.status='FAILED';
+    hideBanner('banner-negotiating'); hideBanner('banner-stall');
+    showBanner('banner-failed');
+    document.getElementById('action-bar').style.display='none';
+    const pill=document.getElementById('status-pill');
+    pill.className='status-pill failed';
+    pill.innerHTML='<svg width="10" height="10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg> Failed';
+    render();
+  }
+
+  function submitOverride() {
+    const inp=document.getElementById('override-price');
+    const price=parseFloat(inp.value);
+    if(!price||isNaN(price)||price<=0){alert('Enter a valid price');return;}
+    const isNextBuyer=!(state.offers[state.offers.length-1]?.role==='BUYER');
+    state.round++;
+    const role=isNextBuyer?'BUYER':'SELLER';
+    if(role==='BUYER')state.buyerLast=price;else state.sellerLast=price;
+    state.offers.push({role,price,round:state.round,stratIdx:0,reasonIdx:0,conf:1.0,isHuman:true});
+    updateGapMeter(); render(); inp.value='';
+    document.getElementById('override-panel').style.display='none';
+  }
+
+  function toggleOverride(){const p=document.getElementById('override-panel');p.style.display=p.style.display==='none'?'block':'none';}
+  function toggleChart(){const c=document.getElementById('chart-section');c.style.display=c.style.display==='none'?'block':'none';if(c.style.display==='block')renderChart();}
+  function showBanner(id){document.getElementById(id).style.display='flex';}
+  function hideBanner(id){document.getElementById(id).style.display='none';}
+
+  function resetAll(){
+    state={offers:[],round:0,buyerLast:null,sellerLast:null,status:'ACTIVE'};
+    document.getElementById('action-bar').style.display='block';
+    ['banner-agreed','banner-stall','banner-failed','banner-negotiating'].forEach(hideBanner);
+    const pill=document.getElementById('status-pill');
+    pill.className='status-pill active';
+    pill.innerHTML='<span class="live-dot"></span> Active';
+    seedInitialOffers(); render();
+  }
+
+  function seedInitialOffers(){
+    state.offers=[]; state.round=0;
+    SEED_OFFERS.forEach((o,i)=>{
+      state.round=i+1;
+      if(o.role==='BUYER')state.buyerLast=o.price;else state.sellerLast=o.price;
+      state.offers.push({...o,round:i+1,isHuman:false});
+    });
+  }
+
+  seedInitialOffers();
+  render();
+  updateGapMeter();
+</script>
+</body>
+</html>

@@ -32,7 +32,7 @@ class EnterpriseCreateRequest(BaseModel):
     pan: str = Field(pattern=r"^[A-Z]{5}[0-9]{4}[A-Z]{1}$")
     gstin: str = Field(pattern=r"^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}Z[A-Z\d]{1}$")
     trade_role: Literal["BUYER", "SELLER", "BOTH"]
-    products_services: list[str] = Field(default_factory=list, max_length=50)
+    commodities: list[str] = Field(default_factory=list, max_length=50)
     min_order_value: Decimal | None = Field(None, ge=0)
     max_order_value: Decimal | None = Field(None, ge=0)
     industry_vertical: str | None = Field(None, max_length=100)
@@ -41,9 +41,7 @@ class EnterpriseCreateRequest(BaseModel):
     address: Optional[AddressCreateRequest] = None
     # Enhanced onboarding: business details
     facility_type: Optional[Literal[
-        "MANUFACTURING_PLANT", "WAREHOUSE", "TRADING_OFFICE", "SERVICE_CENTRE",
-        "RETAIL_OUTLET", "DISTRIBUTION_CENTRE", "OFFICE_HQ", "LAB_RND",
-        "INTEGRATED", "OTHER"
+        "MANUFACTURING_PLANT", "WAREHOUSE", "TRADING_OFFICE", "INTEGRATED"
     ]] = None
     payment_terms_accepted: list[str] = Field(default_factory=list)
     credit_period_days: Optional[int] = Field(None, ge=0, le=180)
@@ -112,7 +110,7 @@ class AgentConfigUpdateResponse(BaseModel):
 class AgentConfigRequest(BaseModel):
     """Legacy enterprise update request — used by PATCH enterprise."""
     industry_vertical: str | None = Field(None, max_length=100)
-    products_services: list[str] = Field(default_factory=list)
+    commodities: list[str] = Field(default_factory=list)
     min_order_value: Decimal | None = Field(None, ge=0)
     max_order_value: Decimal | None = Field(None, ge=0)
     algorand_wallet: str | None = None
@@ -189,7 +187,7 @@ class EnterpriseResponse(BaseModel):
     kyc_status: str                                 # NOT_SUBMITTED | PENDING | ACTIVE | REJECTED
     industry_vertical: str
     geography: str
-    products_services: list[str]
+    commodities: list[str]
     min_order_value: float
     max_order_value: float
     algorand_wallet: Optional[str] = None
@@ -229,7 +227,7 @@ class EnterpriseResponse(BaseModel):
             algorand_wallet=enterprise.algorand_wallet.value if enterprise.algorand_wallet else None,
             industry_vertical=enterprise.industry_vertical or "",
             geography=getattr(enterprise, 'geography', 'IN') or "IN",
-            products_services=enterprise.products_services or [],
+            commodities=enterprise.commodities or [],
             min_order_value=float(enterprise.min_order_value) if enterprise.min_order_value else 0,
             max_order_value=float(enterprise.max_order_value) if enterprise.max_order_value else 0,
             agent_config=agent_cfg,

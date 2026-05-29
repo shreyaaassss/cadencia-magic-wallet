@@ -892,7 +892,7 @@ async def handle_enterprise_registered_create_profile(event: object) -> None:
 
             # Extract enterprise details from kyc_documents JSONB
             kyc = ent.kyc_documents or {}
-            products = kyc.get("products_services", kyc.get("commodities", []))
+            commodities = kyc.get("commodities", [])
             industry = kyc.get("industry_vertical", "")
             geography = kyc.get("geography", "IN")
             min_order = kyc.get("min_order_value")
@@ -904,8 +904,8 @@ async def handle_enterprise_registered_create_profile(event: object) -> None:
                 profile_parts.append(ent.name)
             if industry:
                 profile_parts.append(f"Industry: {industry}")
-            if products:
-                profile_parts.append(f"Products: {', '.join(products)}")
+            if commodities:
+                profile_parts.append(f"Products: {', '.join(commodities)}")
             if geography:
                 profile_parts.append(f"Geography: {geography}")
             profile_text = ". ".join(profile_parts)
@@ -915,7 +915,7 @@ async def handle_enterprise_registered_create_profile(event: object) -> None:
                 id=uuid_mod.uuid4(),
                 enterprise_id=enterprise_id,
                 industry_vertical=industry or None,
-                products_services=products,
+                commodities=commodities,
                 geographies_served=[geography] if geography else [],
                 min_order_value=float(min_order) if min_order is not None else None,
                 max_order_value=float(max_order) if max_order is not None else None,
@@ -928,7 +928,7 @@ async def handle_enterprise_registered_create_profile(event: object) -> None:
             log.info(
                 "seller_profile_auto_created",
                 enterprise_id=str(enterprise_id),
-                products_services=products,
+                commodities=commodities,
                 industry=industry,
             )
 
@@ -943,7 +943,7 @@ async def handle_enterprise_registered_create_profile(event: object) -> None:
             parser = get_document_parser()
             text_parts = [
                 profile_text,
-                " ".join(products),
+                " ".join(commodities),
                 geography,
                 industry or "",
             ]

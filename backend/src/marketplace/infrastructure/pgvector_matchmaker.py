@@ -159,14 +159,14 @@ class PgvectorMatchmaker:
                 seller_cap_profile = cap_result.scalar_one_or_none()
 
                 if seller_cap_profile:
-                    seller_products = [c.lower() for c in (seller_cap_profile.products_services or [])]
+                    seller_commodities = [c.lower() for c in (seller_cap_profile.commodities or [])]
                     seller_industry = (seller_cap_profile.industry_vertical or "").lower()
-                    seller_text = " ".join(seller_products) + " " + seller_industry
+                    seller_text = " ".join(seller_commodities) + " " + seller_industry
 
-                    # Check for ANY relevance between RFQ product and seller products/industry
+                    # Check for ANY relevance between RFQ product and seller commodities/industry
                     has_relevance = False
                     # Exact or substring match
-                    if rfq_product in seller_text or any(c in rfq_product for c in seller_products):
+                    if rfq_product in seller_text or any(c in rfq_product for c in seller_commodities):
                         has_relevance = True
                     # Word-level overlap
                     if not has_relevance:
@@ -179,7 +179,7 @@ class PgvectorMatchmaker:
                         from src.marketplace.infrastructure.keyword_matchmaker import _RELATED_TERMS
                         for word in rfq_product_words:
                             related = _RELATED_TERMS.get(word, {})
-                            for sc in seller_products:
+                            for sc in seller_commodities:
                                 if sc in related or any(sw in related for sw in sc.split()):
                                     has_relevance = True
                                     break
@@ -191,7 +191,7 @@ class PgvectorMatchmaker:
                             "pgvector_hard_filter_no_relevance",
                             seller_id=str(seller_id),
                             rfq_product=rfq_product,
-                            seller_products=seller_products,
+                            seller_commodities=seller_commodities,
                         )
                         continue
 
@@ -250,25 +250,22 @@ class PgvectorMatchmaker:
                 # Score: more buffer = higher score
                 delivery_score = max(0.0, 1.0 - (feasibility.total_days / buyer_delivery_window))
 
-                # Check service coverage
-                if seller_cap and seller_cap.service_coverage:
-                    coverage_km = {
-                        "LOCAL": 200,
-                        "REGIONAL": 1000,
-                        "NATIONAL": 5000,
-                        "INTERNATIONAL": 999_999,
-                    }.get(seller_cap.service_coverage, 5000)
-                    if feasibility.distance_km > coverage_km:
+                # Check delivery radius
+                if seller_cap and seller_cap.max_delivery_radius_km:
+                    if feasibility.distance_km > seller_cap.max_delivery_radius_km:
                         continue
 
-            # Capacity check — generic volume comparison (unit-agnostic numeric)
+            # Capacity check (MT/month sellers only — skip for piece/unit RFQs)
             capacity_score = 1.0
+            item_unit = (getattr(best_item, "unit", None) or "MT").upper() if best_item else "MT"
+            apply_mt_capacity = item_unit in ("MT", "TON", "TONNE", "METRIC TON")
             if (
-                buyer_qty
+                apply_mt_capacity
+                and buyer_qty
                 and seller_cap
-                and seller_cap.available_volume
+                and seller_cap.available_capacity_mt
             ):
-                available = float(seller_cap.available_volume)
+                available = float(seller_cap.available_capacity_mt)
                 window = buyer_delivery_window or 30
                 months = max(window / 30, 1)
                 total_producible = available * months

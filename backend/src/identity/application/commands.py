@@ -18,7 +18,7 @@ class RegisterEnterpriseCommand:
     password: str
     full_name: str | None
     role: str
-    products_services: list[str]
+    commodities: list[str]
     min_order_value: Decimal | None
     max_order_value: Decimal | None
     industry_vertical: str | None

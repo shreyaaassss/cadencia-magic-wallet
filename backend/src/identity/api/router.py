@@ -104,7 +104,7 @@ async def register(
         password=request_body.user.password,
         full_name=request_body.user.full_name,
         role=request_body.user.role,
-        products_services=list(ent.products_services),
+        commodities=list(ent.commodities),
         min_order_value=Decimal(str(ent.min_order_value))
             if ent.min_order_value is not None else None,
         max_order_value=Decimal(str(ent.max_order_value))
