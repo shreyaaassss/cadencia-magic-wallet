@@ -69,7 +69,7 @@ class KeywordMatchmaker:
         # Query capability profiles joined with enterprises to filter by trade role
         stmt = select(
             CapabilityProfileModel.enterprise_id,
-            CapabilityProfileModel.commodities,
+            CapabilityProfileModel.products_services,
             CapabilityProfileModel.geographies_served,
             CapabilityProfileModel.min_order_value,
             CapabilityProfileModel.max_order_value,
@@ -93,8 +93,8 @@ class KeywordMatchmaker:
 
         for row in rows:
             # 1. Commodity relevance (weight: 0.5) — granular, not binary
-            commodities = row.commodities or []
-            commodity_lower = [c.lower() for c in commodities]
+            products = row.products_services or []
+            commodity_lower = [c.lower() for c in products]
             commodity_text = " ".join(commodity_lower)
             product_words = [w for w in rfq_product.split() if len(w) > 2]
 

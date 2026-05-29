@@ -153,8 +153,8 @@ class Enterprise(BaseEntity):
 
         if "industry_vertical" in config:
             self.industry_vertical = config["industry_vertical"]
-        if "commodities" in config:
-            self.commodities = list(config["commodities"])
+        if "products_services" in config:
+            self.products_services = list(config["products_services"])
         if "geography" in config:
             self.geography = str(config["geography"])
 

@@ -437,7 +437,7 @@ class MarketplaceService:
                         fallback_matches = []
                         for ent in seller_ents:
                             kyc = ent.kyc_documents or {}
-                            ent_commodities = [c.lower() for c in kyc.get("commodities", [])]
+                            ent_commodities = [c.lower() for c in kyc.get("products_services", kyc.get("commodities", []))]
                             ent_industry = (kyc.get("industry_vertical") or "").lower()
 
                             # Check if any search term overlaps

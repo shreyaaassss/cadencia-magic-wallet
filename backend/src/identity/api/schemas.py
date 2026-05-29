@@ -112,7 +112,7 @@ class AgentConfigUpdateResponse(BaseModel):
 class AgentConfigRequest(BaseModel):
     """Legacy enterprise update request — used by PATCH enterprise."""
     industry_vertical: str | None = Field(None, max_length=100)
-    commodities: list[str] = Field(default_factory=list)
+    products_services: list[str] = Field(default_factory=list)
     min_order_value: Decimal | None = Field(None, ge=0)
     max_order_value: Decimal | None = Field(None, ge=0)
     algorand_wallet: str | None = None
@@ -189,7 +189,7 @@ class EnterpriseResponse(BaseModel):
     kyc_status: str                                 # NOT_SUBMITTED | PENDING | ACTIVE | REJECTED
     industry_vertical: str
     geography: str
-    commodities: list[str]
+    products_services: list[str]
     min_order_value: float
     max_order_value: float
     algorand_wallet: Optional[str] = None
@@ -229,7 +229,7 @@ class EnterpriseResponse(BaseModel):
             algorand_wallet=enterprise.algorand_wallet.value if enterprise.algorand_wallet else None,
             industry_vertical=enterprise.industry_vertical or "",
             geography=getattr(enterprise, 'geography', 'IN') or "IN",
-            commodities=enterprise.commodities or [],
+            products_services=enterprise.products_services or [],
             min_order_value=float(enterprise.min_order_value) if enterprise.min_order_value else 0,
             max_order_value=float(enterprise.max_order_value) if enterprise.max_order_value else 0,
             agent_config=agent_cfg,

@@ -230,7 +230,15 @@ export default function RegisterPage() {
   const [globalError, setGlobalError] = React.useState<string | null>(null);
   const [isSubmittingForm, setIsSubmittingForm] = React.useState(false);
 
-  // Track wallet connection for web3 tab
+  // Disconnect any stale cached wallet on mount — registration must start fresh
+  React.useEffect(() => {
+    if (txnLab.activeAddress && web3Status === 'idle') {
+      try { txnLab.activeWallet?.disconnect(); } catch {}
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Track wallet connection ONLY when user actively clicks Connect
   React.useEffect(() => {
     if (txnLab.activeAddress && web3Status === 'connecting') {
       setWeb3Address(txnLab.activeAddress);
