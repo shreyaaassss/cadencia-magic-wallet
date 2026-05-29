@@ -11,7 +11,9 @@ import { toast } from 'sonner';
 import algosdk from 'algosdk';
 
 import { useAuth } from '@/hooks/useAuth';
+import { WalletProvider, WalletManager } from '@txnlab/use-wallet-react';
 import { useWallet as _useTxnLabWallet } from '@txnlab/use-wallet-react';
+import { createFreshWalletManager } from '@/components/providers/WalletConnectProvider';
 
 function useTxnLabWalletSafe() {
   try {
@@ -204,7 +206,30 @@ interface RegistrationState {
 
 type RegisterAuthTab = 'magic' | 'web3';
 
+/**
+ * Wrapper that creates a FRESH WalletProvider with no stale sessions.
+ * This overrides the global WalletConnectProvider from layout.tsx,
+ * ensuring the registration page always starts with a clean wallet state.
+ */
 export default function RegisterPage() {
+  const [freshManager, setFreshManager] = React.useState<WalletManager | null>(null);
+
+  React.useEffect(() => {
+    setFreshManager(createFreshWalletManager());
+  }, []);
+
+  if (!freshManager) {
+    return null; // Brief flash while manager initialises
+  }
+
+  return (
+    <WalletProvider manager={freshManager}>
+      <RegisterPageInner />
+    </WalletProvider>
+  );
+}
+
+function RegisterPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const auth = useAuth();
@@ -229,30 +254,6 @@ export default function RegisterPage() {
 
   const [globalError, setGlobalError] = React.useState<string | null>(null);
   const [isSubmittingForm, setIsSubmittingForm] = React.useState(false);
-
-  // Disconnect ALL stale cached wallets on mount — registration must start fresh.
-  // WalletConnect + Pera SDK persist sessions in IndexedDB; a simple
-  // activeWallet.disconnect() isn't enough — we need to disconnect every
-  // wallet the manager knows about and clear the WC session store.
-  React.useEffect(() => {
-    (async () => {
-      try {
-        for (const w of txnLab.wallets || []) {
-          if (w.isConnected) await w.disconnect().catch(() => {});
-        }
-      } catch {}
-      // Clear WalletConnect v2 session cache from IndexedDB
-      try {
-        const dbs = await indexedDB.databases?.();
-        for (const db of dbs || []) {
-          if (db.name && /wc|walletconnect/i.test(db.name)) {
-            indexedDB.deleteDatabase(db.name);
-          }
-        }
-      } catch {}
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Track wallet connection ONLY when user actively clicks Connect
   React.useEffect(() => {
