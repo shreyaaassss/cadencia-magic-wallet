@@ -32,7 +32,7 @@ class EnterpriseCreateRequest(BaseModel):
     pan: str = Field(pattern=r"^[A-Z]{5}[0-9]{4}[A-Z]{1}$")
     gstin: str = Field(pattern=r"^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}Z[A-Z\d]{1}$")
     trade_role: Literal["BUYER", "SELLER", "BOTH"]
-    commodities: list[str] = Field(default_factory=list, max_length=50)
+    products_services: list[str] = Field(default_factory=list, max_length=50)
     min_order_value: Decimal | None = Field(None, ge=0)
     max_order_value: Decimal | None = Field(None, ge=0)
     industry_vertical: str | None = Field(None, max_length=100)
@@ -41,7 +41,9 @@ class EnterpriseCreateRequest(BaseModel):
     address: Optional[AddressCreateRequest] = None
     # Enhanced onboarding: business details
     facility_type: Optional[Literal[
-        "MANUFACTURING_PLANT", "WAREHOUSE", "TRADING_OFFICE", "INTEGRATED"
+        "MANUFACTURING_PLANT", "WAREHOUSE", "TRADING_OFFICE", "SERVICE_CENTRE",
+        "RETAIL_OUTLET", "DISTRIBUTION_CENTRE", "OFFICE_HQ", "LAB_RND",
+        "INTEGRATED", "OTHER"
     ]] = None
     payment_terms_accepted: list[str] = Field(default_factory=list)
     credit_period_days: Optional[int] = Field(None, ge=0, le=180)

@@ -640,17 +640,17 @@ async def upsert_capacity_profile(
     result = await session.execute(stmt)
     profile = result.scalar_one_or_none()
 
-    available = body.monthly_production_capacity_mt * (1 - body.current_utilization_pct / 100)
+    available = body.monthly_volume * (1 - body.current_utilization_pct / 100)
 
     if profile:
         for field_name, value in body.model_dump().items():
             setattr(profile, field_name, value)
-        profile.available_capacity_mt = available
+        profile.available_volume = available
     else:
         profile = SellerCapacityProfileModel(
             id=_uuid.uuid4(),
             enterprise_id=current_user.enterprise_id,
-            available_capacity_mt=available,
+            available_volume=available,
             **body.model_dump(),
         )
         session.add(profile)
@@ -661,15 +661,16 @@ async def upsert_capacity_profile(
         SellerCapacityProfileResponse(
             id=profile.id,
             enterprise_id=profile.enterprise_id,
-            monthly_production_capacity_mt=float(profile.monthly_production_capacity_mt),
+            monthly_volume=float(profile.monthly_volume),
+            volume_unit=profile.volume_unit,
             current_utilization_pct=profile.current_utilization_pct or 0,
-            available_capacity_mt=float(profile.available_capacity_mt) if profile.available_capacity_mt else None,
+            available_volume=float(profile.available_volume) if profile.available_volume else None,
             num_production_lines=profile.num_production_lines or 1,
-            shift_pattern=profile.shift_pattern,
+            operating_schedule=profile.operating_schedule,
             avg_dispatch_days=profile.avg_dispatch_days,
-            max_delivery_radius_km=profile.max_delivery_radius_km,
+            service_coverage=profile.service_coverage,
             has_own_transport=profile.has_own_transport,
-            preferred_transport_modes=profile.preferred_transport_modes or [],
+            fulfillment_method=profile.fulfillment_method or [],
             ex_works_available=profile.ex_works_available,
             created_at=profile.created_at,
             updated_at=profile.updated_at,
@@ -702,15 +703,16 @@ async def get_capacity_profile(
         SellerCapacityProfileResponse(
             id=profile.id,
             enterprise_id=profile.enterprise_id,
-            monthly_production_capacity_mt=float(profile.monthly_production_capacity_mt),
+            monthly_volume=float(profile.monthly_volume),
+            volume_unit=profile.volume_unit,
             current_utilization_pct=profile.current_utilization_pct or 0,
-            available_capacity_mt=float(profile.available_capacity_mt) if profile.available_capacity_mt else None,
+            available_volume=float(profile.available_volume) if profile.available_volume else None,
             num_production_lines=profile.num_production_lines or 1,
-            shift_pattern=profile.shift_pattern,
+            operating_schedule=profile.operating_schedule,
             avg_dispatch_days=profile.avg_dispatch_days,
-            max_delivery_radius_km=profile.max_delivery_radius_km,
+            service_coverage=profile.service_coverage,
             has_own_transport=profile.has_own_transport,
-            preferred_transport_modes=profile.preferred_transport_modes or [],
+            fulfillment_method=profile.fulfillment_method or [],
             ex_works_available=profile.ex_works_available,
             created_at=profile.created_at,
             updated_at=profile.updated_at,

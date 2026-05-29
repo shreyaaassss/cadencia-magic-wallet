@@ -134,7 +134,7 @@ class CapabilityProfileModel(Base):
         nullable=False,
         unique=True,
     )
-    commodities: Mapped[list | None] = mapped_column(ARRAY(String), nullable=True)
+    products_services: Mapped[list | None] = mapped_column(ARRAY(String), nullable=True)
     hsn_codes: Mapped[list | None] = mapped_column(ARRAY(String), nullable=True)
     min_order_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     max_order_value: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -313,11 +313,16 @@ class SellerCapacityProfileModel(Base):
     __tablename__ = "seller_capacity_profiles"
     __table_args__ = (
         UniqueConstraint("enterprise_id", name="uq_seller_capacity_enterprise_id"),
-        CheckConstraint("monthly_production_capacity_mt > 0", name="ck_capacity_positive"),
+        CheckConstraint("monthly_volume > 0", name="ck_monthly_volume_positive"),
         CheckConstraint("current_utilization_pct BETWEEN 0 AND 100", name="ck_utilization_range"),
         CheckConstraint(
-            "shift_pattern IN ('SINGLE_SHIFT','DOUBLE_SHIFT','TRIPLE_SHIFT','CONTINUOUS')",
-            name="ck_shift_pattern",
+            "service_coverage IN ('LOCAL','REGIONAL','NATIONAL','INTERNATIONAL')",
+            name="ck_service_coverage",
+        ),
+        CheckConstraint(
+            "operating_schedule IN ('STANDARD_HOURS','EXTENDED_HOURS','TWENTY_FOUR_SEVEN',"
+            "'PROJECT_BASED','ON_DEMAND','SEASONAL')",
+            name="ck_operating_schedule",
         ),
     )
 
@@ -330,15 +335,16 @@ class SellerCapacityProfileModel(Base):
         nullable=False,
         unique=True,
     )
-    monthly_production_capacity_mt: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    monthly_volume: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    volume_unit: Mapped[str] = mapped_column(String(20), server_default="MT", nullable=False)
     current_utilization_pct: Mapped[int | None] = mapped_column(Integer, server_default="0", nullable=True)
-    available_capacity_mt: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)
+    available_volume: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)
     num_production_lines: Mapped[int | None] = mapped_column(Integer, server_default="1", nullable=True)
-    shift_pattern: Mapped[str] = mapped_column(String(30), server_default="SINGLE_SHIFT", nullable=False)
+    operating_schedule: Mapped[str] = mapped_column(String(30), server_default="STANDARD_HOURS", nullable=False)
     avg_dispatch_days: Mapped[int] = mapped_column(Integer, server_default="3", nullable=False)
-    max_delivery_radius_km: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    service_coverage: Mapped[str] = mapped_column(String(20), server_default="NATIONAL", nullable=False)
     has_own_transport: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
-    preferred_transport_modes: Mapped[list | None] = mapped_column(ARRAY(String), nullable=True)
+    fulfillment_method: Mapped[list | None] = mapped_column(ARRAY(String), nullable=True)
     ex_works_available: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
     created_at: Mapped[str] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

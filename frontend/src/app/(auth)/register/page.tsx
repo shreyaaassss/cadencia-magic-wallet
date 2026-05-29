@@ -49,11 +49,53 @@ const INDIAN_STATES = [
   "Delhi", "Jammu and Kashmir", "Ladakh", "Chandigarh", "Puducherry",
 ];
 
-const PAYMENT_TERM_SUGGESTIONS = [
-  "Advance", "LC at Sight", "LC 30", "LC 60", "NET 30", "NET 60", "NET 90",
+const INDUSTRY_VERTICALS = [
+  "Steel & Metals", "Cement & Construction Materials", "Chemicals & Petrochemicals",
+  "FMCG & Consumer Goods", "Electronics & Components", "Textiles & Apparel",
+  "Pharmaceutical & Healthcare", "Food & Agriculture", "Automotive & Engineering",
+  "Software & IT Services", "Logistics & Supply Chain", "Energy & Utilities",
+  "Retail & Trading", "Media & Entertainment", "Financial Services",
+  "Education & Training", "Hospitality & Tourism", "Real Estate & Infrastructure",
+  "Telecommunications", "Other",
 ];
 
-const CERT_SUGGESTIONS = ["ISO 9001", "BIS", "RDSO", "ISO 14001", "NABL"];
+const VOLUME_UNITS = ["MT", "UNITS", "KG", "LITRES", "HOURS", "LICENCES", "PROJECTS", "SQ_FT", "CUSTOM"] as const;
+
+const VOLUME_UNIT_LABELS: Record<string, string> = {
+  MT: "MT (Metric Tons)",
+  UNITS: "Units / Pieces",
+  KG: "Kilograms",
+  LITRES: "Litres",
+  HOURS: "Hours",
+  LICENCES: "Licences",
+  PROJECTS: "Projects",
+  SQ_FT: "Sq. Ft.",
+  CUSTOM: "Custom",
+};
+
+const PAYMENT_TERM_SUGGESTIONS = [
+  "Advance", "LC at Sight", "LC 30", "LC 60", "NET 30", "NET 60", "NET 90",
+  "Milestone-based", "SaaS Monthly", "Retainer",
+];
+
+const CERT_SUGGESTIONS = [
+  // Manufacturing & Quality
+  "ISO 9001", "ISO 14001", "ISO 45001", "BIS", "ZED",
+  // Food & Agriculture
+  "FSSAI", "HACCP", "FSMS", "Organic India", "AgMark", "APEDA",
+  // Healthcare & Pharma
+  "GMP", "WHO-GMP", "AYUSH", "CE Mark", "CDSCO", "FDA Approved",
+  // IT & Software
+  "ISO 27001", "SOC 2", "CMMI", "GDPR Compliant", "PCI-DSS",
+  // Textiles
+  "GOTS", "OEKO-TEX", "SA8000", "WRAP", "SEDEX",
+  // Energy
+  "BEE Star Rating", "GRIHA", "ISO 50001",
+  // Export & Trade
+  "RCMC", "MPEDA", "FIEO Registered",
+  // General
+  "NABL", "RDSO", "Udyam Registered", "Startup India",
+];
 
 function ErrorBanner({ message }: { message: string }) {
   return (
@@ -78,14 +120,14 @@ const step1Schema = z.object({
   trade_role: z.enum(['BUYER', 'SELLER', 'BOTH'], { error: 'Select a trade role' }),
   industry_vertical: z.string().min(2, 'Industry is required'),
   geography: z.string().min(2, 'Geography is required'),
-  commodities: z.array(z.string()).default([]),
+  products_services: z.array(z.string()).default([]),
   min_order_value: z.number({ error: 'Enter a valid amount' }).optional(),
   max_order_value: z.number({ error: 'Enter a valid amount' }).optional(),
 }).superRefine((d, ctx) => {
   const isSeller = d.trade_role === 'SELLER' || d.trade_role === 'BOTH';
   if (isSeller) {
-    if (!d.commodities || d.commodities.length < 1) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Add at least one commodity', path: ['commodities'] });
+    if (!d.products_services || d.products_services.length < 1) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Add at least one product or service', path: ['products_services'] });
     }
     if (d.min_order_value === undefined || d.min_order_value < 1000) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Minimum order must be at least ₹1,000', path: ['min_order_value'] });
@@ -108,23 +150,31 @@ const addressSchema = z.object({
 });
 
 const sellerFacilitySchema = addressSchema.extend({
-  facility_type: z.enum(['MANUFACTURING_PLANT', 'WAREHOUSE', 'TRADING_OFFICE', 'INTEGRATED']),
+  facility_type: z.enum([
+    'MANUFACTURING_PLANT', 'WAREHOUSE', 'TRADING_OFFICE', 'SERVICE_CENTRE',
+    'RETAIL_OUTLET', 'DISTRIBUTION_CENTRE', 'OFFICE_HQ', 'LAB_RND', 'INTEGRATED', 'OTHER',
+  ]),
 });
 
 const sellerCapacitySchema = z.object({
-  monthly_production_capacity_mt: z.number().positive('Capacity must be > 0'),
-  shift_pattern: z.enum(['SINGLE_SHIFT', 'DOUBLE_SHIFT', 'TRIPLE_SHIFT', 'CONTINUOUS']).default('SINGLE_SHIFT'),
+  monthly_volume: z.number().positive('Volume must be > 0'),
+  volume_unit: z.enum(["MT", "UNITS", "KG", "LITRES", "HOURS", "LICENCES", "PROJECTS", "SQ_FT", "CUSTOM"]).default("MT"),
+  operating_schedule: z.enum(["STANDARD_HOURS", "EXTENDED_HOURS", "TWENTY_FOUR_SEVEN", "PROJECT_BASED", "ON_DEMAND", "SEASONAL"]).default("STANDARD_HOURS"),
+  service_coverage: z.enum(["LOCAL", "REGIONAL", "NATIONAL", "INTERNATIONAL"]).default("NATIONAL"),
+  fulfillment_method: z.array(z.string()).default([]),
   avg_dispatch_days: z.number().min(1).max(90).default(3),
-  max_delivery_radius_km: z.number().min(50).max(5000).optional(),
   has_own_transport: z.boolean().default(false),
-  preferred_transport_modes: z.array(z.string()).default([]),
   payment_terms_accepted: z.array(z.string()).min(1, 'Select at least one payment term'),
   quality_certifications: z.array(z.string()).default([]),
   years_in_operation: z.number().min(0).optional(),
 });
 
 const buyerLocationSchema = addressSchema.extend({
-  site_type: z.enum(['CONSTRUCTION_SITE', 'FACTORY', 'WAREHOUSE', 'RETAIL_STORE', 'PROJECT_SITE']).default('FACTORY'),
+  site_type: z.enum([
+    'CORPORATE_OFFICE', 'FACTORY', 'WAREHOUSE', 'CONSTRUCTION_SITE', 'RETAIL_STORE',
+    'HOSPITAL', 'SCHOOL_UNIVERSITY', 'RESTAURANT_HOTEL', 'DATA_CENTRE',
+    'PROJECT_SITE', 'HOME_REMOTE', 'OTHER',
+  ]).default('CORPORATE_OFFICE'),
 });
 
 const step2Schema = z.object({
@@ -244,6 +294,7 @@ export default function RegisterPage() {
         ...state.enterprise,
         pan: state.enterprise.pan.toUpperCase(),
         gstin: state.enterprise.gstin.toUpperCase(),
+        products_services: state.enterprise.products_services,
         address: addressData,
         facility_type: state.sellerFacility?.facility_type || null,
         payment_terms_accepted: state.sellerCapacity?.payment_terms_accepted || [],
@@ -500,7 +551,7 @@ function StepIndicator({ currentStep, steps }: { currentStep: number; steps: str
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tag Input Component (reused for commodities, payment terms, certifications)
+// Tag Input Component (reused for products/services, payment terms, certifications)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function TagInput({
@@ -566,17 +617,17 @@ function TagInput({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Step 1: Enterprise Info (unchanged logic)
+// Step 1: Enterprise Info
 // ─────────────────────────────────────────────────────────────────────────────
 
 function Step1Form({ initialData, onSubmit, defaultTradeRole }: { initialData: Step1Values | null; onSubmit: (data: Step1Values) => void; defaultTradeRole?: 'BUYER' | 'SELLER' }) {
   const { register, control, handleSubmit, formState: { errors, touchedFields }, setValue, watch } = useForm<Step1Values>({
     resolver: zodResolver(step1Schema) as Resolver<Step1Values>,
-    defaultValues: initialData || { commodities: [], trade_role: defaultTradeRole },
+    defaultValues: initialData || { products_services: [], trade_role: defaultTradeRole },
     mode: 'onTouched',
   });
 
-  const commodities = watch('commodities') || [];
+  const products_services = watch('products_services') || [];
   const tradeRole = watch('trade_role');
   const showSellerFields = tradeRole === 'SELLER' || tradeRole === 'BOTH';
 
@@ -613,7 +664,18 @@ function Step1Form({ initialData, onSubmit, defaultTradeRole }: { initialData: S
           />
         </FormField>
         <FormField label="Industry Vertical" required error={touchedFields.industry_vertical ? errors.industry_vertical?.message : undefined}>
-          <Input {...register('industry_vertical')} />
+          <Controller
+            control={control}
+            name="industry_vertical"
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <SelectTrigger><SelectValue placeholder="Select industry" /></SelectTrigger>
+                <SelectContent position="popper" className="bg-popover border-border max-h-60">
+                  {INDUSTRY_VERTICALS.map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+          />
         </FormField>
       </div>
 
@@ -623,8 +685,8 @@ function Step1Form({ initialData, onSubmit, defaultTradeRole }: { initialData: S
 
       {showSellerFields && (
         <>
-          <FormField label="Commodities" required error={errors.commodities?.message}>
-            <TagInput value={commodities} onChange={v => setValue('commodities', v, { shouldValidate: true, shouldDirty: true })} />
+          <FormField label="Products / Services Offered" required error={errors.products_services?.message}>
+            <TagInput value={products_services} onChange={v => setValue('products_services', v, { shouldValidate: true, shouldDirty: true })} />
           </FormField>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -709,7 +771,13 @@ function SellerFacilityForm({ initialData, onSubmit, onBack }: { initialData: Se
                   <SelectItem value="MANUFACTURING_PLANT">Manufacturing Plant</SelectItem>
                   <SelectItem value="WAREHOUSE">Warehouse</SelectItem>
                   <SelectItem value="TRADING_OFFICE">Trading Office</SelectItem>
-                  <SelectItem value="INTEGRATED">Integrated</SelectItem>
+                  <SelectItem value="SERVICE_CENTRE">Service Centre</SelectItem>
+                  <SelectItem value="RETAIL_OUTLET">Retail Outlet</SelectItem>
+                  <SelectItem value="DISTRIBUTION_CENTRE">Distribution Centre</SelectItem>
+                  <SelectItem value="OFFICE_HQ">Office / HQ</SelectItem>
+                  <SelectItem value="LAB_RND">Lab / R&D</SelectItem>
+                  <SelectItem value="INTEGRATED">Integrated Campus</SelectItem>
+                  <SelectItem value="OTHER">Other</SelectItem>
                 </SelectContent>
               </Select>
             )}
@@ -732,34 +800,43 @@ function SellerFacilityForm({ initialData, onSubmit, onBack }: { initialData: Se
 function SellerCapacityForm({ initialData, onSubmit, onBack }: { initialData: SellerCapacityValues | null; onSubmit: (data: SellerCapacityValues) => void; onBack: () => void }) {
   const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<SellerCapacityValues>({
     resolver: zodResolver(sellerCapacitySchema) as Resolver<SellerCapacityValues>,
-    defaultValues: initialData || { shift_pattern: 'SINGLE_SHIFT', avg_dispatch_days: 3, has_own_transport: false, preferred_transport_modes: [], payment_terms_accepted: [], quality_certifications: [] },
+    defaultValues: initialData || {
+      volume_unit: 'MT',
+      operating_schedule: 'STANDARD_HOURS',
+      service_coverage: 'NATIONAL',
+      fulfillment_method: [],
+      avg_dispatch_days: 3,
+      has_own_transport: false,
+      payment_terms_accepted: [],
+      quality_certifications: [],
+    },
     mode: 'onTouched',
   });
 
   const paymentTerms = watch('payment_terms_accepted') || [];
   const certs = watch('quality_certifications') || [];
-  const transportModes = watch('preferred_transport_modes') || [];
+  const fulfillmentMethods = watch('fulfillment_method') || [];
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 animate-in fade-in slide-in-from-bottom-2">
       <h3 className="text-sm font-semibold text-foreground">Production & Capacity</h3>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField label="Monthly Capacity" hint="MT/month" required error={errors.monthly_production_capacity_mt?.message}>
-          <Input type="number" step="0.01" {...register('monthly_production_capacity_mt', { valueAsNumber: true })} />
+      {/* Monthly Volume + Unit side by side */}
+      <div className="grid grid-cols-2 gap-4">
+        <FormField label="Monthly Volume" required error={errors.monthly_volume?.message}>
+          <Input type="number" step="0.01" {...register('monthly_volume', { valueAsNumber: true })} />
         </FormField>
-        <FormField label="Shift Pattern" error={errors.shift_pattern?.message}>
+        <FormField label="Volume Unit" error={errors.volume_unit?.message}>
           <Controller
             control={control}
-            name="shift_pattern"
+            name="volume_unit"
             render={({ field }) => (
               <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent position="popper" className="bg-popover border-border">
-                  <SelectItem value="SINGLE_SHIFT">Single Shift</SelectItem>
-                  <SelectItem value="DOUBLE_SHIFT">Double Shift</SelectItem>
-                  <SelectItem value="TRIPLE_SHIFT">Triple Shift</SelectItem>
-                  <SelectItem value="CONTINUOUS">Continuous</SelectItem>
+                  {VOLUME_UNITS.map(u => (
+                    <SelectItem key={u} value={u}>{VOLUME_UNIT_LABELS[u]}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             )}
@@ -768,32 +845,77 @@ function SellerCapacityForm({ initialData, onSubmit, onBack }: { initialData: Se
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField label="Avg Dispatch Days" error={errors.avg_dispatch_days?.message}>
-          <Input type="number" {...register('avg_dispatch_days', { valueAsNumber: true })} />
+        <FormField label="Operating Schedule" error={errors.operating_schedule?.message}>
+          <Controller
+            control={control}
+            name="operating_schedule"
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent position="popper" className="bg-popover border-border">
+                  <SelectItem value="STANDARD_HOURS">Standard Hours (9–6)</SelectItem>
+                  <SelectItem value="EXTENDED_HOURS">Extended Hours</SelectItem>
+                  <SelectItem value="TWENTY_FOUR_SEVEN">24×7 Operations</SelectItem>
+                  <SelectItem value="PROJECT_BASED">Project-Based</SelectItem>
+                  <SelectItem value="ON_DEMAND">On-Demand</SelectItem>
+                  <SelectItem value="SEASONAL">Seasonal</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
         </FormField>
-        <FormField label="Max Delivery Radius" hint="km (optional)" error={errors.max_delivery_radius_km?.message}>
-          <Input type="number" {...register('max_delivery_radius_km', { valueAsNumber: true })} />
+        <FormField label="Service Coverage" error={errors.service_coverage?.message}>
+          <Controller
+            control={control}
+            name="service_coverage"
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent position="popper" className="bg-popover border-border">
+                  <SelectItem value="LOCAL">Local (City)</SelectItem>
+                  <SelectItem value="REGIONAL">Regional (State)</SelectItem>
+                  <SelectItem value="NATIONAL">National (All India)</SelectItem>
+                  <SelectItem value="INTERNATIONAL">International</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
         </FormField>
       </div>
 
-      <FormField label="Transport Modes">
+      <FormField label="Fulfillment Method">
         <div className="flex flex-wrap gap-3">
-          {['ROAD', 'RAIL', 'SEA', 'AIR'].map(mode => (
-            <label key={mode} className="flex items-center gap-1.5 text-sm text-foreground cursor-pointer">
+          {[
+            { value: 'PHYSICAL_DELIVERY', label: 'Physical Delivery' },
+            { value: 'DIGITAL_REMOTE', label: 'Digital / Remote' },
+            { value: 'CUSTOMER_PICKUP', label: 'Customer Pickup' },
+            { value: 'THIRD_PARTY_LOGISTICS', label: '3rd-Party Logistics' },
+            { value: 'ON_SITE_SERVICE', label: 'On-Site Service' },
+            { value: 'HYBRID', label: 'Hybrid' },
+          ].map(method => (
+            <label key={method.value} className="flex items-center gap-1.5 text-sm text-foreground cursor-pointer">
               <input
                 type="checkbox"
                 className="rounded border-border"
-                checked={transportModes.includes(mode)}
+                checked={fulfillmentMethods.includes(method.value)}
                 onChange={e => {
-                  const updated = e.target.checked ? [...transportModes, mode] : transportModes.filter(m => m !== mode);
-                  setValue('preferred_transport_modes', updated);
+                  const updated = e.target.checked
+                    ? [...fulfillmentMethods, method.value]
+                    : fulfillmentMethods.filter(m => m !== method.value);
+                  setValue('fulfillment_method', updated);
                 }}
               />
-              {mode.charAt(0) + mode.slice(1).toLowerCase()}
+              {method.label}
             </label>
           ))}
         </div>
       </FormField>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <FormField label="Avg. Fulfillment Time (days)" error={errors.avg_dispatch_days?.message}>
+          <Input type="number" {...register('avg_dispatch_days', { valueAsNumber: true })} />
+        </FormField>
+      </div>
 
       <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
         <input type="checkbox" className="rounded border-border" {...register('has_own_transport')} />
@@ -827,7 +949,7 @@ function SellerCapacityForm({ initialData, onSubmit, onBack }: { initialData: Se
 function BuyerLocationForm({ initialData, onSubmit, onBack }: { initialData: BuyerLocationValues | null; onSubmit: (data: BuyerLocationValues) => void; onBack: () => void }) {
   const { register, control, handleSubmit, formState: { errors, touchedFields } } = useForm<BuyerLocationValues>({
     resolver: zodResolver(buyerLocationSchema) as Resolver<BuyerLocationValues>,
-    defaultValues: initialData || { site_type: 'FACTORY' },
+    defaultValues: initialData || { site_type: 'CORPORATE_OFFICE' },
     mode: 'onTouched',
   });
 
@@ -875,11 +997,18 @@ function BuyerLocationForm({ initialData, onSubmit, onBack }: { initialData: Buy
               <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent position="popper" className="bg-popover border-border">
-                  <SelectItem value="CONSTRUCTION_SITE">Construction Site</SelectItem>
-                  <SelectItem value="FACTORY">Factory</SelectItem>
+                  <SelectItem value="CORPORATE_OFFICE">Corporate Office</SelectItem>
+                  <SelectItem value="FACTORY">Factory / Plant</SelectItem>
                   <SelectItem value="WAREHOUSE">Warehouse</SelectItem>
+                  <SelectItem value="CONSTRUCTION_SITE">Construction Site</SelectItem>
                   <SelectItem value="RETAIL_STORE">Retail Store</SelectItem>
+                  <SelectItem value="HOSPITAL">Hospital / Clinic</SelectItem>
+                  <SelectItem value="SCHOOL_UNIVERSITY">School / University</SelectItem>
+                  <SelectItem value="RESTAURANT_HOTEL">Restaurant / Hotel</SelectItem>
+                  <SelectItem value="DATA_CENTRE">Data Centre</SelectItem>
                   <SelectItem value="PROJECT_SITE">Project Site</SelectItem>
+                  <SelectItem value="HOME_REMOTE">Home / Remote</SelectItem>
+                  <SelectItem value="OTHER">Other</SelectItem>
                 </SelectContent>
               </Select>
             )}
@@ -953,10 +1082,10 @@ function ReviewStep({
               <div><p className="text-xs uppercase tracking-wide text-muted-foreground mb-0.5">Max Order</p><p className="text-foreground">{formatCurrency(enterprise.max_order_value)}</p></div>
             </div>
           )}
-          {(enterprise.trade_role === 'SELLER' || enterprise.trade_role === 'BOTH') && enterprise.commodities.length > 0 && (
+          {(enterprise.trade_role === 'SELLER' || enterprise.trade_role === 'BOTH') && enterprise.products_services.length > 0 && (
             <div className="col-span-2">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Commodities</p>
-              <div className="flex flex-wrap gap-1.5">{enterprise.commodities.map(c => <span key={c} className="bg-secondary text-secondary-foreground text-xs px-2 py-0.5 rounded-md">{c}</span>)}</div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Products / Services</p>
+              <div className="flex flex-wrap gap-1.5">{enterprise.products_services.map(c => <span key={c} className="bg-secondary text-secondary-foreground text-xs px-2 py-0.5 rounded-md">{c}</span>)}</div>
             </div>
           )}
         </div>
@@ -989,11 +1118,35 @@ function ReviewStep({
           <button onClick={() => onEdit(3)} className="absolute top-3 right-3 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
           <h3 className="text-sm font-semibold text-foreground mb-3">Production & Capacity</h3>
           <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-sm">
-            <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Monthly Capacity</p><p className="text-foreground">{sellerCapacity.monthly_production_capacity_mt} MT</p></div>
-            <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Shift Pattern</p><p className="text-foreground">{sellerCapacity.shift_pattern.replace(/_/g, ' ')}</p></div>
-            <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Dispatch Days</p><p className="text-foreground">{sellerCapacity.avg_dispatch_days} days</p></div>
-            {sellerCapacity.max_delivery_radius_km && <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Delivery Radius</p><p className="text-foreground">{sellerCapacity.max_delivery_radius_km} km</p></div>}
-            {sellerCapacity.years_in_operation !== undefined && <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Years in Operation</p><p className="text-foreground">{sellerCapacity.years_in_operation}</p></div>}
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Monthly Volume</p>
+              <p className="text-foreground">{sellerCapacity.monthly_volume} {VOLUME_UNIT_LABELS[sellerCapacity.volume_unit] || sellerCapacity.volume_unit}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Operating Schedule</p>
+              <p className="text-foreground">{sellerCapacity.operating_schedule.replace(/_/g, ' ')}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Service Coverage</p>
+              <p className="text-foreground">{sellerCapacity.service_coverage.replace(/_/g, ' ')}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Avg. Fulfillment Time</p>
+              <p className="text-foreground">{sellerCapacity.avg_dispatch_days} days</p>
+            </div>
+            {sellerCapacity.fulfillment_method.length > 0 && (
+              <div className="col-span-2">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Fulfillment Methods</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {sellerCapacity.fulfillment_method.map(m => (
+                    <span key={m} className="bg-secondary text-secondary-foreground text-xs px-2 py-0.5 rounded-md">{m.replace(/_/g, ' ')}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {sellerCapacity.years_in_operation !== undefined && (
+              <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Years in Operation</p><p className="text-foreground">{sellerCapacity.years_in_operation}</p></div>
+            )}
             <div className="col-span-2">
               <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Payment Terms</p>
               <div className="flex flex-wrap gap-1.5">{sellerCapacity.payment_terms_accepted.map(t => <span key={t} className="bg-secondary text-secondary-foreground text-xs px-2 py-0.5 rounded-md">{t}</span>)}</div>

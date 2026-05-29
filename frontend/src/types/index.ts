@@ -24,7 +24,7 @@ export interface Enterprise {
   kyc_status: 'NOT_SUBMITTED' | 'PENDING' | 'ACTIVE' | 'REJECTED';
   industry_vertical: string;
   geography: string;
-  commodities: string[];
+  products_services: string[];
   min_order_value: number;
   max_order_value: number;
   algorand_wallet: string | null;

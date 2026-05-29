@@ -214,16 +214,20 @@ class CatalogueItemResponse(BaseModel):
 
 class SellerCapacityProfileRequest(BaseModel):
     """PUT /marketplace/capacity-profile — create/update capacity data."""
-    monthly_production_capacity_mt: float = Field(gt=0)
+    monthly_volume: float = Field(gt=0)
+    volume_unit: Literal[
+        "MT", "UNITS", "KG", "LITRES", "HOURS", "LICENCES", "PROJECTS", "SQ_FT", "CUSTOM"
+    ] = "MT"
     current_utilization_pct: int = Field(default=0, ge=0, le=100)
     num_production_lines: int = Field(default=1, ge=1)
-    shift_pattern: Literal[
-        "SINGLE_SHIFT", "DOUBLE_SHIFT", "TRIPLE_SHIFT", "CONTINUOUS"
-    ] = "SINGLE_SHIFT"
-    avg_dispatch_days: int = Field(default=3, ge=1, le=90)
-    max_delivery_radius_km: Optional[int] = Field(None, ge=50, le=5000)
+    operating_schedule: Literal[
+        "STANDARD_HOURS", "EXTENDED_HOURS", "TWENTY_FOUR_SEVEN",
+        "PROJECT_BASED", "ON_DEMAND", "SEASONAL"
+    ] = "STANDARD_HOURS"
+    avg_dispatch_days: int = Field(default=3, ge=1, le=365)
+    service_coverage: Literal["LOCAL", "REGIONAL", "NATIONAL", "INTERNATIONAL"] = "NATIONAL"
     has_own_transport: bool = False
-    preferred_transport_modes: list[Literal["ROAD", "RAIL", "SEA", "AIR"]] = Field(default_factory=list)
+    fulfillment_method: list[str] = Field(default_factory=list)
     ex_works_available: bool = True
 
 
@@ -231,15 +235,16 @@ class SellerCapacityProfileResponse(BaseModel):
     """Capacity profile response."""
     id: uuid.UUID
     enterprise_id: uuid.UUID
-    monthly_production_capacity_mt: float
+    monthly_volume: float
+    volume_unit: str = "MT"
     current_utilization_pct: int = 0
-    available_capacity_mt: Optional[float] = None
+    available_volume: Optional[float] = None
     num_production_lines: int = 1
-    shift_pattern: str = "SINGLE_SHIFT"
+    operating_schedule: str = "STANDARD_HOURS"
     avg_dispatch_days: int = 3
-    max_delivery_radius_km: Optional[int] = None
+    service_coverage: str = "NATIONAL"
     has_own_transport: bool = False
-    preferred_transport_modes: list[str] = Field(default_factory=list)
+    fulfillment_method: list[str] = Field(default_factory=list)
     ex_works_available: bool = True
     created_at: str = ""
     updated_at: str = ""

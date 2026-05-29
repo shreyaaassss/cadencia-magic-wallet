@@ -11,93 +11,114 @@ from src.shared.domain.base_entity import BaseEntity
 from src.shared.domain.exceptions import ValidationError
 
 
-class ShiftPattern(str, Enum):
-    SINGLE_SHIFT = "SINGLE_SHIFT"
-    DOUBLE_SHIFT = "DOUBLE_SHIFT"
-    TRIPLE_SHIFT = "TRIPLE_SHIFT"
-    CONTINUOUS = "CONTINUOUS"
+class OperatingSchedule(str, Enum):
+    STANDARD_HOURS   = "STANDARD_HOURS"    # 9-6 Mon-Fri
+    EXTENDED_HOURS   = "EXTENDED_HOURS"    # Early/late shifts
+    TWENTY_FOUR_SEVEN = "TWENTY_FOUR_SEVEN" # 24x7 operations
+    PROJECT_BASED    = "PROJECT_BASED"     # Milestone / project delivery
+    ON_DEMAND        = "ON_DEMAND"         # Triggered on order
+    SEASONAL         = "SEASONAL"          # Peak-season dependent
 
 
-class TransportMode(str, Enum):
-    ROAD = "ROAD"
-    RAIL = "RAIL"
-    SEA = "SEA"
-    AIR = "AIR"
+class ServiceCoverage(str, Enum):
+    LOCAL         = "LOCAL"         # City / ~200 km
+    REGIONAL      = "REGIONAL"      # State / ~1 000 km
+    NATIONAL      = "NATIONAL"      # All India
+    INTERNATIONAL = "INTERNATIONAL" # Cross-border
+
+
+class VolumeUnit(str, Enum):
+    MT       = "MT"
+    UNITS    = "UNITS"
+    KG       = "KG"
+    LITRES   = "LITRES"
+    HOURS    = "HOURS"
+    LICENCES = "LICENCES"
+    PROJECTS = "PROJECTS"
+    SQ_FT    = "SQ_FT"
+    CUSTOM   = "CUSTOM"
 
 
 @dataclass
 class SellerCapacityProfile(BaseEntity):
     """
-    Seller production capacity and logistics profile.
+    Seller operational capacity and fulfilment profile — industry-agnostic.
 
-    Captures manufacturing capacity, dispatch timelines, delivery radius,
-    and transport capabilities — critical for delivery feasibility checks.
+    Replaces the manufacturing-centric design (MT, shift patterns, delivery
+    radius) with a generalised schema that works for raw materials, software,
+    services, FMCG, healthcare, etc.
     """
 
     enterprise_id: uuid.UUID = field(default_factory=uuid.uuid4)
-    monthly_production_capacity_mt: Decimal = Decimal("0")
+
+    # ── Volume ────────────────────────────────────────────────────────────────
+    monthly_volume: Decimal = Decimal("0")          # Numeric quantity per month
+    volume_unit: VolumeUnit = VolumeUnit.MT         # Unit for monthly_volume
     current_utilization_pct: int = 0
-    available_capacity_mt: Decimal | None = None
-    num_production_lines: int = 1
-    shift_pattern: ShiftPattern = ShiftPattern.SINGLE_SHIFT
-    avg_dispatch_days: int = 3
-    max_delivery_radius_km: int | None = None
+    available_volume: Decimal | None = None         # Computed from utilisation
+
+    # ── Operations ───────────────────────────────────────────────────────────
+    num_production_lines: int = 1                   # Lines / teams / streams
+    operating_schedule: OperatingSchedule = OperatingSchedule.STANDARD_HOURS
+    avg_dispatch_days: int = 3                      # Avg lead / fulfillment time
+
+    # ── Logistics / Reach ─────────────────────────────────────────────────────
+    service_coverage: ServiceCoverage = ServiceCoverage.NATIONAL
     has_own_transport: bool = False
-    preferred_transport_modes: list[str] = field(default_factory=list)
+    fulfillment_method: list[str] = field(default_factory=list)
     ex_works_available: bool = True
 
     def __post_init__(self) -> None:
-        if self.available_capacity_mt is None:
-            self.available_capacity_mt = self._compute_available_capacity()
+        if self.available_volume is None:
+            self.available_volume = self._compute_available()
 
-    def _compute_available_capacity(self) -> Decimal:
-        """Compute available capacity from total capacity and utilization."""
-        if self.monthly_production_capacity_mt <= Decimal("0"):
+    def _compute_available(self) -> Decimal:
+        if self.monthly_volume <= Decimal("0"):
             return Decimal("0")
         utilization = Decimal(str(self.current_utilization_pct)) / Decimal("100")
-        return self.monthly_production_capacity_mt * (Decimal("1") - utilization)
+        return self.monthly_volume * (Decimal("1") - utilization)
 
     def validate(self) -> None:
-        if self.monthly_production_capacity_mt <= Decimal("0"):
+        if self.monthly_volume <= Decimal("0"):
             raise ValidationError(
-                "Monthly production capacity must be > 0.",
-                field="monthly_production_capacity_mt",
+                "Monthly volume must be > 0.",
+                field="monthly_volume",
             )
         if not 0 <= self.current_utilization_pct <= 100:
             raise ValidationError(
-                "Utilization must be 0-100%.",
+                "Utilization must be 0–100%.",
                 field="current_utilization_pct",
             )
         if self.avg_dispatch_days < 1:
             raise ValidationError(
-                "Average dispatch days must be >= 1.",
+                "Average dispatch/fulfillment days must be >= 1.",
                 field="avg_dispatch_days",
             )
 
-    def can_fulfill_order(self, qty_mt: Decimal, delivery_window_days: int) -> bool:
+    def can_fulfill_order(self, qty: Decimal, delivery_window_days: int) -> bool:
         """
-        Check if seller can fulfill the order within the delivery window.
+        Generic capacity check — unit-agnostic numeric comparison.
 
-        Multi-month capacity: if delivery window spans multiple months,
-        seller can produce across those months.
+        Works for MT, units, hours, licences, etc. The caller must ensure
+        the RFQ quantity is expressed in the same unit as monthly_volume.
         """
-        available = self.available_capacity_mt or self._compute_available_capacity()
-        months_available = max(Decimal(str(delivery_window_days)) / Decimal("30"), Decimal("1"))
+        available = self.available_volume or self._compute_available()
+        months_available = max(
+            Decimal(str(delivery_window_days)) / Decimal("30"),
+            Decimal("1"),
+        )
         total_producible = available * months_available
-        return qty_mt <= total_producible
+        return qty <= total_producible
 
     def update_utilization(self, new_pct: int) -> None:
         if not 0 <= new_pct <= 100:
-            raise ValidationError("Utilization must be 0-100%.", field="current_utilization_pct")
+            raise ValidationError("Utilization must be 0–100%.", field="current_utilization_pct")
         self.current_utilization_pct = new_pct
-        self.available_capacity_mt = self._compute_available_capacity()
+        self.available_volume = self._compute_available()
         self.touch()
 
-    def decrement_capacity(self, qty_mt: Decimal) -> None:
-        """Reduce available capacity after order confirmation."""
-        if self.available_capacity_mt is not None:
-            self.available_capacity_mt = max(
-                Decimal("0"),
-                self.available_capacity_mt - qty_mt,
-            )
+    def decrement_capacity(self, qty: Decimal) -> None:
+        """Reduce available volume after order confirmation."""
+        if self.available_volume is not None:
+            self.available_volume = max(Decimal("0"), self.available_volume - qty)
             self.touch()

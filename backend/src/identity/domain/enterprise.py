@@ -50,7 +50,7 @@ class Enterprise(BaseEntity):
     geography: str = "IN"
     min_order_value: Decimal | None = None
     max_order_value: Decimal | None = None
-    commodities: list[str] = field(default_factory=list)
+    products_services: list[str] = field(default_factory=list)
     listing_active: bool = True
     # KYC documents payload — stored as JSONB
     kyc_documents: dict | None = None
