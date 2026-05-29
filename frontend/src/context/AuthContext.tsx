@@ -6,6 +6,7 @@ import { api, setAccessToken } from '@/lib/api';
 import { magic, getMagicAddress } from '@/lib/magic';
 import type { User, Enterprise } from '@/types';
 import { ROUTES } from '@/lib/constants';
+import { resetWalletManager } from '@/components/providers/WalletConnectProvider';
 
 export type AuthMethod = 'magic' | 'web3' | null;
 
@@ -280,6 +281,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setEnterprise(null);
     setWalletAddress(null);
     persistAuthMethod(null);
+    // Kill WalletConnect sessions so login page gets a clean wallet state
+    resetWalletManager();
     router.push(ROUTES.LOGIN);
   };
 

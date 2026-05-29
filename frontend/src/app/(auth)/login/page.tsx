@@ -11,6 +11,7 @@ import { Building2, AlertCircle, Loader2, ShieldCheck, Wallet, Mail } from 'luci
 
 import { useAuth } from '@/hooks/useAuth';
 import { useWallet as _useWallet } from '@txnlab/use-wallet-react';
+import { resetWalletManager } from '@/components/providers/WalletConnectProvider';
 
 function useWalletSafe() {
   try {
@@ -54,9 +55,10 @@ export default function LoginPage() {
   const [adminError, setAdminError] = React.useState<string | null>(null);
   const [adminSubmitting, setAdminSubmitting] = React.useState(false);
   const [web3Status, setWeb3Status] = React.useState<'idle' | 'connecting' | 'signing' | 'verifying'>('idle');
-  // Local wallet address — only set after user explicitly clicks Connect.
-  // Prevents stale WalletConnect sessions from auto-showing a wallet.
   const [web3Address, setWeb3Address] = React.useState<string | null>(null);
+
+  // On mount: nuke any stale WC sessions (covers first-time visitors too)
+  React.useEffect(() => { resetWalletManager(); }, []);
 
   const {
     register,

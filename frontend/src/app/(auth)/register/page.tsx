@@ -12,6 +12,7 @@ import algosdk from 'algosdk';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useWallet as _useTxnLabWallet } from '@txnlab/use-wallet-react';
+import { resetWalletManager } from '@/components/providers/WalletConnectProvider';
 
 function useTxnLabWalletSafe() {
   try {
@@ -167,6 +168,9 @@ export default function RegisterPage() {
   const [authTab, setAuthTab] = React.useState<RegisterAuthTab>('magic');
   const [web3Address, setWeb3Address] = React.useState<string | null>(null);
   const [web3Status, setWeb3Status] = React.useState<'idle' | 'connecting'>('idle');
+
+  // On mount: nuke any stale WC sessions
+  React.useEffect(() => { resetWalletManager(); }, []);
 
   const [state, setState] = React.useState<RegistrationState>({
     step: 1,
