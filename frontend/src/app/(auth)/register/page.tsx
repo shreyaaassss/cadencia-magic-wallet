@@ -230,11 +230,27 @@ export default function RegisterPage() {
   const [globalError, setGlobalError] = React.useState<string | null>(null);
   const [isSubmittingForm, setIsSubmittingForm] = React.useState(false);
 
-  // Disconnect any stale cached wallet on mount — registration must start fresh
+  // Disconnect ALL stale cached wallets on mount — registration must start fresh.
+  // WalletConnect + Pera SDK persist sessions in IndexedDB; a simple
+  // activeWallet.disconnect() isn't enough — we need to disconnect every
+  // wallet the manager knows about and clear the WC session store.
   React.useEffect(() => {
-    if (txnLab.activeAddress && web3Status === 'idle') {
-      try { txnLab.activeWallet?.disconnect(); } catch {}
-    }
+    (async () => {
+      try {
+        for (const w of txnLab.wallets || []) {
+          if (w.isConnected) await w.disconnect().catch(() => {});
+        }
+      } catch {}
+      // Clear WalletConnect v2 session cache from IndexedDB
+      try {
+        const dbs = await indexedDB.databases?.();
+        for (const db of dbs || []) {
+          if (db.name && /wc|walletconnect/i.test(db.name)) {
+            indexedDB.deleteDatabase(db.name);
+          }
+        }
+      } catch {}
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
