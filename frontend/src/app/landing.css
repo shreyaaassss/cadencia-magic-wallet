@@ -59,6 +59,7 @@
 .hero-cta {
   display: flex; gap: .75rem; justify-content: center; margin-top: 2.5rem; flex-wrap: wrap;
 }
+.hero-cta-centered { justify-content: center; }
 .btn-cta-primary {
   background: var(--primary); color: var(--on-primary); border: none;
   padding: 1rem 1.75rem; font-size: 1rem; font-weight: 500;
@@ -227,24 +228,54 @@
   display: flex; align-items: center; gap: 6px; text-decoration: none;
 }
 
-/* ── FOOTER ── */
-.landing-footer { background: var(--background); border-top: 1px solid var(--hairline); padding: 96px 3rem 2rem; }
-.footer-inner { max-width: 1280px; margin: 0 auto; display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 3rem; }
-.footer-brand { display: flex; flex-direction: column; gap: .75rem; }
-.footer-logo { display: flex; align-items: center; gap: 8px; font-size: 1.1rem; font-weight: 500; color: var(--ink); }
-.flm { width: 24px; height: 24px; background: var(--primary); border-radius: 5px; display: flex; align-items: center; justify-content: center; color: var(--on-primary); }
-.footer-tagline { font-size: .82rem; color: var(--text-muted); line-height: 1.6; max-width: 220px; }
-.footer-gstin { font-family: 'JetBrains Mono', monospace; font-size: .65rem; color: var(--text-muted); }
-.fcol-title { font-size: .72rem; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--ink); margin-bottom: .75rem; }
-.flinks { list-style: none; display: flex; flex-direction: column; gap: .5rem; padding: 0; }
-.flinks a { text-decoration: none; font-size: .82rem; color: var(--text-muted); transition: color .2s; }
-.flinks a:hover { color: var(--ink); }
-.footer-bottom {
-  max-width: 1280px; margin: 2rem auto 0; padding-top: 1.5rem; border-top: 1px solid var(--hairline);
-  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;
+/* ── CONTACT BAND ── */
+.contact-band {
+  background: var(--surface-strong); padding: 96px 3rem; border-radius: var(--radius-lg);
+  margin: 0 3rem; text-align: center;
 }
-.fcopy { font-size: .75rem; color: var(--text-muted); }
-.fmade { display: flex; align-items: center; gap: 6px; font-size: .7rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+.contact-band .section-eyebrow { color: var(--text-muted); }
+.contact-email-link {
+  display: inline-flex; align-items: center; gap: .5rem;
+  font-size: 1.1rem; font-weight: 500; color: var(--primary);
+  text-decoration: none; border-bottom: 1.5px solid var(--primary);
+  padding-bottom: .1rem; transition: opacity .2s;
+}
+.contact-email-link:hover { opacity: .75; }
+
+/* ── DEVELOPERS SECTION ── */
+.developers-section {
+  background: var(--background); border-top: 1px solid var(--hairline);
+  padding: 96px 3rem 3rem;
+}
+.dev-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; max-width: 900px; margin: 0 auto;
+}
+.dev-card {
+  display: flex; flex-direction: column; align-items: center; gap: .75rem;
+  background: var(--surface-soft); border: 1px solid var(--hairline);
+  border-radius: var(--radius-md); padding: 2rem 1.5rem;
+  text-decoration: none; transition: border-color .2s, transform .2s;
+}
+.dev-card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+.dev-avatar {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: var(--primary); color: var(--on-primary);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .875rem; font-weight: 500; flex-shrink: 0;
+}
+.dev-name { font-size: .9rem; font-weight: 500; color: var(--ink); text-align: center; }
+.dev-linkedin {
+  font-size: .72rem; font-weight: 500; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--text-muted); padding: .2rem .6rem;
+  border: 1px solid var(--hairline); border-radius: 100px;
+  transition: color .2s, border-color .2s;
+}
+.dev-card:hover .dev-linkedin { color: var(--primary); border-color: var(--primary); }
+.dev-footer-line {
+  max-width: 900px; margin: 3rem auto 0; padding-top: 1.5rem;
+  border-top: 1px solid var(--hairline); text-align: center;
+  font-size: .75rem; color: var(--text-muted);
+}
 
 /* ── REVEAL ── */
 .reveal { opacity: 0; transform: translateY(16px); transition: opacity .5s, transform .5s; }

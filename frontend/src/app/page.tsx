@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   FileText, Search, MessageSquare, Lock, PieChart,
-  Activity, BarChart3, CheckCircle2, Globe, Heart,
+  Activity, BarChart3, CheckCircle2, Globe,
   ArrowRight, CircleDot, CreditCard, DollarSign,
   ShieldCheck, Menu, X,
 } from 'lucide-react';
@@ -60,7 +60,7 @@ export default function LandingPage() {
           <li><a href="#how">How it works</a></li>
           <li><a href="#features">Features</a></li>
           <li><a href="#blockchain">Settlement</a></li>
-          <li><a href="#trust">Customers</a></li>
+          <li><a href="#contact">Contact</a></li>
         </ul>
         <div className="nav-actions">
           <ThemeToggle />
@@ -92,7 +92,7 @@ export default function LandingPage() {
             <a href="#how" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>How it works</a>
             <a href="#features" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>Features</a>
             <a href="#blockchain" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>Settlement</a>
-            <a href="#trust" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>Customers</a>
+            <a href="#contact" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>Contact</a>
             <div className="mobile-menu-divider" />
             <Link href="/login" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>Sign in</Link>
             <Link href="/register?role=buyer" className="btn-primary-nav w-full justify-center" onClick={() => setMenuOpen(false)}>
@@ -116,13 +116,9 @@ export default function LandingPage() {
           to on-chain settlement — so your team focuses on strategy, not spreadsheets.
         </p>
 
-        <div className="hero-cta reveal reveal-delay-2">
+        <div className="hero-cta hero-cta-centered reveal reveal-delay-2">
           <Link href="/register?role=buyer" className="btn-cta-primary">
             Get started for free
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-          <Link href="/register?role=seller" className="btn-cta-secondary">
-            Book a demo
             <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
@@ -144,16 +140,6 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-
-      {/* LOGO STRIP */}
-      <div className="logo-strip reveal">
-        <span className="logo-strip-name">Tata Steel</span>
-        <span className="logo-strip-name">JSW Group</span>
-        <span className="logo-strip-name">Hindalco</span>
-        <span className="logo-strip-name">SAIL</span>
-        <span className="logo-strip-name">Ambuja Cements</span>
-        <span className="logo-strip-name">Reliance Retail</span>
-      </div>
 
       {/* PREVIEW — app mockup */}
       <div className="preview-section">
@@ -457,128 +443,72 @@ export default function LandingPage() {
         </Link>
       </div>
 
-      {/* TRUST — surface-soft canvas */}
-      <section className="landing-section trust-section" id="trust">
+      {/* CONTACT SECTION */}
+      <div className="contact-band reveal" id="contact">
+        <div className="section-eyebrow" style={{ justifyContent: 'center' }}>Get in touch</div>
+        <h2 className="section-title" style={{ maxWidth: '480px', margin: '0 auto 1rem', textAlign: 'center' }}>
+          Contact us
+        </h2>
+        <p className="section-body" style={{ maxWidth: '400px', margin: '0 auto 2rem', textAlign: 'center' }}>
+          Have questions or want to learn more? Reach out to us directly.
+        </p>
+        <a href="mailto:contact.cadencia@gmail.com" className="contact-email-link">
+          contact.cadencia@gmail.com
+        </a>
+      </div>
+
+      {/* DEVELOPERS SECTION */}
+      <section className="developers-section" id="developers">
         <div className="section-inner">
-          <div className="reveal" style={{ textAlign: 'center' }}>
-            <div className="section-eyebrow" style={{ justifyContent: 'center' }}>
-              Trusted by India&apos;s industrial enterprises
-            </div>
+          <div className="reveal" style={{ textAlign: 'center', marginBottom: '3rem' }}>
+            <div className="section-eyebrow" style={{ justifyContent: 'center' }}>The team</div>
             <h2 className="section-title" style={{ maxWidth: '100%', textAlign: 'center', margin: '0 auto .5rem' }}>
-              Powering trade across sectors
+              Built by
             </h2>
           </div>
-          <div className="testimonials-grid">
-            <div className="tcard reveal reveal-delay-1">
-              <div className="tquote">
-                &quot;Cadencia closed a &#8377;8Cr steel procurement in 4 hours. Our agents negotiated while our team slept.&quot;
-              </div>
-              <div className="tauthor">
-                <div className="tavatar">RV</div>
-                <div>
-                  <div className="tname">Rahul Verma</div>
-                  <div className="trole">VP Procurement, Tata Steel Ltd</div>
-                </div>
-              </div>
-            </div>
-            <div className="tcard reveal reveal-delay-2">
-              <div className="tquote">
-                &quot;The FEMA compliance automation alone saved us 3 days of paperwork per cross-border deal. Remarkable.&quot;
-              </div>
-              <div className="tauthor">
-                <div className="tavatar">SP</div>
-                <div>
-                  <div className="tname">Sunita Patel</div>
-                  <div className="trole">CFO, Hindalco Industries</div>
-                </div>
-              </div>
-            </div>
-            <div className="tcard reveal reveal-delay-3">
-              <div className="tquote">
-                &quot;The escrow on Algorand gives our finance team full visibility. No more trust issues with new counterparties.&quot;
-              </div>
-              <div className="tauthor">
-                <div className="tavatar">AK</div>
-                <div>
-                  <div className="tname">Amit Kumar</div>
-                  <div className="trole">Head of Trade Finance, JSW Group</div>
-                </div>
-              </div>
-            </div>
+          <div className="dev-grid">
+            <a
+              href="https://www.linkedin.com/in/shreyas-dhumal-21074a1b1"
+              target="_blank" rel="noopener noreferrer"
+              className="dev-card reveal reveal-delay-1"
+            >
+              <div className="dev-avatar">SD</div>
+              <div className="dev-name">Shreyas Dhumal</div>
+              <div className="dev-linkedin">LinkedIn</div>
+            </a>
+            <a
+              href="https://www.linkedin.com/in/adityawaghcse"
+              target="_blank" rel="noopener noreferrer"
+              className="dev-card reveal reveal-delay-2"
+            >
+              <div className="dev-avatar">AW</div>
+              <div className="dev-name">Aditya Wagh</div>
+              <div className="dev-linkedin">LinkedIn</div>
+            </a>
+            <a
+              href="https://www.linkedin.com/in/harsh-mogalgiddikar"
+              target="_blank" rel="noopener noreferrer"
+              className="dev-card reveal reveal-delay-3"
+            >
+              <div className="dev-avatar">HM</div>
+              <div className="dev-name">Harsh Mogalgiddikar</div>
+              <div className="dev-linkedin">LinkedIn</div>
+            </a>
+            <a
+              href="https://www.linkedin.com/in/samiksha-chaudhai"
+              target="_blank" rel="noopener noreferrer"
+              className="dev-card reveal reveal-delay-4"
+            >
+              <div className="dev-avatar">SC</div>
+              <div className="dev-name">Samiksha Chaudhari</div>
+              <div className="dev-linkedin">LinkedIn</div>
+            </a>
+          </div>
+          <div className="dev-footer-line">
+            <span>&copy; 2025 Cadencia Technologies &middot; Made in India</span>
           </div>
         </div>
       </section>
-
-      {/* LIGHT CTA BAND */}
-      <div className="light-cta-band reveal">
-        <h2 className="section-title">Start building with Cadencia</h2>
-        <p className="section-body">
-          Sign up in 2 minutes. No credit card required.
-        </p>
-        <div className="cta-form">
-          <input type="email" className="cta-input" placeholder="Enter your work email" />
-          <Link href="/register" className="btn-cta-submit">
-            Get early access
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        </div>
-        <p style={{ marginTop: '1rem', fontSize: '.72rem', color: 'var(--text-muted)' }}>
-          By signing up, you agree to our Terms of Service and Privacy Policy.
-        </p>
-      </div>
-
-      {/* FOOTER */}
-      <footer className="landing-footer">
-        <div className="footer-inner">
-          <div className="footer-brand">
-            <div className="footer-logo">
-              <div className="flm"><CircleDot className="h-3 w-3" /></div>
-              Cadencia
-            </div>
-            <p className="footer-tagline">
-              AI-powered B2B trade platform for Indian enterprises. From RFQ to settlement, automated.
-            </p>
-            <span className="footer-gstin">CIN: U74999MH2024PTC123456</span>
-          </div>
-          <div>
-            <div className="fcol-title">Platform</div>
-            <ul className="flinks">
-              <li><a href="#">Marketplace</a></li>
-              <li><a href="#">AI Negotiations</a></li>
-              <li><a href="#">Escrow</a></li>
-              <li><a href="#">Treasury</a></li>
-              <li><a href="#">Compliance</a></li>
-            </ul>
-          </div>
-          <div>
-            <div className="fcol-title">Company</div>
-            <ul className="flinks">
-              <li><a href="#">About</a></li>
-              <li><a href="#">Blog</a></li>
-              <li><a href="#">Careers</a></li>
-              <li><a href="#">Press kit</a></li>
-              <li><a href="#">Contact</a></li>
-            </ul>
-          </div>
-          <div>
-            <div className="fcol-title">Legal</div>
-            <ul className="flinks">
-              <li><a href="#">Privacy Policy</a></li>
-              <li><a href="#">Terms of Service</a></li>
-              <li><a href="#">Security</a></li>
-              <li><a href="#">FEMA Compliance</a></li>
-              <li><a href="#">Cookie Policy</a></li>
-            </ul>
-          </div>
-        </div>
-        <div className="footer-bottom">
-          <span className="fcopy">&copy; 2025 Cadencia Technologies Pvt. Ltd. &middot; Mumbai, Maharashtra &middot; All rights reserved.</span>
-          <span className="fmade">
-            <Heart className="h-3 w-3" />
-            Built on Algorand &middot; Powered by Groq &middot; Made in India
-          </span>
-        </div>
-      </footer>
     </>
   );
 }
