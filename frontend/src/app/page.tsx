@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/shared/ThemeToggle';
 import { LandingFooter } from '@/components/shared/LandingFooter';
+import RotatingEarth from '@/components/ui/wireframe-dotted-globe';
 import './landing.css';
 
 export default function LandingPage() {
@@ -120,39 +121,45 @@ export default function LandingPage() {
         <div className="hero-orb hero-orb-c" ref={orbC} />
       </div>
 
-      {/* HERO — white canvas, clean whitespace */}
+      {/* HERO — two-column: text left, globe right */}
       <section className="hero">
-        <h1 className="hero-title reveal">
-          Trade at the speed of intelligence
-        </h1>
+        <div className="hero-content">
+          <h1 className="hero-title reveal">
+            Trade at the speed of intelligence
+          </h1>
 
-        <p className="hero-subtitle reveal reveal-delay-1">
-          Cadencia automates the entire B2B procurement cycle — from RFQ to negotiation
-          to on-chain settlement — so your team focuses on strategy, not spreadsheets.
-        </p>
+          <p className="hero-subtitle reveal reveal-delay-1">
+            Cadencia automates the entire B2B procurement cycle — from RFQ to negotiation
+            to on-chain settlement — so your team focuses on strategy, not spreadsheets.
+          </p>
 
-        <div className="hero-cta hero-cta-centered reveal reveal-delay-2">
-          <Link href="/register?role=buyer" className="btn-cta-primary">
-            Get started for free
-            <ArrowRight className="h-4 w-4" />
-          </Link>
+          <div className="hero-cta reveal reveal-delay-2">
+            <Link href="/register?role=buyer" className="btn-cta-primary">
+              Get started for free
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+
+          <div className="hero-stats reveal reveal-delay-3">
+            <div className="hero-stat">
+              <span className="hero-stat-value">&#8377;2,400Cr</span>
+              <span className="hero-stat-label">Trade volume facilitated</span>
+            </div>
+            <div className="hero-divider" />
+            <div className="hero-stat">
+              <span className="hero-stat-value">94%</span>
+              <span className="hero-stat-label">Negotiation success rate</span>
+            </div>
+            <div className="hero-divider" />
+            <div className="hero-stat">
+              <span className="hero-stat-value">3.2x</span>
+              <span className="hero-stat-label">Faster deal closure</span>
+            </div>
+          </div>
         </div>
 
-        <div className="hero-stats reveal reveal-delay-3">
-          <div className="hero-stat">
-            <span className="hero-stat-value">&#8377;2,400Cr</span>
-            <span className="hero-stat-label">Trade volume facilitated</span>
-          </div>
-          <div className="hero-divider" />
-          <div className="hero-stat">
-            <span className="hero-stat-value">94%</span>
-            <span className="hero-stat-label">Negotiation success rate</span>
-          </div>
-          <div className="hero-divider" />
-          <div className="hero-stat">
-            <span className="hero-stat-value">3.2x</span>
-            <span className="hero-stat-label">Faster deal closure</span>
-          </div>
+        <div className="hero-visual reveal reveal-delay-2">
+          <RotatingEarth width={580} height={520} />
         </div>
       </section>
 
