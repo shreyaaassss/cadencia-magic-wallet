@@ -12,10 +12,7 @@
 }
 .landing-nav.scrolled { border-bottom-color: var(--hairline); }
 .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-.nav-logo-mark {
-  width: 28px; height: 28px; background: var(--primary); border-radius: 6px;
-  display: flex; align-items: center; justify-content: center; color: var(--on-primary);
-}
+.nav-logo-img { border-radius: 7px; display: block; }
 .nav-logo-text { font-size: 1.1rem; font-weight: 500; color: var(--ink); letter-spacing: .01em; }
 .nav-links { display: flex; gap: 2rem; list-style: none; }
 .nav-links a { text-decoration: none; color: var(--body); font-size: .875rem; font-weight: 400; transition: color .2s; }
@@ -228,53 +225,107 @@
   display: flex; align-items: center; gap: 6px; text-decoration: none;
 }
 
-/* ── CONTACT BAND ── */
-.contact-band {
-  background: var(--surface-strong); padding: 96px 3rem; border-radius: var(--radius-lg);
-  margin: 0 3rem; text-align: center;
+/* ── COMBINED FOOTER ── */
+.lfc {
+  background: var(--background);
+  border-top: 1px solid var(--hairline);
+  padding: 64px 3rem 2rem;
+  position: relative;
+  z-index: 1;
 }
-.contact-band .section-eyebrow { color: var(--text-muted); }
-.contact-email-link {
-  display: inline-flex; align-items: center; gap: .5rem;
-  font-size: 1.1rem; font-weight: 500; color: var(--primary);
-  text-decoration: none; border-bottom: 1.5px solid var(--primary);
-  padding-bottom: .1rem; transition: opacity .2s;
+.lfc-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 4rem;
+  align-items: start;
 }
-.contact-email-link:hover { opacity: .75; }
-
-/* ── DEVELOPERS SECTION ── */
-.developers-section {
-  background: var(--background); border-top: 1px solid var(--hairline);
-  padding: 96px 3rem 3rem;
+.lfc-brand {
+  display: flex;
+  flex-direction: column;
+  gap: .85rem;
 }
-.dev-grid {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; max-width: 900px; margin: 0 auto;
+.lfc-logo-img {
+  border-radius: 8px;
+  display: block;
 }
-.dev-card {
-  display: flex; flex-direction: column; align-items: center; gap: .75rem;
-  background: var(--surface-soft); border: 1px solid var(--hairline);
-  border-radius: var(--radius-md); padding: 2rem 1.5rem;
-  text-decoration: none; transition: border-color .2s, transform .2s;
+.lfc-tagline {
+  font-size: .82rem;
+  color: var(--text-muted);
+  line-height: 1.65;
+  margin: 0;
 }
-.dev-card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
-.dev-avatar {
-  width: 52px; height: 52px; border-radius: 50%;
-  background: var(--primary); color: var(--on-primary);
-  display: flex; align-items: center; justify-content: center;
-  font-size: .875rem; font-weight: 500; flex-shrink: 0;
+.lfc-email {
+  display: inline-block;
+  font-size: .82rem;
+  font-weight: 500;
+  color: var(--primary);
+  text-decoration: none;
+  border-bottom: 1px solid var(--primary);
+  padding-bottom: 1px;
+  transition: opacity .2s;
+  width: fit-content;
 }
-.dev-name { font-size: .9rem; font-weight: 500; color: var(--ink); text-align: center; }
-.dev-linkedin {
-  font-size: .72rem; font-weight: 500; letter-spacing: .04em; text-transform: uppercase;
-  color: var(--text-muted); padding: .2rem .6rem;
-  border: 1px solid var(--hairline); border-radius: 100px;
-  transition: color .2s, border-color .2s;
+.lfc-email:hover { opacity: .7; }
+.lfc-team { }
+.lfc-team-label {
+  font-size: .7rem;
+  font-weight: 500;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
 }
-.dev-card:hover .dev-linkedin { color: var(--primary); border-color: var(--primary); }
-.dev-footer-line {
-  max-width: 900px; margin: 3rem auto 0; padding-top: 1.5rem;
-  border-top: 1px solid var(--hairline); text-align: center;
-  font-size: .75rem; color: var(--text-muted);
+.lfc-devs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+}
+.lfc-dev {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .5rem;
+  text-decoration: none;
+  padding: 1.25rem .75rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  transition: border-color .2s, transform .2s;
+}
+.lfc-dev:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+.lfc-dev-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .78rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.lfc-dev-name {
+  font-size: .75rem;
+  font-weight: 500;
+  color: var(--ink);
+  text-align: center;
+  line-height: 1.3;
+}
+.lfc-bottom {
+  max-width: 1100px;
+  margin: 2.5rem auto 0;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--hairline);
+  text-align: center;
+  font-size: .72rem;
+  color: var(--text-muted);
 }
 
 /* ── REVEAL ── */

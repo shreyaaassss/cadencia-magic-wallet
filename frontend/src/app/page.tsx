@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   FileText, Search, MessageSquare, Lock, PieChart,
   Activity, BarChart3, CheckCircle2, Globe,
-  ArrowRight, CircleDot, CreditCard, DollarSign,
+  ArrowRight, CircleDot, CreditCard,
   ShieldCheck, Menu, X,
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/shared/ThemeToggle';
+import { LandingFooter } from '@/components/shared/LandingFooter';
 import './landing.css';
 
 export default function LandingPage() {
@@ -51,16 +53,13 @@ export default function LandingPage() {
       {/* NAV */}
       <nav ref={navRef} className="landing-nav">
         <Link href="/" className="nav-logo">
-          <div className="nav-logo-mark">
-            <CircleDot className="h-3.5 w-3.5" />
-          </div>
-          <span className="nav-logo-text">Cadencia</span>
+          <Image src="/cadencia-logo.png" alt="Cadencia" width={40} height={40} className="nav-logo-img" />
         </Link>
         <ul className="nav-links">
           <li><a href="#how">How it works</a></li>
           <li><a href="#features">Features</a></li>
           <li><a href="#blockchain">Settlement</a></li>
-          <li><a href="#contact">Contact</a></li>
+          <li><Link href="/pricing">Pricing</Link></li>
         </ul>
         <div className="nav-actions">
           <ThemeToggle />
@@ -92,7 +91,7 @@ export default function LandingPage() {
             <a href="#how" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>How it works</a>
             <a href="#features" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>Features</a>
             <a href="#blockchain" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>Settlement</a>
-            <a href="#contact" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>Contact</a>
+            <Link href="/pricing" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>Pricing</Link>
             <div className="mobile-menu-divider" />
             <Link href="/login" className="mobile-menu-link" onClick={() => setMenuOpen(false)}>Sign in</Link>
             <Link href="/register?role=buyer" className="btn-primary-nav w-full justify-center" onClick={() => setMenuOpen(false)}>
@@ -443,72 +442,8 @@ export default function LandingPage() {
         </Link>
       </div>
 
-      {/* CONTACT SECTION */}
-      <div className="contact-band reveal" id="contact">
-        <div className="section-eyebrow" style={{ justifyContent: 'center' }}>Get in touch</div>
-        <h2 className="section-title" style={{ maxWidth: '480px', margin: '0 auto 1rem', textAlign: 'center' }}>
-          Contact us
-        </h2>
-        <p className="section-body" style={{ maxWidth: '400px', margin: '0 auto 2rem', textAlign: 'center' }}>
-          Have questions or want to learn more? Reach out to us directly.
-        </p>
-        <a href="mailto:contact.cadencia@gmail.com" className="contact-email-link">
-          contact.cadencia@gmail.com
-        </a>
-      </div>
-
-      {/* DEVELOPERS SECTION */}
-      <section className="developers-section" id="developers">
-        <div className="section-inner">
-          <div className="reveal" style={{ textAlign: 'center', marginBottom: '3rem' }}>
-            <div className="section-eyebrow" style={{ justifyContent: 'center' }}>The team</div>
-            <h2 className="section-title" style={{ maxWidth: '100%', textAlign: 'center', margin: '0 auto .5rem' }}>
-              Built by
-            </h2>
-          </div>
-          <div className="dev-grid">
-            <a
-              href="https://www.linkedin.com/in/shreyas-dhumal-21074a1b1"
-              target="_blank" rel="noopener noreferrer"
-              className="dev-card reveal reveal-delay-1"
-            >
-              <div className="dev-avatar">SD</div>
-              <div className="dev-name">Shreyas Dhumal</div>
-              <div className="dev-linkedin">LinkedIn</div>
-            </a>
-            <a
-              href="https://www.linkedin.com/in/adityawaghcse"
-              target="_blank" rel="noopener noreferrer"
-              className="dev-card reveal reveal-delay-2"
-            >
-              <div className="dev-avatar">AW</div>
-              <div className="dev-name">Aditya Wagh</div>
-              <div className="dev-linkedin">LinkedIn</div>
-            </a>
-            <a
-              href="https://www.linkedin.com/in/harsh-mogalgiddikar"
-              target="_blank" rel="noopener noreferrer"
-              className="dev-card reveal reveal-delay-3"
-            >
-              <div className="dev-avatar">HM</div>
-              <div className="dev-name">Harsh Mogalgiddikar</div>
-              <div className="dev-linkedin">LinkedIn</div>
-            </a>
-            <a
-              href="https://www.linkedin.com/in/samiksha-chaudhai"
-              target="_blank" rel="noopener noreferrer"
-              className="dev-card reveal reveal-delay-4"
-            >
-              <div className="dev-avatar">SC</div>
-              <div className="dev-name">Samiksha Chaudhari</div>
-              <div className="dev-linkedin">LinkedIn</div>
-            </a>
-          </div>
-          <div className="dev-footer-line">
-            <span>&copy; 2025 Cadencia Technologies &middot; Made in India</span>
-          </div>
-        </div>
-      </section>
+      {/* FOOTER */}
+      <LandingFooter />
     </>
   );
 }
