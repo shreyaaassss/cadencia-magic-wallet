@@ -173,8 +173,8 @@ export default function NegotiationRoomPage() {
   const opponent = isYouBuyer ? session?.seller_name : session?.buyer_name;
 
   const statusLabel: Record<string, string> = {
-    ACTIVE: 'Active', AGREED: 'Agreed', FAILED: 'Failed',
-    WALK_AWAY: 'Walk Away', TIMEOUT: 'Timed Out',
+    ACTIVE: 'Active', AGREED: 'Agreed', FAILED: 'Not Selected',
+    WALK_AWAY: 'Not Selected', TIMEOUT: 'Timed Out',
     POLICY_BREACH: 'Policy Breach', TERMINATED: 'Terminated',
   };
 
@@ -552,13 +552,9 @@ export default function NegotiationRoomPage() {
           <div className="nego-banner nego-banner-error">
             <XCircle className="h-4 w-4 shrink-0 mt-0.5" style={{ color: '#aa2d00' }} />
             <div>
-              <p className="nego-banner-title">
-                {sessionStatus === 'WALK_AWAY' ? 'Agent walked away' : 'Negotiation failed'}
-              </p>
+              <p className="nego-banner-title">Not selected</p>
               <p className="nego-banner-desc">
-                {sessionStatus === 'WALK_AWAY'
-                  ? 'No agreement was reached — prices did not converge.'
-                  : 'Maximum rounds reached without agreement.'}
+                Another seller was chosen for this order. This negotiation has been closed.
               </p>
             </div>
           </div>

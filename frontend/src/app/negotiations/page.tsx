@@ -29,10 +29,10 @@ const STATUS_FILTERS: Array<{ value: string; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'ACTIVE', label: 'Active' },
   { value: 'AGREED', label: 'Agreed' },
-  { value: 'WALK_AWAY', label: 'Walk Away' },
+  { value: 'WALK_AWAY', label: 'Not Selected' },
   { value: 'TIMEOUT', label: 'Timeout' },
   { value: 'POLICY_BREACH', label: 'Policy Breach' },
-  { value: 'FAILED', label: 'Failed' },
+  { value: 'FAILED', label: 'Not Selected' },
 ];
 
 function getDateCutoff(range: string): Date | null {

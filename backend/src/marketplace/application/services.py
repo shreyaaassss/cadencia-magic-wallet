@@ -289,6 +289,34 @@ class MarketplaceService:
                 # correct product/budget independently.
                 # Single-product RFQs fall through to the original global top-N path.
                 if is_multi_product and per_product_matches:
+                    # Build a lookup of what each seller actually has in their catalogue
+                    # so we only match sellers to products they can actually supply.
+                    from sqlalchemy import select as _sel
+                    from src.marketplace.infrastructure.models import (
+                        CatalogueItemModel as _CatItem,
+                        CapabilityProfileModel as _CapProf,
+                    )
+                    _cat_stmt = _sel(_CatItem.enterprise_id, _CatItem.product_name, _CatItem.product_category)
+                    _cat_result = await session.execute(_cat_stmt)
+                    _cap_stmt = _sel(_CapProf.enterprise_id, _CapProf.commodities)
+                    _cap_result = await session.execute(_cap_stmt)
+                    # Seller → set of product keywords they sell (lowercase)
+                    seller_products_map: dict[str, set[str]] = {}
+                    for row in _cat_result.fetchall():
+                        eid_str = str(row.enterprise_id)
+                        if eid_str not in seller_products_map:
+                            seller_products_map[eid_str] = set()
+                        if row.product_name:
+                            seller_products_map[eid_str].add(row.product_name.lower())
+                        if row.product_category:
+                            seller_products_map[eid_str].add(row.product_category.lower())
+                    for row in _cap_result.fetchall():
+                        eid_str = str(row.enterprise_id)
+                        if eid_str not in seller_products_map:
+                            seller_products_map[eid_str] = set()
+                        for c in (row.commodities or []):
+                            seller_products_map[eid_str].add(c.lower())
+
                     # Collect top-3 sellers per product, deduplicate bundle sellers
                     multi_matches: list = []
                     seen_seller_products: set = set()  # (eid, product) dedup
@@ -298,7 +326,20 @@ class MarketplaceService:
                         # Sort by score descending, take top 3 per product
                         top_sellers = sorted(prod_scores, key=lambda x: x[1], reverse=True)[:3]
                         for eid, sc in top_sellers:
-                            pair = (str(eid), prod_key)
+                            # Filter: only include if seller catalogue/commodities
+                            # contain a keyword matching the RFQ product
+                            eid_str = str(eid)
+                            seller_kws = seller_products_map.get(eid_str, set())
+                            rfq_prod_lower = prod_key.lower()
+                            rfq_prod_words = [w for w in rfq_prod_lower.split() if len(w) > 2]
+                            has_product = any(
+                                kw in rfq_prod_lower or rfq_prod_lower in kw
+                                or any(w in kw or kw in w for w in rfq_prod_words)
+                                for kw in seller_kws
+                            )
+                            if not has_product:
+                                continue  # Seller doesn't sell this product
+                            pair = (eid_str, prod_key)
                             if pair in seen_seller_products:
                                 continue
                             seen_seller_products.add(pair)

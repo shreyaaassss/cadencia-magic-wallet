@@ -125,6 +125,7 @@ export default function LandingPage() {
       {/* HERO — two-column: text left, globe right */}
       <section className="hero">
         <div className="hero-content">
+          <div className="hero-brand-name reveal">Cadencia</div>
           <h1 className="hero-title reveal">
             Trade at the speed of intelligence
           </h1>

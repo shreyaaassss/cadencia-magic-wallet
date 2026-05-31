@@ -22,8 +22,8 @@ const statusConfig: Record<SessionStatus, { label: string; className: string; do
     dotClass: 'bg-green-300',
   },
   WALK_AWAY: {
-    label: 'Walk Away',
-    // Signature coral — deal fell through
+    label: 'Not Selected',
+    // Signature coral — another seller was chosen
     className: 'bg-[#aa2d00] text-white border-[#aa2d00]',
     dotClass: 'bg-orange-200',
   },
@@ -40,8 +40,8 @@ const statusConfig: Record<SessionStatus, { label: string; className: string; do
     dotClass: 'bg-red-300',
   },
   FAILED: {
-    label: 'Failed',
-    // Darker muted — something went wrong
+    label: 'Not Selected',
+    // Darker muted — another seller was chosen
     className: 'bg-[#41454d] text-white border-[#41454d]',
     dotClass: 'bg-gray-300',
   },

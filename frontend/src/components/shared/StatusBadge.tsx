@@ -40,7 +40,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   TERMINATED:    { label: 'Terminated',    className: 'bg-muted text-muted-foreground border-border' },
 
   // Red — error / failure states
-  FAILED:        { label: 'Failed',        className: 'bg-red-50 text-red-700 border-red-200' },
+  FAILED:        { label: 'Not Selected',   className: 'bg-amber-50 text-amber-700 border-amber-200' },
   REJECTED:      { label: 'Rejected',      className: 'bg-red-50 text-red-700 border-red-200' },
   FROZEN:        { label: 'Frozen',        className: 'bg-red-50 text-red-700 border-red-200' },
   REFUNDED:      { label: 'Refunded',      className: 'bg-red-50 text-red-700 border-red-200' },
