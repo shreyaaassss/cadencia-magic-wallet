@@ -157,22 +157,6 @@
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Responsive — stack on mobile */
-@media (max-width: 960px) {
-  .hero {
-    grid-template-columns: 1fr;
-    padding: 130px 2rem 64px;
-    text-align: center;
-  }
-  .hero-content { align-items: center; }
-  .hero-title,
-  .hero-subtitle { text-align: center; max-width: 100%; }
-  .hero-cta,
-  .hero-cta-centered { justify-content: center; }
-  .hero-stats { justify-content: center; }
-  .hero-visual { margin-top: 1rem; }
-}
-
 .btn-cta-primary {
   background: var(--primary); color: var(--on-primary); border: none;
   padding: 1rem 1.75rem; font-size: 1rem; font-weight: 500;
@@ -554,36 +538,117 @@
 .ptt { color: var(--text-muted); flex: 1; }
 .ptp { font-family: 'JetBrains Mono', monospace; font-size: .62rem; color: var(--ink); }
 
-/* ── RESPONSIVE ── */
+/* ── RESPONSIVE — TABLET (≤960px) ── */
+@media (max-width: 960px) {
+  .hero {
+    grid-template-columns: 1fr;
+    padding: 130px 2rem 64px;
+    text-align: center;
+  }
+  .hero-content { align-items: center; }
+  .hero-brand-name { text-align: center; }
+  .hero-title,
+  .hero-subtitle { text-align: center; max-width: 100%; }
+  .hero-cta,
+  .hero-cta-centered { justify-content: center; }
+  .hero-stats { justify-content: center; flex-wrap: wrap; gap: 1.5rem; }
+  .hero-visual { margin-top: 1.5rem; }
+}
+
+/* ── RESPONSIVE — MOBILE (≤900px) ── */
 @media (max-width: 900px) {
+  /* Nav: hamburger menu */
   .nav-links { display: none; }
   .nav-actions { display: none; }
   .nav-hamburger { display: flex; align-items: center; justify-content: center; }
   .mobile-menu { display: block; }
   .landing-nav { padding: 0 1.25rem; }
-  .hero { padding: 120px 1.25rem 64px; }
-  .landing-section { padding: 64px 1.25rem; }
-  .signature-coral-band, .cream-band, .dark-cta-band, .light-cta-band { margin: 0 1.25rem; padding: 64px 1.5rem; }
-  .preview-section { padding: 0 1.25rem 64px; }
+
+  /* Hero */
+  .hero { padding: 120px 1.25rem 48px; gap: 1.5rem; }
+  .hero-brand-name { font-size: 1.1rem; }
+  .hero-title { font-size: clamp(1.6rem, 5vw, 2.2rem); }
+  .hero-subtitle { font-size: .78rem; }
+  .hero-cta { flex-direction: column; align-items: center; }
+
+  /* Sections */
+  .landing-section { padding: 48px 1.25rem; }
+  .signature-coral-band, .cream-band { margin: 0 1rem; padding: 48px 1.25rem; border-radius: var(--radius-md); }
+  .section-title { font-size: clamp(1.4rem, 4vw, 1.8rem); }
+
+  /* Preview mockup */
+  .preview-section { padding: 0 1.25rem 48px; }
   .preview-body { grid-template-columns: 1fr; }
   .preview-sidebar { display: none; }
+  .preview-cards { grid-template-columns: 1fr 1fr; }
+  .preview-chart-area { grid-template-columns: 1fr; }
+
+  /* Steps */
   .steps-grid { grid-template-columns: 1fr 1fr; }
   .step:nth-child(2) { border-right: none; }
   .step:nth-child(1), .step:nth-child(2) { border-bottom: 1px solid var(--hairline); }
+
+  /* Features */
   .features-grid, .testimonials-grid { grid-template-columns: 1fr; }
-  .blockchain-grid { grid-template-columns: 1fr; }
-  .footer-inner { grid-template-columns: 1fr 1fr; }
-  .preview-cards { grid-template-columns: 1fr 1fr; }
-  .hero-stats { gap: 1.5rem; flex-wrap: wrap; }
-  .hero-cta { flex-direction: column; align-items: center; }
+
+  /* Blockchain */
+  .blockchain-grid { grid-template-columns: 1fr; gap: 2rem; }
+
+  /* Footer */
+  .lfc-inner { grid-template-columns: 1fr; gap: 2.5rem; }
+  .lfc-devs { grid-template-columns: repeat(2, 1fr); }
+  .lfc-team-label { text-align: center; }
+  .lfc-brand { align-items: center; text-align: center; }
+  .lfc-tagline { text-align: center; }
+  .lfc-email { margin: 0 auto; }
+  .lfc-bottom { text-align: center; }
+
+  /* Logo strip */
   .logo-strip { gap: 2rem; }
 }
 
+/* ── RESPONSIVE — SMALL PHONE (≤480px) ── */
 @media (max-width: 480px) {
+  .hero { padding: 110px 1rem 40px; }
+  .hero-brand-name { font-size: 1rem; letter-spacing: .1em; }
+  .hero-title { font-size: 1.5rem; }
+  .hero-subtitle { font-size: .75rem; }
+  .hero-stats { gap: .75rem; }
+  .hero-stat-value { font-size: 1.4rem; }
+  .hero-stat-label { font-size: .65rem; }
+  .hero-divider { height: 30px; }
+
+  /* Sections */
+  .landing-section { padding: 40px 1rem; }
+  .signature-coral-band, .cream-band { margin: 0 .75rem; padding: 40px 1rem; }
+  .section-title { font-size: 1.3rem; }
+  .section-eyebrow { font-size: .65rem; }
+
+  /* Steps — single column */
   .steps-grid { grid-template-columns: 1fr; }
   .step { border-right: none !important; border-bottom: 1px solid var(--hairline) !important; }
+
+  /* Preview */
   .preview-cards { grid-template-columns: 1fr; }
-  .footer-inner { grid-template-columns: 1fr; }
-  .hero-stats { gap: 1rem; }
-  .hero-stat-value { font-size: 1.6rem; }
+  .preview-bar { padding: 8px 10px; }
+  .preview-url { font-size: .6rem; }
+
+  /* Feature cards */
+  .fc { padding: 1.25rem; }
+  .fc-title { font-size: .95rem; }
+
+  /* Blockchain */
+  .blockchain-grid { gap: 1.5rem; }
+
+  /* Footer */
+  .lfc { padding: 40px 1rem 1.5rem; }
+  .lfc-devs { grid-template-columns: 1fr 1fr; gap: .75rem; }
+  .lfc-dev { padding: 1rem .5rem; }
+  .lfc-dev-avatar { width: 34px; height: 34px; font-size: .7rem; }
+  .lfc-dev-name { font-size: .7rem; }
+  .lfc-logo-img { width: 40px; height: 40px; }
+
+  /* Buttons */
+  .btn-cta-primary { padding: .85rem 1.25rem; font-size: .875rem; }
+  .btn-primary-nav, .btn-secondary-nav { padding: .45rem 1rem; font-size: .8rem; }
 }
