@@ -331,10 +331,21 @@ class MarketplaceService:
                             eid_str = str(eid)
                             seller_kws = seller_products_map.get(eid_str, set())
                             rfq_prod_lower = prod_key.lower()
+                            # Check if seller has an exact or near-exact match for
+                            # the RFQ product. Avoid false positives where a shared
+                            # word like "camera" in "Camera Tripod" matches a seller
+                            # who only sells cameras but not tripods.
+                            #
+                            # Strategy: the LAST significant word in the product name
+                            # is typically the core noun (Tripod, Lens, Camera).
+                            # The seller must have that core noun in their catalogue.
                             rfq_prod_words = [w for w in rfq_prod_lower.split() if len(w) > 2]
+                            core_noun = rfq_prod_words[-1] if rfq_prod_words else rfq_prod_lower
                             has_product = any(
-                                kw in rfq_prod_lower or rfq_prod_lower in kw
-                                or any(w in kw or kw in w for w in rfq_prod_words)
+                                # Exact product match: seller keyword IS the rfq product or vice versa
+                                kw == rfq_prod_lower or rfq_prod_lower == kw
+                                # Core noun match: the primary noun appears in seller's catalogue
+                                or core_noun in kw or kw == core_noun
                                 for kw in seller_kws
                             )
                             if not has_product:
