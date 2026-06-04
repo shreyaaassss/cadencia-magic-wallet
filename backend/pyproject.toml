@@ -81,9 +81,6 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "TID252"]
 ignore = [
     "E501",   # line too long — handled by formatter
-    "E402",   # module-level import not at top — needed for circular import avoidance
-    "F821",   # undefined name — false positives on string-annotated forward refs
-    "F841",   # local variable assigned but never used — cleanup in progress
 ]
 
 [tool.ruff.lint.flake8-tidy-imports]

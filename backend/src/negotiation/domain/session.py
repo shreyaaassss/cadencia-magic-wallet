@@ -11,11 +11,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from src.negotiation.domain.offer import Offer, ProposerRole
 from src.negotiation.domain.value_objects import OfferValue, RoundNumber
 from src.shared.domain.base_entity import BaseEntity
 from src.shared.domain.exceptions import ConflictError
+
+if TYPE_CHECKING:
+    from src.negotiation.domain.events import SessionCreated
 
 SESSION_TTL_HOURS: int = 24
 MAX_ROUNDS: int = 20

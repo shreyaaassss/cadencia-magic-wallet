@@ -9,11 +9,13 @@ import uuid
 
 from src.identity.application.commands import (
     CreateAPIKeyCommand,
+    LinkWalletCommand,
     LoginCommand,
     RefreshTokenCommand,
     RegisterEnterpriseCommand,
     RevokeAPIKeyCommand,
     SubmitKYCCommand,
+    UnlinkWalletCommand,
     UpdateAgentConfigCommand,
     VerifyKYCCommand,
 )

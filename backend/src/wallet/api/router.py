@@ -166,7 +166,7 @@ async def link_wallet(
         )
 
     # Link wallet via the existing identity service
-    enterprise = await svc.link_wallet(
+    await svc.link_wallet(
         LinkWalletCommand(
             enterprise_id=enterprise_id,
             requesting_user_id=current_user.id,

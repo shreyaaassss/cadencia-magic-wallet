@@ -552,7 +552,7 @@ async def handle_session_agreed_confirm_rfq(event: object) -> None:
     """
     rfq_id = getattr(event, "rfq_id", None)
     match_id = getattr(event, "match_id", None)
-    seller_enterprise_id = getattr(event, "seller_enterprise_id", None)
+    _seller_enterprise_id = getattr(event, "seller_enterprise_id", None)
 
     if not rfq_id:
         log.warning("handle_session_agreed_confirm_rfq_missing_rfq_id")

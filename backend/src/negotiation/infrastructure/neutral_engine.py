@@ -42,6 +42,7 @@ from src.negotiation.domain.session import (
 )
 from src.negotiation.domain.strategy import (
     StrategyEngine,
+    StrategyRecommendation,
     adaptive_concession,
     apply_negotiation_rounding,
     compute_dynamic_confidence,
@@ -122,7 +123,7 @@ class NeutralEngine:
 
         Returns (offer, is_terminal).
         """
-        turn_start = time.monotonic()
+        _turn_start = time.monotonic()
 
         # 0. Check timeout
         if session.is_expired():
@@ -258,7 +259,7 @@ class NeutralEngine:
         )
 
         # Apply Bayesian modifier to concession
-        modifier = self.bayesian_model.strategy_modifier(belief)
+        _modifier = self.bayesian_model.strategy_modifier(belief)
         if strategy_rec.concession_fraction > Decimal("0"):
             # ── Improvement #4: Reciprocity Ratio ──────────────────────────────────
             # Compute how much I'm giving relative to opponent's last move.
@@ -921,7 +922,6 @@ class NeutralEngine:
         if detect_strategy_shift(opp_prices_float):
             # Reset belief to uniform prior — force re-classification
             from src.negotiation.domain.opponent_model import OpponentBelief
-            n_types = 8  # expanded 8-type model
             uniform_belief = OpponentBelief(
                 cooperative=0.125,
                 strategic=0.125,

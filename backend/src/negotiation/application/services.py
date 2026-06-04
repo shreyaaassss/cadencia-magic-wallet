@@ -588,7 +588,7 @@ class NegotiationService:
 
     async def _handle_stall(self, session: NegotiationSession) -> None:
         """ROUND_LOOP → STALLED → HUMAN_REVIEW."""
-        stall_event = session.mark_stalled()
+        session.mark_stalled()
         escalation_event = session.escalate_to_human_review()
         await self.session_repo.update(session)  # type: ignore[union-attr]
         await self.event_publisher.publish(escalation_event)  # type: ignore[union-attr]

@@ -525,7 +525,7 @@ async def update_agent_config(
     # Store as structured JSONB in the agent_config column
     config_dict = request_body.agent_config.model_dump()
 
-    enterprise = await svc.update_agent_config(
+    await svc.update_agent_config(
         UpdateAgentConfigCommand(
             enterprise_id=enterprise_id,
             requesting_user_id=current_user.id,
@@ -677,7 +677,7 @@ async def unlink_wallet(
 
     from src.identity.application.commands import UnlinkWalletCommand
 
-    enterprise = await svc.unlink_wallet(
+    await svc.unlink_wallet(
         UnlinkWalletCommand(
             enterprise_id=enterprise_id,
             requesting_user_id=current_user.id,

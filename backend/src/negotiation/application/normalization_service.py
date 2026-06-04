@@ -468,7 +468,7 @@ class NormalizationService:
         outcome and pricing are the same as the platform record — this is the
         "how the agent thought" complement to the "what happened" platform record.
         """
-        transcript = getattr(session, "conversation_transcript", None) or {}
+        _transcript = getattr(session, "conversation_transcript", None) or {}
         status_val = session.status.value if hasattr(session.status, "value") else str(session.status)
         outcome = SESSION_STATUS_TO_OUTCOME.get(status_val, NegotiationOutcome.UNKNOWN)
 

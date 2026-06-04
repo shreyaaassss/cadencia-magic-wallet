@@ -241,7 +241,7 @@ def compute_seller_valuation(
     """
     risk_map = {"LOW": 0.05, "MEDIUM": 0.10, "HIGH": 0.15}
     target_margin_map = {"LOW": 0.15, "MEDIUM": 0.20, "HIGH": 0.30}
-    risk = risk_map.get(risk_appetite, 0.10)
+    _risk = risk_map.get(risk_appetite, 0.10)
     target_margin = target_margin_map.get(risk_appetite, 0.20)
 
     margin_d = margin_floor / Decimal("100")

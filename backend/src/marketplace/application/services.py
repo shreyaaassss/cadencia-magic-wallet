@@ -603,7 +603,7 @@ class MarketplaceService:
             raise NotFoundError("Match", f"seller={cmd.seller_enterprise_id}")
 
         # Confirm RFQ + select match
-        confirm_data = rfq.confirm(match.id)
+        rfq.confirm(match.id)
         match.select()
 
         # Reject all other matches for this RFQ

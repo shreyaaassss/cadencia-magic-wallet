@@ -1226,7 +1226,7 @@ async def get_settlements(
 # ── Pera Wallet Endpoints (RW-02) ────────────────────────────────────────────
 
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field  # noqa: E402
 
 
 class BuildFundTxnResponse(BaseModel):

@@ -130,6 +130,6 @@ def get_settlement_service(
 
 
 # Type alias for mypy
-from src.settlement.application.services import (
-    SettlementService as SettlementServiceDep,  # noqa: E402
+from src.settlement.application.services import (  # noqa: E402
+    SettlementService as SettlementServiceDep,
 )

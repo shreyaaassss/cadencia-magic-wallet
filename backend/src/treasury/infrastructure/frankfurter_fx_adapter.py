@@ -17,10 +17,14 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 import httpx
 
 from src.shared.infrastructure.logging import get_logger
+
+if TYPE_CHECKING:
+    from src.treasury.domain.value_objects import FXRate
 
 log = get_logger(__name__)
 

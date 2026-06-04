@@ -125,7 +125,7 @@ def get_identity_service(
 
 
 # Type alias so mypy is happy
-from src.identity.application.services import IdentityService as IdentityServiceDep
+from src.identity.application.services import IdentityService as IdentityServiceDep  # noqa: E402
 
 # ── Authentication dependencies ───────────────────────────────────────────────
 

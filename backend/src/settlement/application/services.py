@@ -854,7 +854,7 @@ class SettlementService:
     async def compute_merkle_root(self, escrow_id: uuid.UUID) -> str:
         """Compute the Merkle root from audit entries for an escrow."""
         try:
-            audit_entries = await _load_audit_entries(
+            audit_entries = await _get_real_audit_entries(
                 await self._escrow_repo.get_by_id(escrow_id)
             )
         except Exception:
