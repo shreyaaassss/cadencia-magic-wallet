@@ -14,22 +14,20 @@ import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.shared.api.responses import ApiResponse, success_response
-from src.shared.infrastructure.db.session import get_db_session
-from src.shared.infrastructure.logging import get_logger
 from src.identity.api.dependencies import (
     get_current_user,
     get_identity_service,
 )
-from src.identity.domain.user import User
 from src.identity.application.commands import LinkWalletCommand, UnlinkWalletCommand
-from src.identity.application.queries import GetEnterpriseQuery
+from src.identity.domain.user import User
 from src.identity.infrastructure.models import EnterpriseModel
 from src.settlement.infrastructure.models import EscrowContractModel
-
+from src.shared.api.responses import ApiResponse, success_response
+from src.shared.infrastructure.db.session import get_db_session
+from src.shared.infrastructure.logging import get_logger
 from src.wallet.schemas import (
     OptedInApp,
     WalletBalanceResponse,
@@ -78,8 +76,8 @@ async def get_wallet_challenge(
     """
     enterprise_id = _require_enterprise(current_user)
 
-    from src.shared.infrastructure.cache.redis_client import get_redis_instance
     from src.identity.infrastructure.wallet_verifier import WalletVerifier
+    from src.shared.infrastructure.cache.redis_client import get_redis_instance
 
     redis = await get_redis_instance()
     verifier = WalletVerifier(redis=redis)
@@ -88,7 +86,7 @@ async def get_wallet_challenge(
     # (Redis key pattern: wallet_challenge:wc-*)
     # The verifier's create_challenge generates a new unique key each time;
     # old keys expire via TTL. For strict single-active-challenge, delete prior ones.
-    pattern = f"wallet_challenge:*"
+    pattern = "wallet_challenge:*"
     try:
         async for key in redis.scan_iter(match=pattern):
             stored = await redis.get(key)
@@ -150,8 +148,8 @@ async def link_wallet(
         )
 
     # Verify the signed challenge transaction
-    from src.shared.infrastructure.cache.redis_client import get_redis_instance
     from src.identity.infrastructure.wallet_verifier import WalletVerifier
+    from src.shared.infrastructure.cache.redis_client import get_redis_instance
 
     redis = await get_redis_instance()
     verifier = WalletVerifier(redis=redis)

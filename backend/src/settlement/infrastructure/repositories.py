@@ -11,7 +11,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.settlement.domain.escrow import Escrow, EscrowStatus
-from src.settlement.domain.ports import IEscrowRepository, ISettlementRepository
 from src.settlement.domain.settlement import Settlement
 from src.settlement.domain.value_objects import (
     AlgoAppAddress,
@@ -21,7 +20,6 @@ from src.settlement.domain.value_objects import (
     TxId,
 )
 from src.settlement.infrastructure.models import EscrowContractModel, SettlementModel
-
 
 # ── Unchecked constructors (bypass validation on DB reload) ───────────────────
 

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt  # type: ignore[import-untyped]
 
-from src.shared.domain.exceptions import AuthenticationError, ValidationError
+from src.shared.domain.exceptions import ValidationError
 from src.shared.infrastructure.logging import get_logger
 
 log = get_logger(__name__)

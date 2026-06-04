@@ -6,12 +6,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from src.shared.api.responses import ApiResponse, success_response
-from src.shared.infrastructure.logging import get_logger
-
 from src.identity.api.dependencies import get_current_user, rate_limit
 from src.identity.domain.user import User
-
+from src.shared.api.responses import ApiResponse, success_response
+from src.shared.infrastructure.logging import get_logger
 from src.treasury.api.dependencies import get_treasury_service
 from src.treasury.api.schemas import (
     DashboardResponse,

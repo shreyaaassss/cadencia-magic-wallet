@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta as _timedelta
+from datetime import datetime
+from datetime import timedelta as _timedelta
 from decimal import Decimal
 
 from sqlalchemy import select, update
@@ -11,6 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.negotiation.domain.agent_profile import AgentProfile
+from src.negotiation.domain.negotiation_insight import NegotiationInsight
+from src.negotiation.domain.negotiation_record import (
+    NegotiationOutcome,
+    NegotiationRecord,
+    RecordType,
+)
 from src.negotiation.domain.offer import Offer, ProposerRole
 from src.negotiation.domain.opponent_model import OpponentBelief
 from src.negotiation.domain.playbook import IndustryPlaybook
@@ -27,19 +34,12 @@ from src.negotiation.infrastructure.models import (
     AgentMemoryModel,
     AgentProfileModel,
     IndustryPlaybookModel,
-    NegotiationRecordModel,
     NegotiationInsightModel,
+    NegotiationRecordModel,
     NegotiationSessionModel,
     OfferModel,
     OpponentProfileModel,
 )
-from src.negotiation.domain.negotiation_record import (
-    NegotiationRecord,
-    NegotiationOutcome,
-    RecordType,
-)
-from src.negotiation.domain.negotiation_insight import NegotiationInsight
-
 
 # ── Domain ↔ ORM Mapping Helpers ─────────────────────────────────────────────
 

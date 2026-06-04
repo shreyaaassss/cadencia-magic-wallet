@@ -11,7 +11,6 @@ Updates AgentProfile.negotiation_intelligence JSONB via EMA merge.
 from __future__ import annotations
 
 import uuid
-from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import structlog

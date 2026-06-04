@@ -8,11 +8,10 @@ import uuid
 from decimal import Decimal
 from typing import Protocol, runtime_checkable
 
-from src.shared.domain.protocols import IMerkleService  # noqa: F401 — re-exported for callers
 from src.settlement.domain.escrow import Escrow, EscrowStatus
 from src.settlement.domain.settlement import Settlement
 from src.settlement.domain.value_objects import MerkleRoot, TxId
-
+from src.shared.domain.protocols import IMerkleService  # noqa: F401 — re-exported for callers
 
 # ── Repository Ports ──────────────────────────────────────────────────────────
 

@@ -8,10 +8,6 @@ import os
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.shared.infrastructure.db.session import get_db_session
-from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
-from src.shared.infrastructure.events.publisher import get_publisher
-from src.shared.infrastructure.merkle_service import MerkleService as _SharedMerkleService
 from src.settlement.domain.ports import (
     IAnchorService,
     IBlockchainGateway,
@@ -25,6 +21,10 @@ from src.settlement.infrastructure.repositories import (
     PostgresEscrowRepository,
     PostgresSettlementRepository,
 )
+from src.shared.infrastructure.db.session import get_db_session
+from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
+from src.shared.infrastructure.events.publisher import get_publisher
+from src.shared.infrastructure.merkle_service import MerkleService as _SharedMerkleService
 
 # ── Repository factories ──────────────────────────────────────────────────────
 
@@ -130,4 +130,6 @@ def get_settlement_service(
 
 
 # Type alias for mypy
-from src.settlement.application.services import SettlementService as SettlementServiceDep  # noqa: E402
+from src.settlement.application.services import (
+    SettlementService as SettlementServiceDep,  # noqa: E402
+)

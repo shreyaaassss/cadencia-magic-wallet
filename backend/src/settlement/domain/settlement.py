@@ -8,8 +8,8 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from src.shared.domain.base_entity import BaseEntity
 from src.settlement.domain.value_objects import MicroAlgo, TxId
+from src.shared.domain.base_entity import BaseEntity
 
 
 def _utcnow() -> datetime:

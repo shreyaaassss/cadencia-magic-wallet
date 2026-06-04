@@ -14,12 +14,6 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.shared.api.responses import ApiResponse, success_response
-from src.shared.infrastructure.db.session import get_db_session
-from src.shared.infrastructure.logging import get_logger
-from src.identity.api.dependencies import get_current_user, verify_admin_token
-from src.identity.domain.user import User
-
 from src.admin.schemas.admin_schemas import (
     ActivityItem,
     AdminAgentItem,
@@ -37,6 +31,11 @@ from src.admin.schemas.admin_schemas import (
     UserSuspendResponse,
 )
 from src.admin.services.admin_service import AdminService
+from src.identity.api.dependencies import get_current_user, verify_admin_token
+from src.identity.domain.user import User
+from src.shared.api.responses import ApiResponse, success_response
+from src.shared.infrastructure.db.session import get_db_session
+from src.shared.infrastructure.logging import get_logger
 
 log = get_logger(__name__)
 

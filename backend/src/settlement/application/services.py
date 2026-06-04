@@ -10,13 +10,6 @@ import uuid
 
 import structlog
 
-from src.shared.domain.exceptions import (
-    AuthorizationError,
-    NotFoundError,
-    PolicyViolation,
-)
-from src.shared.infrastructure.db.uow import AbstractUnitOfWork
-from src.shared.infrastructure.events.publisher import EventPublisher
 from src.settlement.application.commands import (
     ApproveEscrowCommand,
     CreatePendingEscrowCommand,
@@ -49,6 +42,13 @@ from src.settlement.domain.value_objects import (
     MicroAlgo,
     TxId,
 )
+from src.shared.domain.exceptions import (
+    AuthorizationError,
+    NotFoundError,
+    PolicyViolation,
+)
+from src.shared.infrastructure.db.uow import AbstractUnitOfWork
+from src.shared.infrastructure.events.publisher import EventPublisher
 from src.shared.infrastructure.metrics import (
     ESCROW_DEPLOY_DURATION,
     ESCROW_FUND_AMOUNT,
@@ -88,8 +88,9 @@ class SettlementService:
 
     async def _get_escrow_enterprise_ids(self, escrow_id) -> tuple:
         """Fetch buyer/seller enterprise IDs from the escrow ORM model."""
-        from src.settlement.infrastructure.models import EscrowContractModel
         from sqlalchemy import select
+
+        from src.settlement.infrastructure.models import EscrowContractModel
         stmt = select(
             EscrowContractModel.buyer_enterprise_id,
             EscrowContractModel.seller_enterprise_id,
@@ -155,9 +156,13 @@ class SettlementService:
         async with self._uow:
             await self._escrow_repo.save(escrow)
             # Also persist enterprise IDs and INR price on the model
-            from src.settlement.infrastructure.models import EscrowContractModel
+            from datetime import datetime as _dt
+            from datetime import timedelta as _td
+            from datetime import timezone as _tz
+
             from sqlalchemy import update
-            from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+
+            from src.settlement.infrastructure.models import EscrowContractModel
             approval_deadline = _dt.now(tz=_tz.utc) + _td(hours=72)
             stmt = (
                 update(EscrowContractModel)
@@ -214,8 +219,9 @@ class SettlementService:
         # Persist with approval audit trail
         async with self._uow:
             await self._escrow_repo.update(escrow)
-            from src.settlement.infrastructure.models import EscrowContractModel
             from sqlalchemy import update as sql_update
+
+            from src.settlement.infrastructure.models import EscrowContractModel
             stmt = (
                 sql_update(EscrowContractModel)
                 .where(EscrowContractModel.id == escrow.id)
@@ -896,8 +902,8 @@ async def _get_real_audit_entries(escrow: Escrow) -> list[str]:
     import structlog
     _log = structlog.get_logger(__name__)
     try:
-        from src.shared.infrastructure.db.session import get_session_factory
         from src.compliance.infrastructure.repositories import PostgresAuditLogRepository
+        from src.shared.infrastructure.db.session import get_session_factory
 
         async with get_session_factory()() as db_session:
             audit_repo = PostgresAuditLogRepository(db_session)

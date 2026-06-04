@@ -7,7 +7,6 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -19,7 +18,6 @@ from src.negotiation.api.dependencies import get_negotiation_service, get_sse_pu
 from src.negotiation.api.schemas import (
     CreateSessionRequest,
     HumanOverrideRequest,
-    IntelligenceResponse,
     OfferResponse,
     SessionResponse,
     TerminateRequest,
@@ -117,6 +115,7 @@ async def list_sessions(
         try:
             db_session = svc.session_repo._session  # type: ignore[union-attr]
             from sqlalchemy import select as sa_select
+
             from src.identity.infrastructure.models import EnterpriseModel
             result = await db_session.execute(
                 sa_select(EnterpriseModel.id, EnterpriseModel.name)

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import uuid
 
+from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
@@ -30,8 +31,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
 
 from src.shared.infrastructure.db.base import Base
 

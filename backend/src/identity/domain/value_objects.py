@@ -124,7 +124,7 @@ class AlgorandAddress(BaseValueObject):
     def __post_init__(self) -> None:
         if not _ALGO_ADDR_REGEX.match(self.value):
             raise ValidationError(
-                f"Invalid Algorand address: must be 58 uppercase base32 characters.",
+                "Invalid Algorand address: must be 58 uppercase base32 characters.",
                 field="algorand_wallet",
             )
 

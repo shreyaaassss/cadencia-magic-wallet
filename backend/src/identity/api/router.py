@@ -6,13 +6,9 @@ from __future__ import annotations
 
 import os
 import uuid
-
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, UploadFile, File, status
-from fastapi.responses import JSONResponse
 from typing import List
 
-from src.shared.api.responses import ApiResponse, success_response
-from src.shared.infrastructure.logging import get_logger
+from fastapi import APIRouter, Cookie, Depends, File, HTTPException, Response, UploadFile, status
 
 from src.identity.api.dependencies import (
     get_current_user,
@@ -21,23 +17,22 @@ from src.identity.api.dependencies import (
     require_role,
 )
 from src.identity.api.schemas import (
-    AgentConfigRequest,
     AgentConfigUpdateRequest,
     AgentConfigUpdateResponse,
     APIKeyListItem,
     APIKeyResponse,
+    CreateAPIKeyRequest,
     EnterpriseResponse,
+    EnterpriseWalletLinkRequest,
     KYCStatusResponse,
     LoginRequest,
+    OptedInApp,
     RegisterRequest,
     TokenResponse,
-    CreateAPIKeyRequest,
     UserMeResponse,
-    WalletChallengeResponse,
-    EnterpriseWalletLinkRequest,
-    WalletUnlinkResponse,
     WalletBalanceResponse,
-    OptedInApp,
+    WalletChallengeResponse,
+    WalletUnlinkResponse,
 )
 from src.identity.application.commands import (
     CreateAPIKeyCommand,
@@ -51,6 +46,8 @@ from src.identity.application.commands import (
 from src.identity.application.queries import GetEnterpriseQuery, ListAPIKeysQuery
 from src.identity.application.services import IdentityService
 from src.identity.domain.user import User
+from src.shared.api.responses import ApiResponse, success_response
+from src.shared.infrastructure.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -210,6 +207,7 @@ async def logout(
     """
     if refresh_token_cookie:
         import hashlib
+
         from src.shared.infrastructure.cache.redis_client import get_redis_client
         token_hash = hashlib.sha256(refresh_token_cookie.encode()).hexdigest()
         redis = get_redis_client()
@@ -252,6 +250,7 @@ async def refresh_token(
         raise HTTPException(status_code=401, detail="No refresh token")
 
     import hashlib
+
     from src.shared.infrastructure.cache.redis_client import get_redis_client
     token_hash = hashlib.sha256(refresh_token_cookie.encode()).hexdigest()
     redis = get_redis_client()
@@ -550,9 +549,8 @@ async def get_wallet_challenge(
     enterprise_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
 ) -> ApiResponse:
-    from redis.asyncio import Redis
-    from src.shared.infrastructure.cache.redis_client import get_redis_instance
     from src.identity.infrastructure.wallet_verifier import WalletVerifier
+    from src.shared.infrastructure.cache.redis_client import get_redis_instance
 
     redis = await get_redis_instance()
     verifier = WalletVerifier(redis=redis)
@@ -581,8 +579,9 @@ async def link_wallet(
     svc: IdentityService = Depends(get_identity_service),
 ) -> ApiResponse[EnterpriseResponse]:
     from fastapi import HTTPException
-    from src.shared.infrastructure.cache.redis_client import get_redis_instance
+
     from src.identity.infrastructure.wallet_verifier import WalletVerifier
+    from src.shared.infrastructure.cache.redis_client import get_redis_instance
 
     redis = await get_redis_instance()
     verifier = WalletVerifier(redis=redis)
@@ -600,9 +599,10 @@ async def link_wallet(
         )
 
     # Block wallet change while enterprise has active escrows
-    from src.settlement.infrastructure.models import EscrowContractModel
+    from sqlalchemy import and_, select
+
     from src.identity.infrastructure.models import EnterpriseModel
-    from sqlalchemy import select, and_
+    from src.settlement.infrastructure.models import EscrowContractModel
     from src.shared.infrastructure.db.session import get_session_factory
     async with get_session_factory()() as db_session:
         active_escrow_stmt = select(EscrowContractModel.id).where(
@@ -655,8 +655,9 @@ async def unlink_wallet(
     svc: IdentityService = Depends(get_identity_service),
 ) -> ApiResponse[WalletUnlinkResponse]:
     from fastapi import HTTPException
+    from sqlalchemy import and_, select
+
     from src.settlement.infrastructure.models import EscrowContractModel
-    from sqlalchemy import select, and_
     from src.shared.infrastructure.db.session import get_session_factory
 
     # Block unlink during active escrows
@@ -701,6 +702,7 @@ async def get_wallet_balance(
     svc: IdentityService = Depends(get_identity_service),
 ) -> ApiResponse[WalletBalanceResponse]:
     from fastapi import HTTPException
+
     from src.identity.application.queries import GetEnterpriseQuery
 
     enterprise = await svc.get_enterprise(
@@ -721,6 +723,7 @@ async def get_wallet_balance(
     # Query Algorand node for balance
     try:
         import os
+
         from algosdk.v2client.algod import AlgodClient
 
         algod_address = os.environ.get(

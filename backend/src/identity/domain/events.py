@@ -6,8 +6,6 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 
-from src.shared.domain.events import DomainEvent
-
 # Re-export events defined alongside their aggregates for a single import point.
 from src.identity.domain.enterprise import (  # noqa: F401
     EnterpriseActivated,
@@ -15,6 +13,7 @@ from src.identity.domain.enterprise import (  # noqa: F401
     EnterpriseKYCVerified,
 )
 from src.identity.domain.user import UserLoggedIn  # noqa: F401
+from src.shared.domain.events import DomainEvent
 
 
 @dataclass(frozen=True)

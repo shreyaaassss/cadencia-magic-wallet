@@ -137,7 +137,6 @@ class WalletVerifier:
         # Verify Ed25519 signature
         try:
             from nacl.signing import VerifyKey
-            from nacl.exceptions import BadSignatureError
 
             pk_bytes = encoding.decode_address(algorand_address)
             verify_key = VerifyKey(pk_bytes)
@@ -351,8 +350,8 @@ class WalletVerifier:
         #    algosdk.util.verify_bytes uses "MX" prefix (for arbitrary bytes), so we
         #    must use nacl VerifyKey directly for transaction signatures.
         try:
-            from nacl.signing import VerifyKey
             from nacl.exceptions import BadSignatureError
+            from nacl.signing import VerifyKey
 
             pk_bytes = encoding.decode_address(algorand_address)
             verify_key = VerifyKey(pk_bytes)

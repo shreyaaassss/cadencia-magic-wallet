@@ -8,9 +8,9 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
 
+from src.identity.domain.value_objects import GSTIN, PAN, AlgorandAddress
 from src.shared.domain.base_entity import BaseEntity
 from src.shared.domain.exceptions import ConflictError, PolicyViolation, ValidationError
-from src.identity.domain.value_objects import AlgorandAddress, GSTIN, PAN
 
 
 class KYCStatus(str, Enum):

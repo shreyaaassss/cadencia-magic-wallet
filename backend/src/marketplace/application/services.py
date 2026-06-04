@@ -97,10 +97,13 @@ class MarketplaceService:
     async def _parse_and_match_standalone(self, rfq_id: uuid.UUID) -> None:
         """Background task with its own DB session — avoids asyncpg concurrency errors."""
         import os
-        from src.marketplace.infrastructure.pgvector_matchmaker import PgvectorMatchmaker, StubMatchmakingEngine
+
         from src.marketplace.infrastructure.keyword_matchmaker import KeywordMatchmaker
+        from src.marketplace.infrastructure.pgvector_matchmaker import (
+            PgvectorMatchmaker,
+            StubMatchmakingEngine,
+        )
         from src.marketplace.infrastructure.repositories import (
-            PostgresCapabilityProfileRepository,
             PostgresMatchRepository,
             PostgresRFQRepository,
         )
@@ -177,7 +180,11 @@ class MarketplaceService:
 
                 # 4. Find matches — loop variants for multi-product RFQs
                 import re as _re
-                from sqlalchemy import select as sa_select  # noqa: E402 — must be before address query
+
+                from sqlalchemy import (
+                    select as sa_select,  # noqa: E402 — must be before address query
+                )
+
                 from src.marketplace.infrastructure.models import AddressModel, MatchModel
 
                 parsed_variants = build_parsed_variants(parsed)
@@ -298,9 +305,12 @@ class MarketplaceService:
                     # Build a lookup of what each seller actually has in their catalogue
                     # so we only match sellers to products they can actually supply.
                     from sqlalchemy import select as _sel
+
+                    from src.marketplace.infrastructure.models import (
+                        CapabilityProfileModel as _CapProf,
+                    )
                     from src.marketplace.infrastructure.models import (
                         CatalogueItemModel as _CatItem,
-                        CapabilityProfileModel as _CapProf,
                     )
                     _cat_stmt = _sel(_CatItem.enterprise_id, _CatItem.product_name, _CatItem.product_category)
                     _cat_result = await session.execute(_cat_stmt)
@@ -476,8 +486,10 @@ class MarketplaceService:
                 if not raw_matches:
                     log.info("rfq_trying_enterprise_fallback", rfq_id=str(rfq_id))
                     try:
+                        from sqlalchemy import or_
+                        from sqlalchemy import select as sa_select
+
                         from src.identity.infrastructure.models import EnterpriseModel
-                        from sqlalchemy import select as sa_select, or_
                         parsed_product = (rfq.parsed_fields or {}).get("product", "") or (rfq.parsed_fields or {}).get("product_name", "")
                         parsed_category = (rfq.parsed_fields or {}).get("product_category", "")
                         search_terms = [t.lower() for t in [parsed_product, parsed_category] if t]
@@ -608,9 +620,10 @@ class MarketplaceService:
 
         # Close negotiation sessions for rejected matches (CLOSED_BY_BUYER)
         if rejected_match_ids:
-            from src.negotiation.infrastructure.models import NegotiationSessionModel
-            from sqlalchemy import select, and_
+            from sqlalchemy import and_, select
             from sqlalchemy.sql import func as sql_func
+
+            from src.negotiation.infrastructure.models import NegotiationSessionModel
             from src.shared.infrastructure.db.session import get_session_factory
             async with get_session_factory()() as db_session:
                 other_sessions_stmt = select(NegotiationSessionModel).where(
@@ -746,11 +759,8 @@ class MarketplaceService:
         override_rfq_parsed_fields: dict | None = None,
     ) -> uuid.UUID:
         """Create a negotiation session synchronously with its own DB session."""
-        from src.shared.infrastructure.db.session import get_session_factory
-        from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
-        from src.shared.infrastructure.events.publisher import get_publisher
-        from src.negotiation.application.services import NegotiationService
         from src.negotiation.application.commands import CreateSessionCommand
+        from src.negotiation.application.services import NegotiationService
         from src.negotiation.infrastructure.llm_agent_driver import get_agent_driver
         from src.negotiation.infrastructure.neutral_engine import NeutralEngine
         from src.negotiation.infrastructure.personalization import PersonalizationBuilder
@@ -762,6 +772,9 @@ class MarketplaceService:
             PostgresPlaybookRepository,
             PostgresSessionRepository,
         )
+        from src.shared.infrastructure.db.session import get_session_factory
+        from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
+        from src.shared.infrastructure.events.publisher import get_publisher
 
         async with get_session_factory()() as db_session:
             engine = NeutralEngine(
@@ -794,9 +807,6 @@ class MarketplaceService:
 
     async def _run_auto_negotiation_standalone(self, session_id: uuid.UUID) -> None:
         """Background: run auto-negotiation for a session with its own DB session."""
-        from src.shared.infrastructure.db.session import get_session_factory
-        from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
-        from src.shared.infrastructure.events.publisher import get_publisher
         from src.negotiation.application.services import NegotiationService
         from src.negotiation.infrastructure.llm_agent_driver import get_agent_driver
         from src.negotiation.infrastructure.neutral_engine import NeutralEngine
@@ -809,6 +819,9 @@ class MarketplaceService:
             PostgresPlaybookRepository,
             PostgresSessionRepository,
         )
+        from src.shared.infrastructure.db.session import get_session_factory
+        from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
+        from src.shared.infrastructure.events.publisher import get_publisher
 
         # Wait for session creation to be committed
         await asyncio.sleep(1.0)
@@ -991,8 +1004,9 @@ class MarketplaceService:
                     ]
 
                     # Fix 5: fetch all active catalogue items and include in embedding
-                    from src.marketplace.infrastructure.models import CatalogueItemModel
                     from sqlalchemy import select as _sa_select
+
+                    from src.marketplace.infrastructure.models import CatalogueItemModel
                     cat_result = await session.execute(
                         _sa_select(CatalogueItemModel).where(
                             CatalogueItemModel.enterprise_id == enterprise_id,

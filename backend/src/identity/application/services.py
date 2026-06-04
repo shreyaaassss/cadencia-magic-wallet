@@ -3,37 +3,9 @@
 
 from __future__ import annotations
 
+import os
 import secrets
 import uuid
-
-from src.shared.domain.exceptions import (
-    AuthenticationError,
-    ConflictError,
-    NotFoundError,
-    PolicyViolation,
-    ValidationError,
-)
-from src.shared.infrastructure.db.uow import AbstractUnitOfWork
-from src.shared.infrastructure.events.publisher import EventPublisher
-from src.shared.infrastructure.logging import get_logger
-
-from src.identity.domain.enterprise import Enterprise, TradeRole
-from src.identity.domain.events import APIKeyCreated, APIKeyRevoked, EnterpriseRegistered
-from src.identity.domain.ports import (
-    IAPIKeyRepository,
-    IEnterpriseRepository,
-    IJWTService,
-    IKYCAdapter,
-    IUserRepository,
-)
-from src.identity.domain.user import User, UserRole
-from src.identity.domain.value_objects import (
-    Email,
-    GSTIN,
-    HashedAPIKey,
-    HashedPassword,
-    PAN,
-)
 
 from src.identity.application.commands import (
     CreateAPIKeyCommand,
@@ -46,8 +18,33 @@ from src.identity.application.commands import (
     VerifyKYCCommand,
 )
 from src.identity.application.queries import GetEnterpriseQuery, ListAPIKeysQuery
-
-import os
+from src.identity.domain.enterprise import Enterprise, TradeRole
+from src.identity.domain.events import APIKeyCreated, APIKeyRevoked, EnterpriseRegistered
+from src.identity.domain.ports import (
+    IAPIKeyRepository,
+    IEnterpriseRepository,
+    IJWTService,
+    IKYCAdapter,
+    IUserRepository,
+)
+from src.identity.domain.user import User, UserRole
+from src.identity.domain.value_objects import (
+    GSTIN,
+    PAN,
+    Email,
+    HashedAPIKey,
+    HashedPassword,
+)
+from src.shared.domain.exceptions import (
+    AuthenticationError,
+    ConflictError,
+    NotFoundError,
+    PolicyViolation,
+    ValidationError,
+)
+from src.shared.infrastructure.db.uow import AbstractUnitOfWork
+from src.shared.infrastructure.events.publisher import EventPublisher
+from src.shared.infrastructure.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -198,8 +195,8 @@ class IdentityService:
         """Background: persist address with its own DB session."""
         import asyncio
         await asyncio.sleep(0.3)  # Wait for parent transaction commit
-        from src.shared.infrastructure.db.session import get_session_factory
         from src.marketplace.infrastructure.models import AddressModel
+        from src.shared.infrastructure.db.session import get_session_factory
         factory = get_session_factory()
         async with factory() as session:
             try:
@@ -643,7 +640,6 @@ class IdentityService:
         Uses the domain method Enterprise.link_algorand_wallet() which raises
         ConflictError if a wallet is already linked.
         """
-        from src.identity.application.commands import LinkWalletCommand
         from src.identity.domain.value_objects import AlgorandAddress
 
         enterprise = await self._enterprises.get_by_id(cmd.enterprise_id)
@@ -677,7 +673,6 @@ class IdentityService:
 
         Uses Enterprise.unlink_algorand_wallet() which clears the address.
         """
-        from src.identity.application.commands import UnlinkWalletCommand
 
         enterprise = await self._enterprises.get_by_id(cmd.enterprise_id)
         if enterprise is None:

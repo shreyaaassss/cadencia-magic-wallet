@@ -2,34 +2,38 @@
 
 from __future__ import annotations
 
+import os
+
+import structlog
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.shared.infrastructure.cache.redis_client import get_redis_client
-from src.shared.infrastructure.db.session import get_db_session
-from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
-from src.shared.infrastructure.events.publisher import get_publisher
+from src.negotiation.application.personalization_service import PersonalizationService
 from src.negotiation.application.services import NegotiationService
+from src.negotiation.infrastructure.embedding_pipeline import (
+    GeminiEmbedder,
+    StubEmbedder,
+    TextChunker,
+)
 from src.negotiation.infrastructure.llm_agent_driver import get_agent_driver, get_analysis_driver
 from src.negotiation.infrastructure.neutral_engine import NeutralEngine
 from src.negotiation.infrastructure.personalization import PersonalizationBuilder
 from src.negotiation.infrastructure.repositories import (
+    PostgresAgentMemoryRepository,
     PostgresAgentProfileRepository,
     PostgresNegotiationInsightRepository,
     PostgresNegotiationRecordRepository,
     PostgresOfferRepository,
+    PostgresOpponentProfileRepository,
     PostgresPlaybookRepository,
     PostgresSessionRepository,
-    PostgresOpponentProfileRepository,
-    PostgresAgentMemoryRepository,
 )
-from src.negotiation.application.personalization_service import PersonalizationService
-from src.negotiation.infrastructure.embedding_pipeline import GeminiEmbedder, StubEmbedder, TextChunker
 from src.negotiation.infrastructure.s3_vault import S3Vault
-import os
 from src.negotiation.infrastructure.sse_publisher import RedisSSEPublisher
-
-import structlog
+from src.shared.infrastructure.cache.redis_client import get_redis_client
+from src.shared.infrastructure.db.session import get_db_session
+from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
+from src.shared.infrastructure.events.publisher import get_publisher
 
 _dep_log = structlog.get_logger(__name__)
 

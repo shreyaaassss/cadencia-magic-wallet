@@ -12,7 +12,6 @@ from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from src.identity.domain.enterprise import Enterprise
 
-
 # ── Request schemas ───────────────────────────────────────────────────────────
 
 class AddressCreateRequest(BaseModel):

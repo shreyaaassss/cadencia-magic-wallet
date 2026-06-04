@@ -8,7 +8,6 @@ import asyncio
 import json
 import os
 import time
-from decimal import Decimal
 
 import structlog
 

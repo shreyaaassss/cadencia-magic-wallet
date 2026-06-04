@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.shared.infrastructure.cache.redis_client import get_redis
 from src.shared.infrastructure.db.session import get_db_session
 from src.shared.infrastructure.logging import get_logger
-
 from src.treasury.application.services import TreasuryService
 from src.treasury.infrastructure.frankfurter_fx_adapter import FrankfurterFXAdapter
 from src.treasury.infrastructure.repositories import (

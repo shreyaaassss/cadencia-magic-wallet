@@ -7,10 +7,9 @@ from __future__ import annotations
 import uuid
 from typing import Protocol, runtime_checkable
 
-from src.treasury.domain.liquidity_pool import LiquidityPool
 from src.treasury.domain.fx_position import FXPosition
+from src.treasury.domain.liquidity_pool import LiquidityPool
 from src.treasury.domain.value_objects import FXRate
-
 
 # ── Repository Ports ──────────────────────────────────────────────────────────
 

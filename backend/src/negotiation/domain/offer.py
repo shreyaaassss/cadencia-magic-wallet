@@ -9,13 +9,12 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 
-from src.shared.domain.base_entity import BaseEntity
-from src.shared.domain.exceptions import ValidationError
 from src.negotiation.domain.value_objects import (
     Confidence,
     OfferValue,
     RoundNumber,
 )
+from src.shared.domain.base_entity import BaseEntity
 
 
 def _utcnow() -> datetime:

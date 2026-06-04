@@ -13,13 +13,6 @@ from fastapi.security import OAuth2PasswordBearer
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.shared.domain.exceptions import AuthenticationError, ValidationError
-from src.shared.infrastructure.cache.redis_client import get_redis
-from src.shared.infrastructure.db.session import get_db_session
-from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
-from src.shared.infrastructure.events.publisher import get_publisher
-from src.shared.infrastructure.rate_limiter import check_rate_limit
-
 from src.identity.domain.ports import (
     IAPIKeyRepository,
     IEnterpriseRepository,
@@ -36,6 +29,12 @@ from src.identity.infrastructure.repositories import (
     PostgresEnterpriseRepository,
     PostgresUserRepository,
 )
+from src.shared.domain.exceptions import AuthenticationError, ValidationError
+from src.shared.infrastructure.cache.redis_client import get_redis
+from src.shared.infrastructure.db.session import get_db_session
+from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
+from src.shared.infrastructure.events.publisher import get_publisher
+from src.shared.infrastructure.rate_limiter import check_rate_limit
 
 log = structlog.get_logger(__name__)
 
@@ -127,7 +126,6 @@ def get_identity_service(
 
 # Type alias so mypy is happy
 from src.identity.application.services import IdentityService as IdentityServiceDep
-
 
 # ── Authentication dependencies ───────────────────────────────────────────────
 

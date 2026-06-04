@@ -24,10 +24,10 @@ from typing import TYPE_CHECKING
 import structlog
 
 from src.negotiation.domain.negotiation_record import (
+    SESSION_STATUS_TO_OUTCOME,
     NegotiationOutcome,
     NegotiationRecord,
     RecordType,
-    SESSION_STATUS_TO_OUTCOME,
 )
 
 if TYPE_CHECKING:

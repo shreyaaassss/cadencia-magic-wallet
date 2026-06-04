@@ -12,10 +12,10 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
 
-from src.shared.domain.base_entity import BaseEntity
-from src.shared.domain.exceptions import ConflictError, PolicyViolation
 from src.negotiation.domain.offer import Offer, ProposerRole
 from src.negotiation.domain.value_objects import OfferValue, RoundNumber
+from src.shared.domain.base_entity import BaseEntity
+from src.shared.domain.exceptions import ConflictError
 
 SESSION_TTL_HOURS: int = 24
 MAX_ROUNDS: int = 20
@@ -585,7 +585,6 @@ class NegotiationSession(BaseEntity):
         Denormalize session into a structured JSON transcript for RAG ingestion.
         Called at terminal state (AGREED or WALK_AWAY).
         """
-        from datetime import timezone
         return {
             "session_id": str(self.id),
             "rfq_id": str(self.rfq_id) if self.rfq_id else None,

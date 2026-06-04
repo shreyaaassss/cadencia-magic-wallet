@@ -58,7 +58,7 @@ class WeeklyOperationalReport:
                 )
                 results[key] = result.scalar() or 0
             except Exception:
-                log.warning(f"weekly_report_query_failed", query=key)
+                log.warning("weekly_report_query_failed", query=key)
                 results[key] = -1  # Signal query failure
 
         # Derived metrics

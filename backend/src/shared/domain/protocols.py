@@ -9,7 +9,6 @@ import uuid
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-
 # ── EnterpriseSnapshot ────────────────────────────────────────────────────────
 
 

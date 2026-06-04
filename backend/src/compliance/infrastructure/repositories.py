@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,12 +16,12 @@ from src.compliance.domain.fema_record import FEMARecord
 from src.compliance.domain.gst_record import GSTRecord
 from src.compliance.domain.value_objects import (
     GSTIN,
+    HashValue,
     HSNCode,
     INRAmount,
     PANNumber,
     PurposeCode,
     SequenceNumber,
-    HashValue,
 )
 from src.compliance.infrastructure.models import (
     AuditEntryModel,
@@ -28,9 +29,6 @@ from src.compliance.infrastructure.models import (
     FEMARecordModel,
     GSTRecordModel,
 )
-
-from decimal import Decimal
-
 
 # ── AuditLogRepository ────────────────────────────────────────────────────────
 
@@ -244,7 +242,6 @@ def _model_to_audit_entry(m: AuditEntryModel) -> AuditEntry:
 
 
 def _model_to_fema_record(m: FEMARecordModel) -> FEMARecord:
-    from typing import Literal
     return FEMARecord(
         id=m.id,
         created_at=m.created_at,

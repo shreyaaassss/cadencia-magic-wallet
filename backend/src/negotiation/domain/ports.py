@@ -6,12 +6,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from decimal import Decimal
 from typing import Protocol, runtime_checkable
 
 from src.negotiation.domain.agent_profile import AgentProfile
 from src.negotiation.domain.offer import Offer
-from src.negotiation.domain.opponent_model import OpponentBelief, OpponentMetrics
+from src.negotiation.domain.opponent_model import OpponentBelief
 from src.negotiation.domain.playbook import IndustryPlaybook
 from src.negotiation.domain.session import NegotiationSession
 
@@ -192,8 +191,8 @@ class IEmbeddingService(Protocol):
 
 # ── Phase 6: Negotiation Memory Repositories ─────────────────────────────────
 
-from src.negotiation.domain.negotiation_record import NegotiationRecord  # noqa: E402
 from src.negotiation.domain.negotiation_insight import NegotiationInsight  # noqa: E402
+from src.negotiation.domain.negotiation_record import NegotiationRecord  # noqa: E402
 
 
 @runtime_checkable

@@ -9,12 +9,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from src.shared.domain.base_entity import BaseEntity
 from src.negotiation.domain.value_objects import (
     AutomationLevel,
     RiskProfile,
     StrategyWeights,
 )
+from src.shared.domain.base_entity import BaseEntity
 
 
 def _utcnow() -> datetime:

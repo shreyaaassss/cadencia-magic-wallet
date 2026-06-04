@@ -9,7 +9,6 @@ from decimal import Decimal
 from typing import Any
 
 from src.shared.infrastructure.logging import get_logger
-
 from src.treasury.application.commands import (
     CloseFXPositionCommand,
     GetDashboardQuery,
@@ -289,6 +288,7 @@ class TreasuryService:
         """
         try:
             from sqlalchemy import text
+
             from src.shared.infrastructure.db.session import get_session_factory
 
             async with get_session_factory()() as db_session:

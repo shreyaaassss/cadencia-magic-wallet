@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import json
 
-from src.shared.api.llm_sanitizer import sanitize_llm_input
 from src.negotiation.domain.agent_profile import AgentProfile
 from src.negotiation.domain.playbook import IndustryPlaybook
+from src.shared.api.llm_sanitizer import sanitize_llm_input
 
 
 class PersonalizationBuilder:

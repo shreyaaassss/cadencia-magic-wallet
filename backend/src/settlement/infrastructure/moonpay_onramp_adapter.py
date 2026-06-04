@@ -14,10 +14,8 @@ import os
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from urllib.parse import urlencode
 
 import httpx
-import structlog
 
 from src.shared.domain.exceptions import DomainError
 from src.shared.infrastructure.logging import get_logger

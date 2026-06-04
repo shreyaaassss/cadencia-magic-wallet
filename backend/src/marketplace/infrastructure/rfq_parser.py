@@ -284,6 +284,7 @@ class RFQParser:
     async def extract_rfq_fields(self, raw_text: str) -> dict:
         """Extract structured fields from RFQ text via LLM."""
         import openai
+
         from src.shared.api.llm_sanitizer import sanitize_llm_input
 
         sanitized = sanitize_llm_input(raw_text)

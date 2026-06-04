@@ -9,8 +9,6 @@ GET /x402/payment-history       — List x402 payments for a given buyer_address
 
 from __future__ import annotations
 
-import os
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

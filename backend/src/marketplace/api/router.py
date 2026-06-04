@@ -7,14 +7,11 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.shared.middleware.x402_payment import require_x402_payment
-
-from src.identity.api.dependencies import get_current_user, get_current_buyer, get_current_seller
+from src.identity.api.dependencies import get_current_buyer, get_current_seller, get_current_user
 from src.identity.domain.user import User
-from sqlalchemy import select
-
 from src.marketplace.api.schemas import (
     AddressResponse,
     CapabilityProfileResponse,
@@ -26,21 +23,15 @@ from src.marketplace.api.schemas import (
     ConfirmRFQRequest,
     ConfirmRFQResponse,
     EmbeddingRecomputeResponse,
-    EnhancedMatchResponse,
     IncomingRFQResponse,
     MatchResponse,
     PincodeGeocodeResponse,
+    RFQEditRequest,
     RFQResponse,
     RFQSubmitResponse,
     SellerCapacityProfileRequest,
     SellerCapacityProfileResponse,
     UploadRFQRequest,
-)
-from src.marketplace.infrastructure.models import (
-    AddressModel,
-    CatalogueItemModel,
-    PincodeGeocodeModel,
-    SellerCapacityProfileModel,
 )
 from src.marketplace.application.commands import (
     ConfirmRFQCommand,
@@ -48,7 +39,15 @@ from src.marketplace.application.commands import (
     UploadRFQCommand,
 )
 from src.marketplace.application.services import MarketplaceService
-from src.marketplace.infrastructure.pgvector_matchmaker import PgvectorMatchmaker, StubMatchmakingEngine
+from src.marketplace.infrastructure.models import (
+    AddressModel,
+    CatalogueItemModel,
+    PincodeGeocodeModel,
+    SellerCapacityProfileModel,
+)
+from src.marketplace.infrastructure.pgvector_matchmaker import (
+    PgvectorMatchmaker,
+)
 from src.marketplace.infrastructure.repositories import (
     PostgresCapabilityProfileRepository,
     PostgresMatchRepository,
@@ -59,6 +58,7 @@ from src.shared.api.responses import ApiResponse, success_response
 from src.shared.infrastructure.db.session import get_db_session
 from src.shared.infrastructure.events.publisher import get_publisher
 from src.shared.infrastructure.logging import get_logger
+from src.shared.middleware.x402_payment import require_x402_payment
 
 log = get_logger(__name__)
 
@@ -226,12 +226,12 @@ async def get_rfq_matches(
 )
 async def edit_rfq(
     rfq_id: uuid.UUID,
-    payload: "RFQEditRequest",
+    payload: RFQEditRequest,
     current_user: User = Depends(get_current_buyer),
     svc: MarketplaceService = Depends(_get_marketplace_service),
 ):
-    from src.marketplace.api.schemas import RFQEditRequest as _RFQEditRequest
     import asyncio
+
     from src.marketplace.domain.value_objects import RFQStatus
 
     rfq = await svc.get_rfq(rfq_id)
@@ -401,8 +401,9 @@ async def market_overview(
     session=Depends(get_db_session),
 ):
     """Return anonymized, aggregated market data for buyer orientation."""
+    from sqlalchemy import and_, func
+
     from src.identity.infrastructure.models import EnterpriseModel
-    from sqlalchemy import func, and_
 
     # Count sellers by industry
     industry_stmt = (
@@ -422,7 +423,7 @@ async def market_overview(
 
     # Count total active catalogue products
     product_count_stmt = select(func.count(CatalogueItemModel.id)).where(
-        CatalogueItemModel.is_active == True
+        CatalogueItemModel.is_active == True  # noqa: E712
     )
     product_result = await session.execute(product_count_stmt)
     total_products = product_result.scalar() or 0
@@ -437,7 +438,7 @@ async def market_overview(
     # Top product categories
     top_cats_stmt = (
         select(CatalogueItemModel.product_category, func.count().label("cnt"))
-        .where(and_(CatalogueItemModel.is_active == True, CatalogueItemModel.product_category.isnot(None)))
+        .where(and_(CatalogueItemModel.is_active == True, CatalogueItemModel.product_category.isnot(None)))  # noqa: E712
         .group_by(CatalogueItemModel.product_category)
         .order_by(func.count().desc())
         .limit(10)

@@ -18,13 +18,11 @@ from src.negotiation.application.commands import (
 )
 from src.negotiation.domain.agent_profile import AgentProfile
 from src.negotiation.domain.events import (
-    AgentProfileUpdated,
     HumanOverrideApplied,
-    SessionCreated,
 )
 from src.negotiation.domain.offer import Offer, ProposerRole
 from src.negotiation.domain.session import NegotiationSession, SessionStatus
-from src.negotiation.domain.value_objects import OfferValue, RiskProfile, StrategyWeights
+from src.negotiation.domain.value_objects import OfferValue
 from src.negotiation.infrastructure.llm_agent_driver import LLMExhaustedException
 from src.shared.domain.exceptions import ConflictError, NotFoundError, PolicyViolation
 from src.shared.infrastructure.metrics import (
@@ -181,7 +179,7 @@ class NegotiationService:
                 )
 
             # 2. Load this seller's match record (contains matched_catalogue_item_id)
-            from src.marketplace.infrastructure.models import MatchModel, CatalogueItemModel
+            from src.marketplace.infrastructure.models import CatalogueItemModel, MatchModel
             match_result = await db_session.execute(
                 sa_select(MatchModel).where(
                     MatchModel.rfq_id == session.rfq_id,

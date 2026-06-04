@@ -10,7 +10,6 @@ import os
 import structlog
 
 from src.shared.domain.exceptions import BlockchainSimulationError
-from src.settlement.domain.ports import IBlockchainGateway
 
 log = structlog.get_logger(__name__)
 
@@ -102,7 +101,9 @@ class AlgorandGateway:
 
     def _get_factory(self) -> object:
         """Get CadenciaEscrowFactory — used to deploy new contracts."""
-        from artifacts.CadenciaEscrowClient import CadenciaEscrowFactory  # type: ignore[import-untyped]
+        from artifacts.CadenciaEscrowClient import (
+            CadenciaEscrowFactory,  # type: ignore[import-untyped]
+        )
 
         return CadenciaEscrowFactory(
             algorand=self._algorand,
@@ -111,7 +112,9 @@ class AlgorandGateway:
 
     def _get_client(self, app_id: int) -> object:
         """Get CadenciaEscrowClient — used to call existing contracts."""
-        from artifacts.CadenciaEscrowClient import CadenciaEscrowClient  # type: ignore[import-untyped]
+        from artifacts.CadenciaEscrowClient import (
+            CadenciaEscrowClient,  # type: ignore[import-untyped]
+        )
 
         return CadenciaEscrowClient(
             app_id=app_id,
@@ -133,7 +136,6 @@ class AlgorandGateway:
             return
 
         try:
-            import algosdk.atomic_transaction_composer as atc_module  # type: ignore[import-untyped]
             import algosdk.transaction as txn_lib  # type: ignore[import-untyped]
 
             # Access underlying algod client from AlgorandClient wrapper
@@ -396,7 +398,7 @@ class AlgorandGateway:
         if not self._creator_sk or not self._creator_address:
             raise RuntimeError("Creator mnemonic not configured")
 
-        from algosdk import abi, transaction
+        from algosdk import abi
         from algosdk.atomic_transaction_composer import (
             AccountTransactionSigner,
             AtomicTransactionComposer,
@@ -450,7 +452,7 @@ class AlgorandGateway:
         buyer_address must be provided so it can be included in the foreign accounts array,
         making the account available for the inner payment transaction.
         """
-        from algosdk import abi, transaction
+        from algosdk import abi
         from algosdk.atomic_transaction_composer import (
             AccountTransactionSigner,
             AtomicTransactionComposer,
@@ -510,7 +512,9 @@ class AlgorandGateway:
         Returns:
             {"status": int, "frozen": int, "buyer": str, "seller": str, "amount": int}
         """
-        from artifacts.CadenciaEscrowClient import CadenciaEscrowClient  # type: ignore[import-untyped]
+        from artifacts.CadenciaEscrowClient import (
+            CadenciaEscrowClient,  # type: ignore[import-untyped]
+        )
 
         client = CadenciaEscrowClient(
             app_id=app_id,
@@ -547,6 +551,7 @@ class AlgorandGateway:
         context.md §12: backend NEVER handles private keys for user wallets.
         """
         import base64
+
         from algosdk import abi
 
         method = abi.Method.from_signature("fund(pay)void")
@@ -583,7 +588,7 @@ class AlgorandGateway:
         context.md §12: backend NEVER sees private keys.
         """
         import base64
-        from algosdk import transaction
+
 
         algod = self._get_pera_algod_client()
 
@@ -713,8 +718,9 @@ class AlgorandGateway:
         Returns app_id, app_address, tx_id, confirmed_round.
         """
         import base64
-        from algosdk import transaction
+
         import algosdk.logic as logic
+        from algosdk import transaction
 
         algod = self._get_pera_algod_client()
 
@@ -764,6 +770,7 @@ class AlgorandGateway:
         The frontend builds the ApplicationCallTxn locally using algosdk v3.
         """
         import base64
+
         from algosdk import abi
 
         method = abi.Method.from_signature("release(string)void")
@@ -794,6 +801,7 @@ class AlgorandGateway:
         The frontend builds the ApplicationCallTxn locally using algosdk v3.
         """
         import base64
+
         from algosdk import abi
 
         method = abi.Method.from_signature("refund(string)void")
@@ -822,6 +830,7 @@ class AlgorandGateway:
         Returns tx_id, confirmed_round.
         """
         import base64
+
         from algosdk import transaction
 
         algod = self._get_pera_algod_client()

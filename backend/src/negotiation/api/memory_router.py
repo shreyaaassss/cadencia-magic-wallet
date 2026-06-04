@@ -59,6 +59,7 @@ class MemoryStatsResponse(BaseModel):
 async def get_personalization_service():
     """Construct PersonalizationService with S3Vault and DB session."""
     import os
+
     from src.negotiation.application.personalization_service import PersonalizationService
     from src.negotiation.infrastructure.s3_vault import S3Vault
 
@@ -72,6 +73,7 @@ async def get_personalization_service():
 async def get_s3_vault():
     """Construct S3Vault from environment configuration."""
     import os
+
     from src.negotiation.infrastructure.s3_vault import S3Vault
 
     return S3Vault(
@@ -263,8 +265,8 @@ async def list_negotiation_records(
     if product_category:
         filters["product_category"] = product_category
 
-    from src.shared.infrastructure.db.session import get_session_factory
     from src.negotiation.infrastructure.repositories import PostgresNegotiationRecordRepository
+    from src.shared.infrastructure.db.session import get_session_factory
 
     async with get_session_factory()() as db_session:
         repo = PostgresNegotiationRecordRepository(db_session)
@@ -309,8 +311,8 @@ async def get_negotiation_record(
     """
     _check_tenant_access(user, enterprise_id)
 
-    from src.shared.infrastructure.db.session import get_session_factory
     from src.negotiation.infrastructure.repositories import PostgresNegotiationRecordRepository
+    from src.shared.infrastructure.db.session import get_session_factory
 
     async with get_session_factory()() as db_session:
         repo = PostgresNegotiationRecordRepository(db_session)
@@ -369,9 +371,10 @@ async def search_negotiation_records(
     _check_tenant_access(user, enterprise_id)
 
     import os as _os
-    from src.shared.infrastructure.db.session import get_session_factory
-    from src.negotiation.infrastructure.repositories import PostgresNegotiationRecordRepository
+
     from src.negotiation.infrastructure.embedding_pipeline import GeminiEmbedder, StubEmbedder
+    from src.negotiation.infrastructure.repositories import PostgresNegotiationRecordRepository
+    from src.shared.infrastructure.db.session import get_session_factory
 
     if _os.environ.get("GEMINI_API_KEY"):
         embedding_svc = GeminiEmbedder()
@@ -421,8 +424,8 @@ async def get_negotiation_insights(
     """
     _check_tenant_access(user, enterprise_id)
 
-    from src.shared.infrastructure.db.session import get_session_factory
     from src.negotiation.infrastructure.repositories import PostgresNegotiationInsightRepository
+    from src.shared.infrastructure.db.session import get_session_factory
 
     async with get_session_factory()() as db_session:
         repo = PostgresNegotiationInsightRepository(db_session)
@@ -464,6 +467,7 @@ async def get_negotiation_stats(
     _check_tenant_access(user, enterprise_id)
 
     from sqlalchemy import text as _text
+
     from src.shared.infrastructure.db.session import get_session_factory
 
     async with get_session_factory()() as db_session:
@@ -506,12 +510,12 @@ async def recompute_negotiation_insights(
     """
     _check_tenant_access(user, enterprise_id)
 
-    from src.shared.infrastructure.db.session import get_session_factory
-    from src.negotiation.infrastructure.repositories import (
-        PostgresNegotiationRecordRepository,
-        PostgresNegotiationInsightRepository,
-    )
     from src.negotiation.application.insight_engine import InsightEngine
+    from src.negotiation.infrastructure.repositories import (
+        PostgresNegotiationInsightRepository,
+        PostgresNegotiationRecordRepository,
+    )
+    from src.shared.infrastructure.db.session import get_session_factory
 
     async with get_session_factory()() as db_session:
         record_repo = PostgresNegotiationRecordRepository(db_session)

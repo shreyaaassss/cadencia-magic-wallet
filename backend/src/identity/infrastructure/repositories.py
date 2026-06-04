@@ -8,22 +8,21 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.shared.domain.exceptions import NotFoundError
-from src.shared.infrastructure.logging import get_logger
 
 from src.identity.domain.enterprise import Enterprise, KYCStatus, TradeRole
 from src.identity.domain.user import User, UserRole
 from src.identity.domain.value_objects import (
+    GSTIN,
+    PAN,
     AlgorandAddress,
     Email,
-    GSTIN,
     HashedPassword,
-    PAN,
 )
 from src.identity.infrastructure.models import APIKeyModel, EnterpriseModel, UserModel
+from src.shared.domain.exceptions import NotFoundError
+from src.shared.infrastructure.logging import get_logger
 
 log = get_logger(__name__)
 

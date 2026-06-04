@@ -10,10 +10,6 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
-from src.shared.api.responses import ApiResponse, success_response
-from src.shared.infrastructure.logging import get_logger
-from src.identity.api.dependencies import get_current_user, rate_limit, require_role
-from src.identity.domain.user import User
 from src.compliance.api.dependencies import ComplianceServiceDep, get_compliance_service
 from src.compliance.api.schemas import (
     AuditChainVerifyResponse,
@@ -38,6 +34,10 @@ from src.compliance.application.queries import (
     GetGSTRecordQuery,
     VerifyAuditChainQuery,
 )
+from src.identity.api.dependencies import get_current_user, rate_limit, require_role
+from src.identity.domain.user import User
+from src.shared.api.responses import ApiResponse, success_response
+from src.shared.infrastructure.logging import get_logger
 
 log = get_logger(__name__)
 

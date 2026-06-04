@@ -7,10 +7,7 @@ context.md §4.2: Treasury bounded context API schemas.
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import BaseModel, Field
-
 
 # ── Response Schemas ──────────────────────────────────────────────────────────
 

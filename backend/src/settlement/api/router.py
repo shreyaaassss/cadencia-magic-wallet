@@ -10,23 +10,18 @@ import algosdk.mnemonic as algo_mnemonic  # type: ignore[import-untyped]
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
 
-from src.shared.api.responses import ApiResponse, success_response
-from src.shared.infrastructure.logging import get_logger
 from src.identity.api.dependencies import (
     get_current_user,
     rate_limit,
     require_role,
 )
 from src.identity.domain.user import User
-from src.settlement.api.dependencies import get_settlement_service, SettlementServiceDep
+from src.settlement.api.dependencies import SettlementServiceDep, get_settlement_service
 from src.settlement.api.schemas import (
     DeployEscrowRequest,
     DeployEscrowResponse,
     EscrowResponse,
-    FreezeEscrowRequest,
     FundEscrowRequest,
-    RefundEscrowRequest,
-    ReleaseEscrowRequest,
     SettlementResponse,
 )
 from src.settlement.application.commands import (
@@ -37,13 +32,14 @@ from src.settlement.application.commands import (
     RefundEscrowCommand,
     RejectEscrowCommand,
     ReleaseEscrowCommand,
-    UnfreezeEscrowCommand,
 )
 from src.settlement.application.queries import (
     GetEscrowByIdQuery,
     GetEscrowQuery,
     GetSettlementsQuery,
 )
+from src.shared.api.responses import ApiResponse, success_response
+from src.shared.infrastructure.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -84,8 +80,8 @@ async def list_escrows(
     if ent_ids:
         try:
             from sqlalchemy import select as sa_select
+
             from src.identity.infrastructure.models import EnterpriseModel
-            from src.settlement.infrastructure.models import EscrowContractModel
             result = await svc._uow._session.execute(
                 sa_select(EnterpriseModel.id, EnterpriseModel.name).where(EnterpriseModel.id.in_(ent_ids))
             )
@@ -132,6 +128,7 @@ async def select_deal(
     Creates an escrow in PENDING_APPROVAL state (waiting for seller to accept).
     """
     from fastapi import HTTPException
+
     from src.settlement.application.commands import CreatePendingEscrowCommand
 
     session_id = uuid.UUID(body.session_id)
@@ -140,6 +137,7 @@ async def select_deal(
     try:
         db_session = svc._uow._session
         from sqlalchemy import select as sa_select
+
         from src.negotiation.infrastructure.models import NegotiationSessionModel
         result = await db_session.execute(
             sa_select(NegotiationSessionModel).where(NegotiationSessionModel.id == session_id)
@@ -171,6 +169,7 @@ async def select_deal(
     # Once the buyer picks one deal, the competing sessions are no longer valid.
     try:
         from sqlalchemy import update as sa_update
+
         from src.negotiation.infrastructure.models import NegotiationSessionModel
         await db_session.execute(
             sa_update(NegotiationSessionModel)
@@ -219,10 +218,11 @@ async def seller_approve_escrow(
     smart contract from the platform wallet (APPROVED → DEPLOYED).
     """
     from fastapi import HTTPException
+    from sqlalchemy import select as sql_select
+
+    from src.identity.infrastructure.models import EnterpriseModel
     from src.settlement.application.queries import GetEscrowByIdQuery
     from src.settlement.infrastructure.algorand_gateway import AlgorandGateway
-    from src.identity.infrastructure.models import EnterpriseModel
-    from sqlalchemy import select as sql_select
 
     # 1. Load escrow and verify seller ownership
     escrow = await svc.get_escrow_by_id(
@@ -338,9 +338,10 @@ async def seller_reject_escrow(
     Buyer will see the escrow as rejected and can select a different deal.
     """
     from fastapi import HTTPException
+    from sqlalchemy import select as sql_select
+
     from src.settlement.application.queries import GetEscrowByIdQuery
     from src.settlement.infrastructure.models import EscrowContractModel
-    from sqlalchemy import select as sql_select
 
     # Verify escrow is in PENDING_APPROVAL
     escrow = await svc.get_escrow_by_id(
@@ -392,9 +393,10 @@ async def seller_dispatch_order(
     Sets escrow to DISPATCHED state — buyer must confirm delivery to release funds.
     """
     from fastapi import HTTPException
+    from sqlalchemy import select as sql_select
+
     from src.settlement.application.queries import GetEscrowByIdQuery
     from src.settlement.infrastructure.models import EscrowContractModel
-    from sqlalchemy import select as sql_select
 
     escrow = await svc.get_escrow_by_id(
         GetEscrowByIdQuery(escrow_id=escrow_id, requesting_enterprise_id=current_user.enterprise_id)
@@ -439,10 +441,11 @@ async def buyer_confirm_delivery(
     Platform wallet automatically releases escrow funds to seller's wallet.
     """
     from fastapi import HTTPException
+    from sqlalchemy import select as sql_select
+
     from src.settlement.application.queries import GetEscrowByIdQuery
     from src.settlement.infrastructure.algorand_gateway import AlgorandGateway
     from src.settlement.infrastructure.models import EscrowContractModel
-    from sqlalchemy import select as sql_select
 
     escrow = await svc.get_escrow_by_id(
         GetEscrowByIdQuery(escrow_id=escrow_id, requesting_enterprise_id=current_user.enterprise_id)
@@ -748,10 +751,10 @@ async def platform_deploy_escrow(
       4. Persists APPROVED → DEPLOYED transition
     """
     from fastapi import HTTPException
+
+    from src.identity.infrastructure.models import EnterpriseModel
     from src.settlement.application.queries import GetEscrowQuery
     from src.settlement.infrastructure.algorand_gateway import AlgorandGateway
-    from src.identity.infrastructure.models import EnterpriseModel
-    from sqlalchemy import select
 
     # 1. Get escrow by session_id
     escrow = await svc.get_escrow(
@@ -779,8 +782,9 @@ async def platform_deploy_escrow(
     # If addresses not on escrow, look up from enterprise profiles
     if not buyer_address or not seller_address:
         try:
-            from src.settlement.infrastructure.models import EscrowContractModel
             from sqlalchemy import select as sql_select
+
+            from src.settlement.infrastructure.models import EscrowContractModel
 
             # Get enterprise IDs from escrow model
             stmt = sql_select(EscrowContractModel).where(
@@ -884,10 +888,11 @@ async def platform_fund_escrow(
     Fund the escrow smart contract server-side using the platform wallet.
     The buyer's already-linked wallet is used for identification only.
     """
+    from algosdk.logic import get_application_address
     from fastapi import HTTPException
+
     from src.settlement.application.queries import GetEscrowByIdQuery
     from src.settlement.infrastructure.algorand_gateway import AlgorandGateway
-    from algosdk.logic import get_application_address
 
     escrow = await svc.get_escrow_by_id(
         GetEscrowByIdQuery(
@@ -965,6 +970,7 @@ async def platform_release_escrow(
     Computes Merkle root from audit trail and anchors on-chain.
     """
     from fastapi import HTTPException
+
     from src.settlement.application.queries import GetEscrowByIdQuery
     from src.settlement.infrastructure.algorand_gateway import AlgorandGateway
 
@@ -1001,9 +1007,10 @@ async def platform_release_escrow(
         )
 
     # Look up seller wallet — prefer the address snapshotted at deploy time.
-    from src.settlement.infrastructure.models import EscrowContractModel
-    from src.identity.infrastructure.models import EnterpriseModel
     from sqlalchemy import select as sql_select
+
+    from src.identity.infrastructure.models import EnterpriseModel
+    from src.settlement.infrastructure.models import EscrowContractModel
 
     seller_address = ""
     escrow_row = await svc._uow._session.execute(
@@ -1270,6 +1277,7 @@ async def build_fund_transaction(
     context.md §12: backend NEVER handles user private keys.
     """
     from fastapi import HTTPException
+
     from src.settlement.application.queries import GetEscrowByIdQuery
 
     # Get escrow details
@@ -1335,6 +1343,7 @@ async def submit_signed_fund(
     context.md §12: backend NEVER sees private keys.
     """
     from fastapi import HTTPException
+
     from src.settlement.application.queries import GetEscrowByIdQuery
 
     # Validate escrow state
@@ -1353,6 +1362,7 @@ async def submit_signed_fund(
 
     # Verify signed tx sender matches escrow buyer / enterprise linked wallet
     import base64
+
     from algosdk import encoding
 
     # Build set of allowed sender addresses (all as plain strings)
@@ -1498,8 +1508,8 @@ async def submit_signed_deploy(
     No JWT required — the Algorand wallet signature is the authentication.
     """
     from fastapi import HTTPException
+
     from src.settlement.infrastructure.algorand_gateway import AlgorandGateway
-    from src.settlement.application.commands import DeployEscrowCommand
 
     gateway = AlgorandGateway()
 
@@ -1581,6 +1591,7 @@ async def build_release_transaction(
 ) -> ApiResponse[BuildReleaseTxnResponse]:
     """Build unsigned release transaction. Computes merkle root from audit trail."""
     from fastapi import HTTPException
+
     from src.settlement.application.queries import GetEscrowByIdQuery
 
     escrow = await svc.get_escrow_by_id(
@@ -1664,6 +1675,7 @@ async def build_refund_transaction(
 ) -> ApiResponse[BuildFundTxnResponse]:
     """Build unsigned refund transaction."""
     from fastapi import HTTPException
+
     from src.settlement.application.queries import GetEscrowByIdQuery
 
     escrow = await svc.get_escrow_by_id(

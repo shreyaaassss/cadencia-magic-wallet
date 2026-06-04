@@ -99,8 +99,6 @@ def register_phase_two_handlers(publisher: EventPublisher) -> None:
 
 def _build_compliance_service(session: object) -> object:
     """Construct ComplianceService with all concrete adapters for a given session."""
-    from src.shared.infrastructure.merkle_service import MerkleService
-    from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
     from src.compliance.application.services import ComplianceService
     from src.compliance.infrastructure.enterprise_reader import PostgresEnterpriseReader
     from src.compliance.infrastructure.fema_gst_exporter import FEMAGSTExporter
@@ -110,6 +108,8 @@ def _build_compliance_service(session: object) -> object:
         PostgresFEMARepository,
         PostgresGSTRepository,
     )
+    from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
+    from src.shared.infrastructure.merkle_service import MerkleService
     return ComplianceService(
         audit_repo=PostgresAuditLogRepository(session),  # type: ignore[arg-type]
         fema_repo=PostgresFEMARepository(session),  # type: ignore[arg-type]
@@ -141,8 +141,8 @@ async def handle_escrow_funded_compliance(event: object) -> None:
     }
 
     try:
-        from src.shared.infrastructure.db.session import get_session_factory
         from src.compliance.application.commands import AppendAuditEventCommand
+        from src.shared.infrastructure.db.session import get_session_factory
         async with get_session_factory()() as session:
             svc = _build_compliance_service(session)
             await svc.append_audit_event(  # type: ignore[union-attr]
@@ -186,11 +186,11 @@ async def handle_escrow_released_compliance(event: object) -> None:
     }
 
     try:
-        from src.shared.infrastructure.db.session import get_session_factory
         from src.compliance.application.commands import (
             AppendAuditEventCommand,
             GenerateComplianceRecordsCommand,
         )
+        from src.shared.infrastructure.db.session import get_session_factory
         async with get_session_factory()() as session:
             svc = _build_compliance_service(session)
             # 1. Append audit entry
@@ -240,8 +240,8 @@ async def handle_escrow_refunded_compliance(event: object) -> None:
     }
 
     try:
-        from src.shared.infrastructure.db.session import get_session_factory
         from src.compliance.application.commands import AppendAuditEventCommand
+        from src.shared.infrastructure.db.session import get_session_factory
         async with get_session_factory()() as session:
             svc = _build_compliance_service(session)
             await svc.append_audit_event(  # type: ignore[union-attr]
@@ -276,8 +276,8 @@ async def handle_escrow_frozen_compliance(event: object) -> None:
     }
 
     try:
-        from src.shared.infrastructure.db.session import get_session_factory
         from src.compliance.application.commands import AppendAuditEventCommand
+        from src.shared.infrastructure.db.session import get_session_factory
         async with get_session_factory()() as session:
             svc = _build_compliance_service(session)
             await svc.append_audit_event(  # type: ignore[union-attr]
@@ -313,8 +313,8 @@ async def handle_escrow_deployed_compliance(event: object) -> None:
     }
 
     try:
-        from src.shared.infrastructure.db.session import get_session_factory
         from src.compliance.application.commands import AppendAuditEventCommand
+        from src.shared.infrastructure.db.session import get_session_factory
         async with get_session_factory()() as session:
             svc = _build_compliance_service(session)
             await svc.append_audit_event(  # type: ignore[union-attr]
@@ -360,10 +360,10 @@ def register_phase_three_handlers(publisher: EventPublisher) -> None:
 
     # ── Subscribe HMAC-signed webhook notifiers for all settlement events ─────
     from src.shared.infrastructure.webhook_notifier import (
-        notify_escrow_funded,
-        notify_escrow_released,
-        notify_escrow_refunded,
         notify_escrow_frozen,
+        notify_escrow_funded,
+        notify_escrow_refunded,
+        notify_escrow_released,
     )
     publisher.subscribe("EscrowFunded", notify_escrow_funded)
     publisher.subscribe("EscrowReleased", notify_escrow_released)
@@ -430,17 +430,17 @@ async def handle_session_agreed_deploy(event: object) -> None:
 
     # ── Build SettlementService and create pending escrow ──────────────────
     try:
-        from src.shared.infrastructure.db.session import get_session_factory
-        from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
-        from src.shared.infrastructure.events.publisher import get_publisher
-        from src.shared.infrastructure.merkle_service import MerkleService
-        from src.settlement.application.services import SettlementService
         from src.settlement.application.commands import CreatePendingEscrowCommand
+        from src.settlement.application.services import SettlementService
         from src.settlement.infrastructure.algorand_gateway import AlgorandGateway
         from src.settlement.infrastructure.repositories import (
             PostgresEscrowRepository,
             PostgresSettlementRepository,
         )
+        from src.shared.infrastructure.db.session import get_session_factory
+        from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
+        from src.shared.infrastructure.events.publisher import get_publisher
+        from src.shared.infrastructure.merkle_service import MerkleService
 
         async with get_session_factory()() as db_session:
             svc = SettlementService(
@@ -487,8 +487,8 @@ async def handle_session_agreed_audit(event: object) -> None:
     }
 
     try:
-        from src.shared.infrastructure.db.session import get_session_factory
         from src.compliance.application.commands import AppendAuditEventCommand
+        from src.shared.infrastructure.db.session import get_session_factory
         async with get_session_factory()() as session:
             svc = _build_compliance_service(session)
             await svc.append_audit_event(  # type: ignore[union-attr]
@@ -559,11 +559,11 @@ async def handle_session_agreed_confirm_rfq(event: object) -> None:
         return
 
     try:
-        from src.shared.infrastructure.db.session import get_session_factory
         from src.marketplace.infrastructure.repositories import (
-            PostgresRFQRepository,
             PostgresMatchRepository,
+            PostgresRFQRepository,
         )
+        from src.shared.infrastructure.db.session import get_session_factory
 
         async with get_session_factory()() as db_session:
             rfq_repo = PostgresRFQRepository(db_session)
@@ -629,10 +629,11 @@ async def handle_escrow_released_settle_rfq(event: object) -> None:
         return
 
     try:
-        from src.shared.infrastructure.db.session import get_session_factory
+        from sqlalchemy import select as sa_select
+
         from src.marketplace.infrastructure.repositories import PostgresRFQRepository
         from src.negotiation.infrastructure.models import NegotiationSessionModel
-        from sqlalchemy import select as sa_select
+        from src.shared.infrastructure.db.session import get_session_factory
 
         async with get_session_factory()() as db_session:
             # Look up rfq_id from the negotiation session
@@ -747,11 +748,8 @@ async def handle_rfq_confirmed(event: object) -> None:
     )
 
     try:
-        from src.shared.infrastructure.db.session import get_session_factory
-        from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
-        from src.shared.infrastructure.events.publisher import get_publisher
-        from src.negotiation.application.services import NegotiationService
         from src.negotiation.application.commands import CreateSessionCommand
+        from src.negotiation.application.services import NegotiationService
         from src.negotiation.infrastructure.llm_agent_driver import get_agent_driver
         from src.negotiation.infrastructure.neutral_engine import NeutralEngine
         from src.negotiation.infrastructure.personalization import PersonalizationBuilder
@@ -763,6 +761,9 @@ async def handle_rfq_confirmed(event: object) -> None:
             PostgresPlaybookRepository,
             PostgresSessionRepository,
         )
+        from src.shared.infrastructure.db.session import get_session_factory
+        from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
+        from src.shared.infrastructure.events.publisher import get_publisher
 
         async with get_session_factory()() as db_session:
             session_repo = PostgresSessionRepository(db_session)
@@ -864,11 +865,13 @@ async def handle_enterprise_registered_create_profile(event: object) -> None:
     await asyncio.sleep(0.5)  # Wait for parent transaction to commit
 
     try:
-        from src.shared.infrastructure.db.session import get_session_factory
+        import uuid as uuid_mod
+
+        from sqlalchemy import select as sa_select
+
         from src.identity.infrastructure.models import EnterpriseModel
         from src.marketplace.infrastructure.models import CapabilityProfileModel
-        from sqlalchemy import select as sa_select
-        import uuid as uuid_mod
+        from src.shared.infrastructure.db.session import get_session_factory
 
         async with get_session_factory()() as session:
             # Read enterprise data
@@ -933,12 +936,10 @@ async def handle_enterprise_registered_create_profile(event: object) -> None:
             )
 
             # Trigger background embedding generation
-            from src.marketplace.infrastructure.repositories import (
-                PostgresCapabilityProfileRepository,
-            )
-            from src.marketplace.infrastructure.rfq_parser import get_document_parser
-            from src.marketplace.infrastructure.models import CatalogueItemModel
             from sqlalchemy import select as _sa_select
+
+            from src.marketplace.infrastructure.models import CatalogueItemModel
+            from src.marketplace.infrastructure.rfq_parser import get_document_parser
 
             parser = get_document_parser()
             text_parts = [
@@ -1044,9 +1045,10 @@ async def handle_session_completed_normalize(event: object) -> None:
     # SessionFailed doesn't carry enterprise IDs — look them up from the session
     if not buyer_enterprise_id or not seller_enterprise_id:
         try:
-            from src.shared.infrastructure.db.session import get_session_factory
-            from src.negotiation.infrastructure.models import NegotiationSessionModel
             from sqlalchemy import select as _select
+
+            from src.negotiation.infrastructure.models import NegotiationSessionModel
+            from src.shared.infrastructure.db.session import get_session_factory
             async with get_session_factory()() as _s:
                 res = await _s.execute(
                     _select(
@@ -1069,12 +1071,12 @@ async def handle_session_completed_normalize(event: object) -> None:
         return
 
     try:
-        from src.shared.infrastructure.db.session import get_session_factory
+        from src.negotiation.application.normalization_service import NormalizationService
         from src.negotiation.infrastructure.repositories import (
             PostgresNegotiationRecordRepository,
             PostgresSessionRepository,
         )
-        from src.negotiation.application.normalization_service import NormalizationService
+        from src.shared.infrastructure.db.session import get_session_factory
 
         async with get_session_factory()() as db_session:
             session_repo = PostgresSessionRepository(db_session)
@@ -1153,12 +1155,12 @@ async def handle_session_completed_compute_insights(event: object) -> None:
         return
 
     try:
-        from src.shared.infrastructure.db.session import get_session_factory
-        from src.negotiation.infrastructure.repositories import (
-            PostgresNegotiationRecordRepository,
-            PostgresNegotiationInsightRepository,
-        )
         from src.negotiation.application.insight_engine import InsightEngine
+        from src.negotiation.infrastructure.repositories import (
+            PostgresNegotiationInsightRepository,
+            PostgresNegotiationRecordRepository,
+        )
+        from src.shared.infrastructure.db.session import get_session_factory
 
         async with get_session_factory()() as db_session:
             record_repo = PostgresNegotiationRecordRepository(db_session)

@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from enum import Enum
 
 import httpx
-import structlog
 
 from src.shared.domain.exceptions import DomainError
 from src.shared.infrastructure.logging import get_logger

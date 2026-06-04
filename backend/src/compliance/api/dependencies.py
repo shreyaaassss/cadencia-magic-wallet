@@ -6,9 +6,6 @@ from __future__ import annotations
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.shared.infrastructure.db.session import get_db_session
-from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
-from src.shared.infrastructure.merkle_service import MerkleService
 from src.compliance.application.services import ComplianceService
 from src.compliance.infrastructure.enterprise_reader import PostgresEnterpriseReader
 from src.compliance.infrastructure.fema_gst_exporter import FEMAGSTExporter
@@ -18,6 +15,9 @@ from src.compliance.infrastructure.repositories import (
     PostgresFEMARepository,
     PostgresGSTRepository,
 )
+from src.shared.infrastructure.db.session import get_db_session
+from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
+from src.shared.infrastructure.merkle_service import MerkleService
 
 
 def get_compliance_service(

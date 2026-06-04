@@ -38,9 +38,7 @@ from src.negotiation.domain.opponent_model import (
 from src.negotiation.domain.playbook import IndustryPlaybook
 from src.negotiation.domain.policies import NegotiationPolicy
 from src.negotiation.domain.session import (
-    CONVERGENCE_TOLERANCE,
     NegotiationSession,
-    SessionStatus,
 )
 from src.negotiation.domain.strategy import (
     StrategyEngine,
@@ -1396,8 +1394,6 @@ class NeutralEngine:
         Returns None if no useful delivery data is available.
         """
         try:
-            from src.marketplace.infrastructure.models import MatchModel, RFQModel
-            from sqlalchemy import select as sa_select
 
             # We don't have the db_session directly on NeutralEngine.
             # The logistics context is built from data already in rfq_parsed_fields

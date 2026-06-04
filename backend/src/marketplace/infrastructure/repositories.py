@@ -9,13 +9,13 @@ from decimal import Decimal
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.identity.infrastructure.models import EnterpriseModel
 from src.marketplace.domain.capability_profile import CapabilityProfile
 from src.marketplace.domain.match import Match
 from src.marketplace.domain.rfq import RFQ
 from src.marketplace.domain.value_objects import (
     BudgetRange,
     HSNCode,
-    MatchStatus,
     RFQStatus,
     SimilarityScore,
 )
@@ -24,8 +24,6 @@ from src.marketplace.infrastructure.models import (
     MatchModel,
     RFQModel,
 )
-from src.identity.infrastructure.models import EnterpriseModel
-
 
 # ── Domain ↔ ORM Mapping Helpers ─────────────────────────────────────────────
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import time
 import uuid
-from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select, text

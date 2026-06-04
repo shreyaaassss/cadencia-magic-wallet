@@ -6,8 +6,6 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 
-from src.shared.domain.events import DomainEvent
-
 # Re-export events defined alongside their aggregates.
 from src.settlement.domain.escrow import (  # noqa: F401
     EscrowDeployed,
@@ -17,6 +15,7 @@ from src.settlement.domain.escrow import (  # noqa: F401
     EscrowReleased,
     EscrowUnfrozen,
 )
+from src.shared.domain.events import DomainEvent
 
 
 @dataclass(frozen=True)

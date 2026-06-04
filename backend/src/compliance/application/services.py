@@ -9,9 +9,6 @@ from decimal import Decimal
 
 import structlog
 
-from src.shared.domain.exceptions import NotFoundError
-from src.shared.domain.protocols import IEnterpriseReader, IMerkleService
-from src.shared.infrastructure.db.uow import AbstractUnitOfWork
 from src.compliance.application.commands import (
     AppendAuditEventCommand,
     GenerateComplianceRecordsCommand,
@@ -37,6 +34,9 @@ from src.compliance.domain.ports import (
     IGSTRepository,
 )
 from src.compliance.domain.value_objects import GENESIS_HASH
+from src.shared.domain.exceptions import NotFoundError
+from src.shared.domain.protocols import IEnterpriseReader, IMerkleService
+from src.shared.infrastructure.db.uow import AbstractUnitOfWork
 
 log = structlog.get_logger(__name__)
 

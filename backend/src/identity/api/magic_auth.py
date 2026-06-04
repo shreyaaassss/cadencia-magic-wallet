@@ -11,18 +11,16 @@ from __future__ import annotations
 
 import os
 import secrets
-import uuid
 from decimal import Decimal
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 
-from src.shared.api.responses import ApiResponse, success_response
-from src.shared.infrastructure.logging import get_logger
 from src.identity.api.dependencies import get_identity_service
 from src.identity.api.router import _set_refresh_cookie
 from src.identity.application.services import IdentityService
+from src.shared.api.responses import ApiResponse, success_response
+from src.shared.infrastructure.logging import get_logger
 
 log = get_logger(__name__)
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
@@ -160,6 +158,7 @@ async def magic_register(
     magic_address = body.algo_address.strip()  # Use address from frontend directly
 
     from decimal import Decimal
+
     from src.identity.application.commands import RegisterEnterpriseCommand
 
     ent = body.enterprise
@@ -256,8 +255,8 @@ async def web3_challenge() -> ApiResponse[Web3ChallengeResponse]:
     Generates a challenge nonce that the user signs with their external wallet
     (Pera/Defly/Lute) to prove ownership.
     """
-    from src.shared.infrastructure.cache.redis_client import get_redis_instance
     from src.identity.infrastructure.wallet_verifier import WalletVerifier
+    from src.shared.infrastructure.cache.redis_client import get_redis_instance
 
     redis = await get_redis_instance()
     verifier = WalletVerifier(redis=redis)
@@ -294,8 +293,8 @@ async def web3_login(
     2. Find user by linked wallet address
     3. Return Cadencia JWT
     """
-    from src.shared.infrastructure.cache.redis_client import get_redis_instance
     from src.identity.infrastructure.wallet_verifier import WalletVerifier
+    from src.shared.infrastructure.cache.redis_client import get_redis_instance
 
     redis = await get_redis_instance()
     verifier = WalletVerifier(redis=redis)
@@ -348,8 +347,8 @@ async def web3_register(
     3. Link wallet address to enterprise
     4. Return Cadencia JWT
     """
-    from src.shared.infrastructure.cache.redis_client import get_redis_instance
     from src.identity.infrastructure.wallet_verifier import WalletVerifier
+    from src.shared.infrastructure.cache.redis_client import get_redis_instance
 
     redis = await get_redis_instance()
     verifier = WalletVerifier(redis=redis)

@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field, field_serializer
 from src.settlement.domain.escrow import Escrow
 from src.settlement.domain.settlement import Settlement
 
-
 # ── Response Schemas ──────────────────────────────────────────────────────────
 
 

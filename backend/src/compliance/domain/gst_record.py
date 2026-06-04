@@ -10,8 +10,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Literal
 
-from src.shared.domain.base_entity import BaseEntity
 from src.compliance.domain.value_objects import GSTIN, HSNCode, INRAmount
+from src.shared.domain.base_entity import BaseEntity
 
 
 def _utcnow() -> datetime:

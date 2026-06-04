@@ -10,9 +10,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 
-from src.shared.domain.base_entity import BaseEntity
-from src.shared.domain.events import DomainEvent
-from src.shared.domain.exceptions import ConflictError, PolicyViolation
 from src.settlement.domain.value_objects import (
     AlgoAppAddress,
     AlgoAppId,
@@ -21,6 +18,9 @@ from src.settlement.domain.value_objects import (
     MicroAlgo,
     TxId,
 )
+from src.shared.domain.base_entity import BaseEntity
+from src.shared.domain.events import DomainEvent
+from src.shared.domain.exceptions import ConflictError, PolicyViolation
 
 
 def _utcnow() -> datetime:

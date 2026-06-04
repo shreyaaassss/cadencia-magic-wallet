@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from src.shared.domain.base_value_object import BaseValueObject
 from src.shared.domain.exceptions import ValidationError

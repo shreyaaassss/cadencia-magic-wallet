@@ -10,9 +10,9 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from src.compliance.domain.value_objects import GENESIS_HASH, HashValue, SequenceNumber
 from src.shared.domain.base_entity import BaseEntity
 from src.shared.domain.events import DomainEvent
-from src.compliance.domain.value_objects import GENESIS_HASH, HashValue, SequenceNumber
 
 
 def _utcnow() -> datetime:

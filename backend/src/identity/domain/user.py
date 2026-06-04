@@ -7,10 +7,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 
+from src.identity.domain.value_objects import Email, HashedPassword
 from src.shared.domain.base_entity import BaseEntity
 from src.shared.domain.events import DomainEvent
 from src.shared.domain.exceptions import PolicyViolation
-from src.identity.domain.value_objects import Email, HashedPassword
 
 
 class UserRole(str, Enum):
