@@ -26,25 +26,25 @@ depends_on = None
 
 def upgrade() -> None:
     # --- Issue #13: Add CLOSED_BY_BUYER to session status CHECK ---
-    op.drop_constraint(
-        "ck_negotiation_sessions_status", "negotiation_sessions", type_="check"
-    )
-    op.create_check_constraint(
-        "ck_negotiation_sessions_status",
-        "negotiation_sessions",
-        "status IN ('ACTIVE','AGREED','FAILED','EXPIRED','HUMAN_REVIEW',"
+    # Use raw SQL because the actual constraint name in DB is
+    # 'ck_negotiation_sessions_status' (not auto-prefixed).
+    op.execute("ALTER TABLE negotiation_sessions DROP CONSTRAINT IF EXISTS ck_negotiation_sessions_status")
+    op.execute(
+        "ALTER TABLE negotiation_sessions ADD CONSTRAINT ck_negotiation_sessions_status "
+        "CHECK (status IN ('ACTIVE','AGREED','FAILED','EXPIRED','HUMAN_REVIEW',"
         "'INIT','SELLER_ANCHOR','BUYER_RESPONSE',"
         "'BUYER_ANCHOR','SELLER_RESPONSE','ROUND_LOOP',"
-        "'WALK_AWAY','STALLED','TIMEOUT','POLICY_BREACH','CLOSED_BY_BUYER')",
+        "'WALK_AWAY','STALLED','TIMEOUT','POLICY_BREACH','CLOSED_BY_BUYER'))"
     )
 
     # --- Issue #14: Add PARSE_FAILED + EXPIRED to RFQ status + parse_error column ---
-    op.drop_constraint("ck_rfqs_status", "rfqs", type_="check")
-    op.create_check_constraint(
-        "ck_rfqs_status",
-        "rfqs",
-        "status IN ('DRAFT','PARSE_FAILED','PARSED','MATCHED',"
-        "'NEGOTIATING','CONFIRMED','SETTLED','EXPIRED')",
+    # DB has doubled prefix: 'ck_rfqs_ck_rfqs_status'
+    op.execute("ALTER TABLE rfqs DROP CONSTRAINT IF EXISTS ck_rfqs_status")
+    op.execute("ALTER TABLE rfqs DROP CONSTRAINT IF EXISTS ck_rfqs_ck_rfqs_status")
+    op.execute(
+        "ALTER TABLE rfqs ADD CONSTRAINT ck_rfqs_status "
+        "CHECK (status IN ('DRAFT','PARSE_FAILED','PARSED','MATCHED',"
+        "'NEGOTIATING','CONFIRMED','SETTLED','EXPIRED'))"
     )
     op.add_column("rfqs", sa.Column("parse_error", sa.Text(), nullable=True))
 
@@ -72,22 +72,18 @@ def downgrade() -> None:
 
     # Issue #14
     op.drop_column("rfqs", "parse_error")
-    op.drop_constraint("ck_rfqs_status", "rfqs", type_="check")
-    op.create_check_constraint(
-        "ck_rfqs_status",
-        "rfqs",
-        "status IN ('DRAFT','PARSED','MATCHED','NEGOTIATING','CONFIRMED','SETTLED')",
+    op.execute("ALTER TABLE rfqs DROP CONSTRAINT IF EXISTS ck_rfqs_status")
+    op.execute(
+        "ALTER TABLE rfqs ADD CONSTRAINT ck_rfqs_status "
+        "CHECK (status IN ('DRAFT','PARSED','MATCHED','NEGOTIATING','CONFIRMED','SETTLED'))"
     )
 
     # Issue #13
-    op.drop_constraint(
-        "ck_negotiation_sessions_status", "negotiation_sessions", type_="check"
-    )
-    op.create_check_constraint(
-        "ck_negotiation_sessions_status",
-        "negotiation_sessions",
-        "status IN ('ACTIVE','AGREED','FAILED','EXPIRED','HUMAN_REVIEW',"
+    op.execute("ALTER TABLE negotiation_sessions DROP CONSTRAINT IF EXISTS ck_negotiation_sessions_status")
+    op.execute(
+        "ALTER TABLE negotiation_sessions ADD CONSTRAINT ck_negotiation_sessions_status "
+        "CHECK (status IN ('ACTIVE','AGREED','FAILED','EXPIRED','HUMAN_REVIEW',"
         "'INIT','SELLER_ANCHOR','BUYER_RESPONSE',"
         "'BUYER_ANCHOR','SELLER_RESPONSE','ROUND_LOOP',"
-        "'WALK_AWAY','STALLED','TIMEOUT','POLICY_BREACH')",
+        "'WALK_AWAY','STALLED','TIMEOUT','POLICY_BREACH'))"
     )
