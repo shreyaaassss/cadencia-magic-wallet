@@ -18,6 +18,12 @@ class UploadRFQRequest(BaseModel):
     document_type: str = Field(default="free_text")
 
 
+class RFQEditRequest(BaseModel):
+    """PUT /rfq/:id — edit an RFQ in DRAFT/PARSED/PARSE_FAILED status."""
+    raw_text: str | None = None
+    parsed_overrides: dict | None = None  # {product_name, quantity, quantity_unit, budget_min, budget_max}
+
+
 class ConfirmRFQRequest(BaseModel):
     """POST /rfq/:id/confirm — frontend sends seller_enterprise_id, not match_id."""
     seller_enterprise_id: str    # UUID as string — matches what frontend sends

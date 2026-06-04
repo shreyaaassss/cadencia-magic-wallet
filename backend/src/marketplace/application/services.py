@@ -25,7 +25,7 @@ from src.marketplace.domain.events import (
 from src.marketplace.domain.match import Match
 from src.marketplace.domain.rfq import RFQ
 from src.marketplace.domain.value_objects import SimilarityScore
-from src.shared.domain.exceptions import AuthorizationError, NotFoundError
+from src.shared.domain.exceptions import AuthorizationError, NotFoundError, PolicyViolation
 from src.shared.infrastructure.logging import get_logger
 from src.shared.infrastructure.metrics import RFQ_UPLOADS_TOTAL
 
@@ -143,7 +143,13 @@ class MarketplaceService:
                     parsed = await fallback.extract_rfq_fields(rfq.raw_document or "")
                 if not parsed:
                     log.warning("rfq_extraction_empty", rfq_id=str(rfq_id))
-                    return  # Stay DRAFT — no fields extracted
+                    rfq.mark_parse_failed(
+                        "Could not extract product, quantity, or budget from your RFQ. "
+                        "Please fill in the details manually or rephrase your request."
+                    )
+                    await rfq_repo.update(rfq)
+                    await session.commit()
+                    return
 
                 from src.marketplace.infrastructure.rfq_parser import (
                     build_parsed_variants,
@@ -572,6 +578,10 @@ class MarketplaceService:
         if rfq.buyer_enterprise_id != cmd.buyer_enterprise_id:
             raise AuthorizationError("Only the buyer can confirm an RFQ.")
 
+        # Self-dealing guard at match confirmation
+        if cmd.buyer_enterprise_id == cmd.seller_enterprise_id:
+            raise PolicyViolation("Cannot confirm a match with your own enterprise")
+
         # Resolve match from seller_enterprise_id
         match = await self._match_repo.get_match_by_seller(
             rfq_id=cmd.rfq_id,
@@ -586,13 +596,40 @@ class MarketplaceService:
 
         # Reject all other matches for this RFQ
         all_matches = await self._match_repo.list_by_rfq(rfq.id)
+        rejected_match_ids = []
         for m in all_matches:
             if m.id != match.id and m.status.value == "PENDING":
                 m.reject()
                 await self._match_repo.update(m)
+                rejected_match_ids.append(m.id)
 
         await self._rfq_repo.update(rfq)
         await self._match_repo.update(match)
+
+        # Close negotiation sessions for rejected matches (CLOSED_BY_BUYER)
+        if rejected_match_ids:
+            from src.negotiation.infrastructure.models import NegotiationSessionModel
+            from sqlalchemy import select, and_
+            from sqlalchemy.sql import func as sql_func
+            from src.shared.infrastructure.db.session import get_session_factory
+            async with get_session_factory()() as db_session:
+                other_sessions_stmt = select(NegotiationSessionModel).where(
+                    and_(
+                        NegotiationSessionModel.rfq_id == rfq.id,
+                        NegotiationSessionModel.match_id != match.id,
+                        NegotiationSessionModel.status.notin_([
+                            'AGREED', 'WALK_AWAY', 'TIMEOUT', 'POLICY_BREACH',
+                            'FAILED', 'EXPIRED', 'CLOSED_BY_BUYER',
+                        ]),
+                    )
+                )
+                result = await db_session.execute(other_sessions_stmt)
+                other_sessions = result.scalars().all()
+                for s in other_sessions:
+                    s.status = "CLOSED_BY_BUYER"
+                    s.completed_at = sql_func.now()
+                    log.info("session_closed_by_buyer", session_id=str(s.id), rfq_id=str(rfq.id))
+                await db_session.commit()
 
         # Create negotiation session SYNCHRONOUSLY to avoid session_id mismatch
         session_id = await self._create_negotiation_session_sync(
@@ -649,6 +686,10 @@ class MarketplaceService:
         # Create negotiation sessions for ALL matches
         session_ids = []
         for match in pending_matches:
+            # Skip self-matches (enterprise cannot negotiate with itself)
+            if match.seller_enterprise_id == rfq.buyer_enterprise_id:
+                log.warning("skipping_self_match", rfq_id=str(rfq.id), enterprise_id=str(match.seller_enterprise_id))
+                continue
             try:
                 session_id = await self._create_negotiation_session_sync(
                     match_id=match.id,

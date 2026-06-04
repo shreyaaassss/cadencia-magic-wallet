@@ -9,6 +9,7 @@ export const ROUTES = {
   DASHBOARD: '/dashboard',
   SETTINGS: '/settings',
   WALLET: '/settings/wallet',
+  PAYMENT_HISTORY: '/settings/payments',
   MARKETPLACE: '/marketplace',
   SELLER_PROFILE: '/marketplace/profile',
   NEGOTIATIONS: '/negotiations',

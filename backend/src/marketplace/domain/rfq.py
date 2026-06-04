@@ -34,6 +34,14 @@ class RFQ(BaseEntity):
     expires_at: datetime | None = None
     embedding: list[float] | None = None
     all_products: list | None = None  # All product names from multi-product RFQ
+    parse_error: str | None = None
+
+    def mark_parse_failed(self, error_message: str) -> dict:
+        """Transition: DRAFT → PARSE_FAILED when parsing fails entirely."""
+        self.status = RFQStatus.PARSE_FAILED
+        self.parse_error = error_message
+        self.touch()
+        return {"rfq_id": self.id, "error": error_message}
 
     def mark_parsed(self, parsed_fields: dict) -> dict:
         """

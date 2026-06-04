@@ -45,7 +45,7 @@ class NegotiationSessionModel(Base):
             "status IN ('ACTIVE','AGREED','FAILED','EXPIRED','HUMAN_REVIEW',"
             "'INIT','SELLER_ANCHOR','BUYER_RESPONSE',"
             "'BUYER_ANCHOR','SELLER_RESPONSE','ROUND_LOOP',"
-            "'WALK_AWAY','STALLED','TIMEOUT','POLICY_BREACH')",
+            "'WALK_AWAY','STALLED','TIMEOUT','POLICY_BREACH','CLOSED_BY_BUYER')",
             name="ck_negotiation_sessions_status",
         ),
     )

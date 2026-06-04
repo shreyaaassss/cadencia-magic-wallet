@@ -26,7 +26,7 @@ from src.negotiation.domain.offer import Offer, ProposerRole
 from src.negotiation.domain.session import NegotiationSession, SessionStatus
 from src.negotiation.domain.value_objects import OfferValue, RiskProfile, StrategyWeights
 from src.negotiation.infrastructure.llm_agent_driver import LLMExhaustedException
-from src.shared.domain.exceptions import ConflictError, NotFoundError
+from src.shared.domain.exceptions import ConflictError, NotFoundError, PolicyViolation
 from src.shared.infrastructure.metrics import (
     ACTIVE_SESSIONS,
     NEGOTIATION_ROUNDS_TOTAL,
@@ -91,6 +91,10 @@ class NegotiationService:
         existing = await self.session_repo.get_by_match_id(cmd.match_id)  # type: ignore[union-attr]
         if existing:
             raise ConflictError(f"Session already exists for match_id {cmd.match_id}")
+
+        # Self-dealing guard — enterprise cannot negotiate with itself
+        if cmd.buyer_enterprise_id == cmd.seller_enterprise_id:
+            raise PolicyViolation("Self-dealing is not permitted: buyer and seller are the same enterprise")
 
         # Load or create default agent profiles
         buyer_profile = await self.profile_repo.get_by_enterprise(cmd.buyer_enterprise_id)  # type: ignore[union-attr]

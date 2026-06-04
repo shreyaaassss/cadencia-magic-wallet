@@ -70,6 +70,9 @@ class EnterpriseModel(Base):
     )
     trade_role: Mapped[str] = mapped_column(String(10), nullable=False)
     algorand_wallet: Mapped[str | None] = mapped_column(String(58), nullable=True)
+    algorand_wallet_changed_at: Mapped[str | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     kyc_documents: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     agent_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # Enhanced onboarding fields

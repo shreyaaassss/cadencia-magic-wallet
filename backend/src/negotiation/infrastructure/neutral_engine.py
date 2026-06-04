@@ -783,18 +783,12 @@ class NeutralEngine:
                 if b_price and s_price:
                     gap_pct = abs(s_price - b_price) / min(b_price, s_price) * 100
 
-                    # ZOPA-MIDPOINT FIX: settle at a weighted midpoint instead
-                    # of always max(b,s) = seller's floor.
-                    #
-                    # Weighting rationale (anchoring theory):
-                    #   - Seller opened first (ANCHOR) → gets 60% weight
-                    #   - Buyer's concession pressure → gets 40% weight
-                    #   - Net: settlement = 60% seller + 40% buyer
-                    #
+                    # ZOPA-MIDPOINT: settle at a neutral 50/50 midpoint.
+                    # Both buyer and seller get equal weight in the final price.
                     # Guardrail: result must be >= seller's true reservation
                     # (from ZOPA cache) so the seller never loses money.
                     weighted = (
-                        s_price * Decimal("0.60") + b_price * Decimal("0.40")
+                        s_price * Decimal("0.50") + b_price * Decimal("0.50")
                     ).quantize(Decimal("0.01"))
 
                     # Apply true floor guardrail from ZOPA cache
@@ -809,7 +803,7 @@ class NeutralEngine:
                     reasoning = (
                         f"Prices converged — deal reached at "
                         f"\u20b9{float(final_price):,.0f} "
-                        f"(ZOPA-weighted: 60% seller anchor + 40% buyer pressure). "
+                        f"(neutral 50/50 midpoint). "
                         f"Gap closed to {float(gap_pct):.1f}% (within 2% threshold)."
                     )
 

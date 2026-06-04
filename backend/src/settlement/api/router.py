@@ -273,7 +273,9 @@ async def seller_approve_escrow(
     if not buyer_address:
         buyer_address = gateway._creator_address or ""
 
-    amount_microalgo = escrow.amount.value.value if hasattr(escrow.amount, 'value') else 100_000
+    if not hasattr(escrow.amount, 'value') or not escrow.amount.value.value:
+        raise HTTPException(status_code=400, detail="Escrow amount not set. Ensure create_pending_escrow completed successfully.")
+    amount_microalgo = escrow.amount.value.value
 
     try:
         blockchain_result = await gateway.deploy_escrow(
@@ -484,7 +486,9 @@ async def buyer_confirm_delivery(
         raise HTTPException(status_code=400, detail="Seller has no linked Algorand wallet. Seller must link their wallet before funds can be released.")
 
     merkle_root = await svc.compute_merkle_root(escrow_id)
-    amount_microalgo = escrow.amount.value.value if hasattr(escrow.amount, 'value') else 100_000
+    if not hasattr(escrow.amount, 'value') or not escrow.amount.value.value:
+        raise HTTPException(status_code=400, detail="Escrow amount not set. Ensure create_pending_escrow completed successfully.")
+    amount_microalgo = escrow.amount.value.value
 
     blockchain_result = await gateway.release_escrow_to_seller(
         app_id=app_id,
@@ -808,7 +812,9 @@ async def platform_deploy_escrow(
     # 3. Deploy using platform wallet
     gateway = AlgorandGateway()
 
-    amount_microalgo = escrow.amount.value.value if hasattr(escrow.amount, 'value') else 100_000
+    if not hasattr(escrow.amount, 'value') or not escrow.amount.value.value:
+        raise HTTPException(status_code=400, detail="Escrow amount not set. Ensure create_pending_escrow completed successfully.")
+    amount_microalgo = escrow.amount.value.value
 
     # Use platform creator address as fallback for buyer/seller if not found
     if not buyer_address:
@@ -1022,7 +1028,9 @@ async def platform_release_escrow(
 
     # Compute merkle root
     merkle_root = await svc.compute_merkle_root(escrow_id)
-    amount_microalgo = escrow.amount.value.value if hasattr(escrow.amount, 'value') else 100_000
+    if not hasattr(escrow.amount, 'value') or not escrow.amount.value.value:
+        raise HTTPException(status_code=400, detail="Escrow amount not set. Ensure create_pending_escrow completed successfully.")
+    amount_microalgo = escrow.amount.value.value
 
     blockchain_result = await gateway.release_escrow_to_seller(
         app_id=app_id,

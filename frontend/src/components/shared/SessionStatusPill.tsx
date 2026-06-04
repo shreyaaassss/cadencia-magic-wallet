@@ -50,6 +50,11 @@ const statusConfig: Record<SessionStatus, { label: string; className: string; do
     className: 'bg-[#41454d] text-white border-[#41454d]',
     dotClass: 'bg-gray-300',
   },
+  CLOSED_BY_BUYER: {
+    label: 'Buyer Selected Other',
+    className: 'bg-[#6b7280] text-white border-[#6b7280]',
+    dotClass: 'bg-gray-300',
+  },
 };
 
 export function SessionStatusPill({ status, currentRound, maxRounds }: SessionStatusPillProps) {

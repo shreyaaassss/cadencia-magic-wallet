@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Plus, Pencil, Trash2, Package } from 'lucide-react';
+import { Loader2, Plus, Pencil, Trash2, Package, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { AppShell } from '@/components/layout/AppShell';
@@ -61,6 +61,19 @@ export default function CataloguePage() {
     queryFn: () => api.get('/v1/marketplace/catalogue?active_only=false').then(r => r.data.data || []),
   });
 
+  const { data: profile } = useQuery<{ min_order_value: number }>({
+    queryKey: ['capability-profile'],
+    queryFn: () => api.get('/v1/marketplace/capability-profile').then(r => r.data.data),
+  });
+
+  // Check for profile-catalogue inconsistency: items whose MOQ * price < profile min_order_value
+  const inconsistentItems = React.useMemo(() => {
+    if (!profile?.min_order_value || items.length === 0) return [];
+    return items.filter(
+      (item) => item.is_active && item.moq * item.price_per_unit_inr < profile.min_order_value,
+    );
+  }, [items, profile]);
+
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/v1/marketplace/catalogue/${id}`),
     onSuccess: () => {
@@ -83,6 +96,19 @@ export default function CataloguePage() {
               <Plus className="h-4 w-4 mr-1.5" /> Add Product
             </Button>
           </div>
+
+          {inconsistentItems.length > 0 && profile && (
+            <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-500/40 dark:bg-amber-950/30">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                <span className="font-semibold">Profile-Catalogue Inconsistency:</span>{' '}
+                {inconsistentItems.length} item{inconsistentItems.length > 1 ? 's' : ''} have MOQ
+                value below your profile minimum order value of{' '}
+                {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(profile.min_order_value)}.
+                This may reduce your match quality.
+              </p>
+            </div>
+          )}
 
           {showForm && (
             <CatalogueForm

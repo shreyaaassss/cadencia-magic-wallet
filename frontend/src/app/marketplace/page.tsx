@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, RotateCcw, FileText, ChevronDown, Zap, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, RotateCcw, FileText, ChevronDown, Zap, Loader2, AlertCircle, Pencil, AlertTriangle } from 'lucide-react';
 
 import { AppShell } from '@/components/layout/AppShell';
 import { SectionHeader } from '@/components/shared/SectionHeader';
@@ -24,7 +24,7 @@ import { useFetchWithAlgorandPayment } from '@/lib/x402-algorand-client';
 import { useWalletContext } from '@/context/WalletContext';
 import type { RFQ, SellerMatch } from '@/types';
 
-const STATUS_OPTIONS = ['All', 'DRAFT', 'PARSED', 'MATCHED', 'NEGOTIATING', 'CONFIRMED'] as const;
+const STATUS_OPTIONS = ['All', 'DRAFT', 'PARSE_FAILED', 'PARSED', 'MATCHED', 'NEGOTIATING', 'CONFIRMED'] as const;
 
 export default function MarketplacePage() {
   const router = useRouter();
@@ -67,6 +67,13 @@ export default function MarketplacePage() {
       setAnalyticsLoading(false);
     }
   }, [selectedRfqId, fetchWithPayment]);
+
+  // ─── Market Overview ────────────────────────────────────────────────────────
+  const { data: marketOverview } = useQuery<any>({
+    queryKey: ['market-overview'],
+    queryFn: () => api.get('/v1/marketplace/market-overview').then(r => r.data.data),
+    staleTime: 60_000,
+  });
 
   // ─── Fetch all RFQs from API ───────────────────────────────────────────────
   const { data: allRfqs = [], isLoading: rfqsLoading } = useQuery<RFQ[]>({
@@ -112,7 +119,7 @@ export default function MarketplacePage() {
 
   // ─── Polling for DRAFT/PARSED RFQs ────────────────────────────────────────
   React.useEffect(() => {
-    const hasPendingRfqs = allRfqs.some(r => ['DRAFT', 'PARSED'].includes(r.status));
+    const hasPendingRfqs = allRfqs.some(r => ['DRAFT', 'PARSED', 'PARSE_FAILED'].includes(r.status));
     if (!hasPendingRfqs) return;
 
     const interval = setInterval(() => {
@@ -176,6 +183,24 @@ export default function MarketplacePage() {
     },
   });
 
+  // ─── Retry parsing for PARSE_FAILED RFQs ──────────────────────────────────
+  const retryParseMutation = useMutation({
+    mutationFn: async (rfqId: string) => {
+      const rfq = allRfqs.find(r => r.id === rfqId);
+      const res = await api.put(`/v1/marketplace/rfq/${rfqId}`, {
+        raw_text: rfq?.raw_text,
+      });
+      return res.data.data;
+    },
+    onSuccess: (_data, rfqId) => {
+      toast.success(`Retrying parse for RFQ #${rfqId}`);
+      queryClient.invalidateQueries({ queryKey: ['rfqs'] });
+    },
+    onError: () => {
+      toast.error('Failed to retry parsing');
+    },
+  });
+
   // ─── Row click handler ─────────────────────────────────────────────────────
   const handleRowClick = (rfq: RFQ) => {
     setSelectedRfqId(rfq.id);
@@ -192,16 +217,56 @@ export default function MarketplacePage() {
 
   // ─── Detail content (reused in desktop panel and mobile sheet) ─────────────
   const detailContent = selectedRfq ? (
-    <RfqDetailPanel
-      rfq={selectedRfq}
-      matches={matches}
-      matchesLoading={matchesLoading}
-      negotiations={negotiations}
-      onStartNegotiations={() => startNegotiationsMutation.mutate()}
-      isStartingNegotiations={startNegotiationsMutation.isPending}
-      onAcceptDeal={(match) => confirmMutation.mutate(match)}
-      isAcceptingDeal={confirmMutation.isPending}
-    />
+    <div className="space-y-4">
+      {/* PARSE_FAILED warning */}
+      {selectedRfq.status === 'PARSE_FAILED' && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30 p-4">
+          <div className="flex items-start gap-2 mb-2">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">Parsing failed</p>
+          </div>
+          {selectedRfq.parse_error && (
+            <p className="text-xs text-amber-700 dark:text-amber-400 mb-3 ml-6">
+              {selectedRfq.parse_error}
+            </p>
+          )}
+          <div className="flex gap-2 ml-6">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-amber-400 text-amber-800 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-300 dark:hover:bg-amber-900/50"
+              disabled={retryParseMutation.isPending}
+              onClick={() => retryParseMutation.mutate(selectedRfq.id)}
+            >
+              {retryParseMutation.isPending ? (
+                <><Loader2 className="h-3 w-3 animate-spin mr-1" />Retrying...</>
+              ) : (
+                <><RotateCcw className="h-3 w-3 mr-1" />Retry Parsing</>
+              )}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-amber-400 text-amber-800 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-300 dark:hover:bg-amber-900/50"
+              onClick={() => toast.info('Manual entry — coming soon')}
+            >
+              <Pencil className="h-3 w-3 mr-1" />Fill In Manually
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <RfqDetailPanel
+        rfq={selectedRfq}
+        matches={matches}
+        matchesLoading={matchesLoading}
+        negotiations={negotiations}
+        onStartNegotiations={() => startNegotiationsMutation.mutate()}
+        isStartingNegotiations={startNegotiationsMutation.isPending}
+        onAcceptDeal={(match) => confirmMutation.mutate(match)}
+        isAcceptingDeal={confirmMutation.isPending}
+      />
+    </div>
   ) : (
     <div className="flex items-center justify-center h-full py-16">
       <p className="text-sm text-muted-foreground">Select an RFQ to view details</p>
@@ -211,6 +276,37 @@ export default function MarketplacePage() {
   return (
     <AppShell>
       <div className="p-6">
+
+        {/* Market Overview */}
+        {marketOverview && (
+          <div className="bg-card border border-border rounded-lg p-6 mb-6">
+            <h3 className="text-base font-semibold text-foreground mb-4">Market Overview</h3>
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-primary">{marketOverview.total_sellers}</p>
+                <p className="text-xs text-muted-foreground">Active Sellers</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-emerald-600">{marketOverview.total_products}</p>
+                <p className="text-xs text-muted-foreground">Products Listed</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-violet-600">{marketOverview.industries?.length ?? 0}</p>
+                <p className="text-xs text-muted-foreground">Industries</p>
+              </div>
+            </div>
+            {marketOverview.industries?.length > 0 && (
+              <div className="space-y-1.5 border-t border-border pt-3">
+                {marketOverview.industries.slice(0, 5).map((ind: any) => (
+                  <div key={ind.name} className="flex justify-between text-sm">
+                    <span className="text-foreground">{ind.name}</span>
+                    <span className="text-muted-foreground">{ind.seller_count} seller{ind.seller_count !== 1 ? 's' : ''}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Section 1: New RFQ Form */}
         <div className="bg-card border border-border rounded-lg p-6 mb-8">
@@ -303,6 +399,28 @@ export default function MarketplacePage() {
                   label: 'Created',
                   sortable: true,
                   render: (v) => <span className="text-muted-foreground text-xs">{formatDate(String(v))}</span>,
+                },
+                {
+                  key: '_actions' as any,
+                  label: '',
+                  render: (_v, row) => {
+                    const rfq = row as RFQ;
+                    if (!['DRAFT', 'PARSED', 'PARSE_FAILED'].includes(rfq.status)) return null;
+                    return (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-muted-foreground hover:text-foreground"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toast.info('Edit RFQ — coming soon');
+                        }}
+                        title="Edit RFQ"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    );
+                  },
                 },
               ]}
               data={pagedRfqs}

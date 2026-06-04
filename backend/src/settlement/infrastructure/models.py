@@ -97,6 +97,10 @@ class EscrowContractModel(Base):
     agreed_price_inr: Mapped[float | None] = mapped_column(nullable=True)
     buyer_enterprise_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     seller_enterprise_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Approval timeout — escrow auto-rejects if not approved within deadline
+    approval_deadline: Mapped[str | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     settlements: Mapped[list[SettlementModel]] = relationship(
         "SettlementModel", back_populates="escrow"

@@ -84,6 +84,22 @@ class SettlementService:
         self._publisher = event_publisher
         self._uow = uow
 
+    # ── Ownership helper ─────────────────────────────────────────────────────
+
+    async def _get_escrow_enterprise_ids(self, escrow_id) -> tuple:
+        """Fetch buyer/seller enterprise IDs from the escrow ORM model."""
+        from src.settlement.infrastructure.models import EscrowContractModel
+        from sqlalchemy import select
+        stmt = select(
+            EscrowContractModel.buyer_enterprise_id,
+            EscrowContractModel.seller_enterprise_id,
+        ).where(EscrowContractModel.id == escrow_id)
+        result = await self._uow._session.execute(stmt)
+        row = result.one_or_none()
+        if row is None:
+            return (None, None)
+        return (row[0], row[1])
+
     # ── Create Pending Escrow (PENDING_APPROVAL) ──────────────────────────────
 
     async def create_pending_escrow(self, cmd: CreatePendingEscrowCommand) -> dict:
@@ -104,6 +120,11 @@ class SettlementService:
                 "escrow_id": existing.id,
                 "status": existing.status.value,
             }
+
+        # Self-dealing guard at escrow level
+        if cmd.buyer_enterprise_id and cmd.seller_enterprise_id:
+            if cmd.buyer_enterprise_id == cmd.seller_enterprise_id:
+                raise PolicyViolation("Self-dealing is not permitted: buyer and seller are the same enterprise")
 
         # INR → microALGO conversion (testnet-safe: keep all amounts under 1 ALGO)
         # Uses a tiny multiplier so even large INR values map to < 1_000_000 µALGO
@@ -136,6 +157,8 @@ class SettlementService:
             # Also persist enterprise IDs and INR price on the model
             from src.settlement.infrastructure.models import EscrowContractModel
             from sqlalchemy import update
+            from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+            approval_deadline = _dt.now(tz=_tz.utc) + _td(hours=72)
             stmt = (
                 update(EscrowContractModel)
                 .where(EscrowContractModel.id == escrow.id)
@@ -143,6 +166,7 @@ class SettlementService:
                     buyer_enterprise_id=cmd.buyer_enterprise_id,
                     seller_enterprise_id=cmd.seller_enterprise_id,
                     agreed_price_inr=cmd.agreed_price_inr,
+                    approval_deadline=approval_deadline,
                 )
             )
             await self._uow._session.execute(stmt)  # type: ignore[union-attr]
@@ -413,6 +437,11 @@ class SettlementService:
         if escrow is None:
             raise NotFoundError("Escrow", cmd.escrow_id)
 
+        # Ownership check — only the buyer's enterprise can release funds
+        buyer_eid, _seller_eid = await self._get_escrow_enterprise_ids(cmd.escrow_id)
+        if buyer_eid and cmd.requesting_enterprise_id != buyer_eid:
+            raise AuthorizationError("Only the buyer enterprise can release escrow funds")
+
         if escrow.algo_app_id is None:
             raise PolicyViolation(
                 f"Escrow {cmd.escrow_id} has no deployed app — cannot release."
@@ -488,6 +517,13 @@ class SettlementService:
         if escrow is None:
             raise NotFoundError("Escrow", cmd.escrow_id)
 
+        # Ownership check — only buyer or seller of this escrow can request refund
+        buyer_eid, seller_eid = await self._get_escrow_enterprise_ids(cmd.escrow_id)
+        if buyer_eid and seller_eid:
+            is_party = cmd.requesting_enterprise_id in (buyer_eid, seller_eid)
+            if not is_party:
+                raise AuthorizationError("Only the buyer or seller enterprise can request a refund")
+
         if escrow.algo_app_id is None:
             raise PolicyViolation(
                 f"Escrow {cmd.escrow_id} has no deployed app — cannot refund."
@@ -541,6 +577,13 @@ class SettlementService:
         escrow = await self._escrow_repo.get_by_id(cmd.escrow_id)
         if escrow is None:
             raise NotFoundError("Escrow", cmd.escrow_id)
+
+        # Ownership check — only buyer or seller of this escrow can freeze
+        buyer_eid, seller_eid = await self._get_escrow_enterprise_ids(cmd.escrow_id)
+        if buyer_eid and seller_eid:
+            is_party = cmd.requesting_enterprise_id in (buyer_eid, seller_eid)
+            if not is_party:
+                raise AuthorizationError("Only buyer/seller of this escrow can freeze it")
 
         if escrow.algo_app_id is None:
             raise PolicyViolation(

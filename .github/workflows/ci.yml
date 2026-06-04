@@ -34,8 +34,7 @@ jobs:
           pip install -e ".[dev]" || pip install fastapi uvicorn pydantic sqlalchemy asyncpg alembic redis structlog py-algorand-sdk algokit-utils PyNaCl python-jose passlib bcrypt cryptography httpx prometheus-client prometheus-fastapi-instrumentator openai groq magic-admin python-dotenv
 
       - name: Lint with Ruff
-        run: pip install ruff && ruff check src/ --output-format=github || true
-        continue-on-error: true
+        run: pip install ruff && ruff check src/ --output-format=github
 
       - name: Run unit tests
         run: python -m pytest tests/unit/ -x --tb=short -q 2>/dev/null || echo "No unit tests found — skipping"

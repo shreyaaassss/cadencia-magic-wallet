@@ -166,7 +166,7 @@ export default function NegotiationRoomPage() {
   const latestRound = offers.length > 0 ? offers[offers.length - 1].round_number : (session?.round_count ?? 0);
   const maxRounds = 20;
   const isActive = sessionStatus === 'ACTIVE';
-  const isEnded = ['AGREED','FAILED','TIMEOUT','WALK_AWAY','POLICY_BREACH','TERMINATED'].includes(sessionStatus);
+  const isEnded = ['AGREED','FAILED','TIMEOUT','WALK_AWAY','POLICY_BREACH','TERMINATED','CLOSED_BY_BUYER'].includes(sessionStatus);
 
   const isYouBuyer = session?.buyer_enterprise_id === enterpriseId;
   const yourRole = isYouBuyer ? 'Buyer' : 'Seller';
@@ -176,6 +176,7 @@ export default function NegotiationRoomPage() {
     ACTIVE: 'Active', AGREED: 'Agreed', FAILED: 'Not Selected',
     WALK_AWAY: 'Not Selected', TIMEOUT: 'Timed Out',
     POLICY_BREACH: 'Policy Breach', TERMINATED: 'Terminated',
+    CLOSED_BY_BUYER: 'Buyer Selected Other',
   };
 
   return (
@@ -548,13 +549,15 @@ export default function NegotiationRoomPage() {
           </div>
         )}
 
-        {(sessionStatus === 'FAILED' || sessionStatus === 'WALK_AWAY') && (
+        {(sessionStatus === 'FAILED' || sessionStatus === 'WALK_AWAY' || sessionStatus === 'CLOSED_BY_BUYER') && (
           <div className="nego-banner nego-banner-error">
-            <XCircle className="h-4 w-4 shrink-0 mt-0.5" style={{ color: '#aa2d00' }} />
+            <XCircle className="h-4 w-4 shrink-0 mt-0.5" style={{ color: sessionStatus === 'CLOSED_BY_BUYER' ? '#6b7280' : '#aa2d00' }} />
             <div>
-              <p className="nego-banner-title">Not selected</p>
+              <p className="nego-banner-title">{sessionStatus === 'CLOSED_BY_BUYER' ? 'Buyer selected other' : 'Not selected'}</p>
               <p className="nego-banner-desc">
-                Another seller was chosen for this order. This negotiation has been closed.
+                {sessionStatus === 'CLOSED_BY_BUYER'
+                  ? 'The buyer selected a different seller for this order. This negotiation has been closed.'
+                  : 'Another seller was chosen for this order. This negotiation has been closed.'}
               </p>
             </div>
           </div>

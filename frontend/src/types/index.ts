@@ -77,13 +77,14 @@ export interface OptedInApp {
 
 // ─── RFQ & Marketplace ─────────────────────────────────────────────────────
 
-export type RFQStatus = 'DRAFT' | 'PARSING' | 'PARSED' | 'MATCHED' | 'NEGOTIATING' | 'CONFIRMED' | 'REJECTED';
+export type RFQStatus = 'DRAFT' | 'PARSING' | 'PARSED' | 'PARSE_FAILED' | 'MATCHED' | 'NEGOTIATING' | 'CONFIRMED' | 'REJECTED';
 
 export interface RFQ {
   id: string;
   raw_text: string;
   status: RFQStatus;
   parsed_fields: Record<string, string> | null;
+  parse_error?: string | null;
   created_at: string;
 }
 
@@ -121,7 +122,8 @@ export type SessionStatus =
   | 'TIMEOUT'
   | 'POLICY_BREACH'
   | 'FAILED'
-  | 'TERMINATED';
+  | 'TERMINATED'
+  | 'CLOSED_BY_BUYER';
 
 export interface NegotiationSession {
   session_id: string;
@@ -143,6 +145,7 @@ export interface NegotiationSession {
   deal_quality_score?: Record<string, unknown> | null;
   product_context?: {
     product?: string;
+    product_name?: string;
     quantity?: number;
     budget_max?: number;
     budget_min?: number;

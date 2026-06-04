@@ -67,6 +67,7 @@ class SessionStatus(str, Enum):
     STALLED = "STALLED"
     TIMEOUT = "TIMEOUT"
     POLICY_BREACH = "POLICY_BREACH"
+    CLOSED_BY_BUYER = "CLOSED_BY_BUYER"  # Buyer selected another supplier
 
     # === Legacy/Compat States ===
     ACTIVE = "ACTIVE"
@@ -104,6 +105,7 @@ _TERMINAL_STATES = {
     SessionStatus.POLICY_BREACH,
     SessionStatus.FAILED,
     SessionStatus.EXPIRED,
+    SessionStatus.CLOSED_BY_BUYER,
 }
 
 
@@ -315,6 +317,22 @@ class NegotiationSession(BaseEntity):
             event_type="SessionFailed",
             session_id=self.id,
             reason=f"WALK_AWAY: {reason}",
+            round_count=self.round_count.value,
+        )
+
+    def mark_closed_by_buyer(self) -> "SessionFailed | None":
+        """Buyer selected another supplier — close this session gracefully."""
+        if self.status.is_terminal:
+            return None  # Already terminal, no-op
+        from src.negotiation.domain.events import SessionFailed
+        self.status = SessionStatus.CLOSED_BY_BUYER
+        self.completed_at = _utcnow()
+        self.touch()
+        return SessionFailed(
+            aggregate_id=self.id,
+            event_type="SessionFailed",
+            session_id=self.id,
+            reason="CLOSED_BY_BUYER: Buyer selected another supplier",
             round_count=self.round_count.value,
         )
 

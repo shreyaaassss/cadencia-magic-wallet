@@ -216,6 +216,73 @@ async def get_rfq_matches(
     )
 
 
+# ── PUT /v1/marketplace/rfq/{rfq_id} — Edit RFQ ─────────────────────────────
+
+
+@router.put(
+    "/rfq/{rfq_id}",
+    response_model=ApiResponse[dict],
+    summary="Edit an RFQ (DRAFT, PARSED, or PARSE_FAILED only)",
+)
+async def edit_rfq(
+    rfq_id: uuid.UUID,
+    payload: "RFQEditRequest",
+    current_user: User = Depends(get_current_buyer),
+    svc: MarketplaceService = Depends(_get_marketplace_service),
+):
+    from src.marketplace.api.schemas import RFQEditRequest as _RFQEditRequest
+    import asyncio
+    from src.marketplace.domain.value_objects import RFQStatus
+
+    rfq = await svc.get_rfq(rfq_id)
+    if rfq is None:
+        raise HTTPException(status_code=404, detail="RFQ not found")
+    if rfq.buyer_enterprise_id != current_user.enterprise_id:
+        raise HTTPException(status_code=403, detail="Only the buyer can edit their RFQ")
+
+    editable_statuses = {"DRAFT", "PARSED", "PARSE_FAILED"}
+    if rfq.status.value not in editable_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"RFQ in '{rfq.status.value}' status cannot be edited. Only {editable_statuses} are editable.",
+        )
+
+    # Update raw text if provided
+    if payload.raw_text is not None:
+        rfq.raw_document = payload.raw_text
+
+    # Apply manual field overrides
+    if payload.parsed_overrides:
+        existing_parsed = rfq.parsed_fields or {}
+        existing_parsed.update(payload.parsed_overrides)
+        rfq.parsed_fields = existing_parsed
+        if rfq.status == RFQStatus.PARSE_FAILED:
+            rfq.status = RFQStatus.PARSED
+            rfq.parse_error = None
+
+    # Reset to DRAFT if raw_document changed (needs re-parse)
+    if payload.raw_text is not None:
+        rfq.status = RFQStatus.DRAFT
+        rfq.parse_error = None
+
+    from src.marketplace.infrastructure.repositories import PostgresRFQRepository
+    from src.shared.infrastructure.db.session import get_session_factory
+    async with get_session_factory()() as db_session:
+        rfq_repo = PostgresRFQRepository(db_session)
+        await rfq_repo.update(rfq)
+        await db_session.commit()
+
+    # Re-trigger parsing if raw document changed
+    if payload.raw_text is not None:
+        asyncio.create_task(svc._parse_and_match_standalone(rfq_id))
+
+    return success_response({
+        "rfq_id": str(rfq.id),
+        "status": rfq.status.value,
+        "message": "RFQ updated" + (" — re-parsing triggered" if payload.raw_text else ""),
+    })
+
+
 # ── POST /v1/marketplace/rfq/{rfq_id}/start-negotiations ────────────────────
 
 
@@ -319,6 +386,71 @@ async def list_incoming_rfqs(
         offset=offset,
     )
     return success_response([IncomingRFQResponse(**r) for r in results])
+
+
+# ── GET /v1/marketplace/market-overview ────────────────────────────────────
+
+
+@router.get(
+    "/market-overview",
+    response_model=ApiResponse[dict],
+    summary="Anonymized market overview — industry/seller counts",
+)
+async def market_overview(
+    current_user: User = Depends(get_current_user),
+    session=Depends(get_db_session),
+):
+    """Return anonymized, aggregated market data for buyer orientation."""
+    from src.identity.infrastructure.models import EnterpriseModel
+    from sqlalchemy import func, and_
+
+    # Count sellers by industry
+    industry_stmt = (
+        select(
+            SellerCapacityProfileModel.industry_vertical,
+            func.count(func.distinct(SellerCapacityProfileModel.enterprise_id)).label("seller_count"),
+        )
+        .where(SellerCapacityProfileModel.industry_vertical.isnot(None))
+        .group_by(SellerCapacityProfileModel.industry_vertical)
+        .order_by(func.count(func.distinct(SellerCapacityProfileModel.enterprise_id)).desc())
+    )
+    industry_result = await session.execute(industry_stmt)
+    industries = [
+        {"name": row[0], "seller_count": row[1]}
+        for row in industry_result.all()
+    ]
+
+    # Count total active catalogue products
+    product_count_stmt = select(func.count(CatalogueItemModel.id)).where(
+        CatalogueItemModel.is_active == True
+    )
+    product_result = await session.execute(product_count_stmt)
+    total_products = product_result.scalar() or 0
+
+    # Count total sellers
+    seller_count_stmt = select(func.count(EnterpriseModel.id)).where(
+        EnterpriseModel.trade_role.in_(["SELLER", "BOTH"])
+    )
+    seller_result = await session.execute(seller_count_stmt)
+    total_sellers = seller_result.scalar() or 0
+
+    # Top product categories
+    top_cats_stmt = (
+        select(CatalogueItemModel.product_category, func.count().label("cnt"))
+        .where(and_(CatalogueItemModel.is_active == True, CatalogueItemModel.product_category.isnot(None)))
+        .group_by(CatalogueItemModel.product_category)
+        .order_by(func.count().desc())
+        .limit(10)
+    )
+    cat_result = await session.execute(top_cats_stmt)
+    top_categories = [row[0] for row in cat_result.all() if row[0]]
+
+    return success_response({
+        "industries": industries,
+        "total_sellers": total_sellers,
+        "total_products": total_products,
+        "top_categories": top_categories,
+    })
 
 
 # ── GET /v1/marketplace/capability-profile ───────────────────────────────────

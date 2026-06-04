@@ -92,6 +92,7 @@ class SimilarityScore(BaseValueObject):
 
 class RFQStatus(Enum):
     DRAFT = "DRAFT"
+    PARSE_FAILED = "PARSE_FAILED"
     PARSED = "PARSED"
     MATCHED = "MATCHED"
     NEGOTIATING = "NEGOTIATING"

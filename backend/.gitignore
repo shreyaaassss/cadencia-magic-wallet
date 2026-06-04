@@ -16,6 +16,7 @@ env/
 
 # Environment variables — NEVER commit real secrets
 .env
+.env.production
 
 # Testing
 .pytest_cache/

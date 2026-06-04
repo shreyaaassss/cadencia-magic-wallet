@@ -50,11 +50,18 @@ export default function DashboardPage() {
   });
 
   // RFQs — fetch from list endpoint (buyer-only — skip for sellers)
-  const { isBuyer } = useAuth();
+  const { isBuyer, isSeller } = useAuth();
   const { data: rfqs = [], isLoading: rfqsLoading } = useQuery({
     queryKey: ['rfqs'],
     queryFn: () => api.get('/v1/marketplace/rfqs?limit=10').then(r => r.data.data as RFQ[]),
     enabled: isBuyer,
+  });
+
+  // Incoming RFQs for sellers
+  const { data: incomingRfqs = [], isLoading: incomingRfqsLoading } = useQuery({
+    queryKey: ['incoming-rfqs'],
+    queryFn: () => api.get('/v1/marketplace/incoming-rfqs?limit=10').then(r => r.data.data ?? []),
+    enabled: isSeller,
   });
 
   // Sessions — fetch from list endpoint
@@ -387,6 +394,61 @@ export default function DashboardPage() {
           />
           </div>
         </div>
+
+        {/* Section 4b: Seller — Incoming RFQ Matches */}
+        {isSeller && (
+          <div className="mt-6">
+            <SectionHeader
+              title="Incoming RFQ Matches"
+              description="RFQs from buyers matched to your capability profile"
+              action={{ label: 'Update Profile', icon: ArrowRight, onClick: () => router.push('/marketplace/profile') }}
+            />
+            {incomingRfqsLoading ? (
+              <div className="bg-card border border-border rounded-lg p-8 text-center text-muted-foreground text-sm">Loading incoming matches...</div>
+            ) : incomingRfqs.length === 0 ? (
+              <div className="bg-card border border-border rounded-lg p-8 text-center">
+                <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm font-medium text-foreground">No incoming RFQ matches yet</p>
+                <p className="text-xs text-muted-foreground mt-1">Make sure your capability profile and catalogue are up to date to receive matches.</p>
+                <div className="flex gap-3 justify-center mt-4">
+                  <button onClick={() => router.push('/marketplace/profile')} className="text-xs text-primary hover:underline">Update Profile</button>
+                  <button onClick={() => router.push('/marketplace/catalogue')} className="text-xs text-primary hover:underline">Manage Catalogue</button>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-card border border-border rounded-lg overflow-hidden">
+                {incomingRfqs.map((rfq: any, idx: number) => (
+                  <div
+                    key={rfq.match_id}
+                    className={`flex items-center gap-4 px-4 py-3 hover:bg-muted/30 transition-colors cursor-pointer ${idx < incomingRfqs.length - 1 ? 'border-b border-border' : ''}`}
+                    onClick={() => router.push(ROUTES.NEGOTIATIONS)}
+                  >
+                    <div className="bg-muted rounded-md p-2 shrink-0">
+                      <FileText className="h-4 w-4 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {rfq.parsed_fields?.product_name || rfq.parsed_fields?.product || 'Unnamed RFQ'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Qty: {rfq.parsed_fields?.quantity ?? 'N/A'} {rfq.parsed_fields?.quantity_unit ?? ''}
+                        {rfq.parsed_fields?.budget_min && rfq.parsed_fields?.budget_max && (
+                          <> &middot; Budget: {formatCurrency(rfq.parsed_fields.budget_min)} &ndash; {formatCurrency(rfq.parsed_fields.budget_max)}</>
+                        )}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="inline-block px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary font-medium">
+                        {((rfq.similarity_score ?? 0) * 100).toFixed(0)}% match
+                      </span>
+                      <p className="text-xs text-muted-foreground mt-0.5">Rank #{rfq.rank}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Section 5: Recent Activity Feed */}
         {!anyLoading && activityItems.length > 0 && (

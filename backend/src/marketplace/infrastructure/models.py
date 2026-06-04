@@ -48,7 +48,7 @@ class RFQModel(Base):
     __tablename__ = "rfqs"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('DRAFT','PARSED','MATCHED','NEGOTIATING','CONFIRMED','SETTLED')",
+            "status IN ('DRAFT','PARSE_FAILED','PARSED','MATCHED','NEGOTIATING','CONFIRMED','SETTLED','EXPIRED')",
             name="ck_rfqs_status",
         ),
     )
@@ -79,6 +79,7 @@ class RFQModel(Base):
     geography: Mapped[str | None] = mapped_column(String(100), nullable=True)
     parsed_fields: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     all_products: Mapped[list | None] = mapped_column(JSONB, nullable=True)  # All products in multi-product RFQ
+    parse_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     # pgvector 1536-dim embedding (context.md §11)
     embedding: Mapped[list | None] = mapped_column(Vector(1536), nullable=True)
     confirmed_match_id: Mapped[uuid.UUID | None] = mapped_column(

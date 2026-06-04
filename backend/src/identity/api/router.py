@@ -599,6 +599,30 @@ async def link_wallet(
             detail="Wallet ownership verification failed. Invalid signature or expired challenge.",
         )
 
+    # Block wallet change while enterprise has active escrows
+    from src.settlement.infrastructure.models import EscrowContractModel
+    from src.identity.infrastructure.models import EnterpriseModel
+    from sqlalchemy import select, and_
+    from src.shared.infrastructure.db.session import get_session_factory
+    async with get_session_factory()() as db_session:
+        active_escrow_stmt = select(EscrowContractModel.id).where(
+            and_(
+                EscrowContractModel.seller_enterprise_id == enterprise_id,
+                EscrowContractModel.status.in_(['DEPLOYED', 'FUNDED', 'DISPATCHED']),
+            )
+        )
+        active_result = await db_session.execute(active_escrow_stmt)
+        active_count = len(active_result.scalars().all())
+        if active_count > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cannot change wallet while {active_count} escrow(s) are in active state (DEPLOYED/FUNDED/DISPATCHED). Complete or cancel them first.",
+            )
+        # Capture old wallet address for audit
+        ent_stmt = select(EnterpriseModel.algorand_wallet).where(EnterpriseModel.id == enterprise_id)
+        ent_result = await db_session.execute(ent_stmt)
+        old_wallet = ent_result.scalar_one_or_none()
+
     # Link wallet to enterprise via dedicated domain command
     from src.identity.application.commands import LinkWalletCommand
     enterprise = await svc.link_wallet(
@@ -610,9 +634,11 @@ async def link_wallet(
     )
 
     log.info(
-        "wallet_linked",
+        "wallet_address_changed",
         enterprise_id=str(enterprise_id),
-        address=request_body.algorand_address[:8] + "...",
+        old_address=(old_wallet[:8] + "...") if old_wallet else "none",
+        new_address=request_body.algorand_address[:8] + "...",
+        changed_by=str(current_user.id),
     )
     return success_response(EnterpriseResponse.from_domain(enterprise))
 
@@ -628,6 +654,26 @@ async def unlink_wallet(
     current_user: User = Depends(get_current_user),
     svc: IdentityService = Depends(get_identity_service),
 ) -> ApiResponse[WalletUnlinkResponse]:
+    from fastapi import HTTPException
+    from src.settlement.infrastructure.models import EscrowContractModel
+    from sqlalchemy import select, and_
+    from src.shared.infrastructure.db.session import get_session_factory
+
+    # Block unlink during active escrows
+    async with get_session_factory()() as db_session:
+        active_escrow_stmt = select(EscrowContractModel.id).where(
+            and_(
+                EscrowContractModel.seller_enterprise_id == enterprise_id,
+                EscrowContractModel.status.in_(['DEPLOYED', 'FUNDED', 'DISPATCHED']),
+            )
+        )
+        active_result = await db_session.execute(active_escrow_stmt)
+        if active_result.scalars().first():
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot unlink wallet while escrows are active.",
+            )
+
     from src.identity.application.commands import UnlinkWalletCommand
 
     enterprise = await svc.unlink_wallet(
@@ -637,7 +683,7 @@ async def unlink_wallet(
         )
     )
 
-    log.info("wallet_unlinked", enterprise_id=str(enterprise_id))
+    log.info("wallet_unlinked", enterprise_id=str(enterprise_id), unlinked_by=str(current_user.id))
     return success_response(
         WalletUnlinkResponse(enterprise_id=str(enterprise_id))
     )

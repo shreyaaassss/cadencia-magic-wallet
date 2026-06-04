@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import {
   Play, CheckCircle2, Pause, List, Handshake,
   FileText, AlertTriangle, StopCircle,
+  ChevronDown, ChevronRight,
 } from 'lucide-react';
 
 import { AppShell } from '@/components/layout/AppShell';
@@ -33,6 +34,7 @@ const STATUS_FILTERS: Array<{ value: string; label: string }> = [
   { value: 'TIMEOUT', label: 'Timeout' },
   { value: 'POLICY_BREACH', label: 'Policy Breach' },
   { value: 'FAILED', label: 'Not Selected' },
+  { value: 'CLOSED_BY_BUYER', label: 'Buyer Selected Other' },
 ];
 
 function getDateCutoff(range: string): Date | null {
@@ -120,7 +122,7 @@ export default function NegotiationsPage() {
 
   // ─── Stats ──────────────────────────────────────────────────────────────────
   const counts = React.useMemo(() => {
-    const c: Record<string, number> = { ACTIVE: 0, AGREED: 0, WALK_AWAY: 0, TIMEOUT: 0, POLICY_BREACH: 0, FAILED: 0 };
+    const c: Record<string, number> = { ACTIVE: 0, AGREED: 0, WALK_AWAY: 0, TIMEOUT: 0, POLICY_BREACH: 0, FAILED: 0, CLOSED_BY_BUYER: 0 };
     sessions.forEach(s => { c[s.status] = (c[s.status] || 0) + 1; });
     return c;
   }, [sessions]);
@@ -155,11 +157,23 @@ export default function NegotiationsPage() {
   // ─── Row highlight class (works in light + dark) ───────────────────────────
   const getRowClass = (status: SessionStatus) => {
     switch (status) {
-      case 'ACTIVE':    return 'border-l-[3px] border-l-green-500';
-      case 'WALK_AWAY': return 'border-l-[3px] border-l-amber-500';
-      case 'AGREED':    return 'border-l-[3px] border-l-green-400';
-      default:          return 'border-l-[3px] border-l-transparent';
+      case 'ACTIVE':          return 'border-l-[3px] border-l-green-500';
+      case 'WALK_AWAY':       return 'border-l-[3px] border-l-amber-500';
+      case 'AGREED':          return 'border-l-[3px] border-l-green-400';
+      case 'CLOSED_BY_BUYER': return 'border-l-[3px] border-l-gray-400';
+      default:                return 'border-l-[3px] border-l-transparent';
     }
+  };
+
+  // ─── Collapsible RFQ groups ──────────────────────────────────────────────────
+  const [collapsedGroups, setCollapsedGroups] = React.useState<Set<string>>(new Set());
+  const toggleGroup = (rfqId: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(rfqId)) next.delete(rfqId);
+      else next.add(rfqId);
+      return next;
+    });
   };
 
   // ─── Clear filters ──────────────────────────────────────────────────────────
@@ -266,23 +280,63 @@ export default function NegotiationsPage() {
               ) : (
                 pagedGroups.map(([rfqId, group], groupIndex) => {
                   const agreedCount = group.sessions.filter(s => s.status === 'AGREED').length;
+                  const activeCount = group.sessions.filter(s => s.status === 'ACTIVE').length;
+                  const closedByBuyerCount = group.sessions.filter(s => s.status === 'CLOSED_BY_BUYER').length;
+                  const failedCount = group.sessions.filter(s => s.status === 'FAILED' || s.status === 'WALK_AWAY').length;
                   const totalAgreed = group.sessions.reduce((sum, s) => sum + (s.agreed_price ?? 0), 0);
+                  const isCollapsed = collapsedGroups.has(rfqId);
+
+                  // Derive product name from first session's product_context
+                  const productName = group.sessions[0]?.product_context?.product_name
+                    ?? group.sessions[0]?.product_context?.product
+                    ?? null;
+
+                  // Build status summary chips
+                  const statusParts: string[] = [];
+                  if (agreedCount > 0)        statusParts.push(`${agreedCount} agreed`);
+                  if (activeCount > 0)        statusParts.push(`${activeCount} in progress`);
+                  if (closedByBuyerCount > 0) statusParts.push(`${closedByBuyerCount} buyer selected other`);
+                  if (failedCount > 0)        statusParts.push(`${failedCount} not selected`);
+
                   return (
                     <React.Fragment key={rfqId}>
                       {/* ── RFQ Group Header ── */}
-                      <tr className={cn(groupIndex > 0 ? 'border-t-2 border-primary/20' : '')}>
-                        <td colSpan={7} className="px-4 py-2.5 bg-muted/60">
+                      <tr
+                        className={cn(
+                          groupIndex > 0 ? 'border-t-2 border-primary/20' : '',
+                          'cursor-pointer select-none'
+                        )}
+                        onClick={() => toggleGroup(rfqId)}
+                      >
+                        <td colSpan={7} className="px-4 py-2.5 bg-muted/60 hover:bg-muted/80 transition-colors">
                           <div className="flex items-center justify-between flex-wrap gap-2">
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
+                              {isCollapsed
+                                ? <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                                : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                              }
+                              {productName && (
+                                <span
+                                  className="text-sm font-semibold text-foreground max-w-[260px] truncate"
+                                  title={productName}
+                                >
+                                  {productName}
+                                </span>
+                              )}
                               <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">RFQ</span>
                               <span className="font-mono text-xs font-medium text-foreground">{rfqId.slice(0, 16)}…</span>
-                              <span className="text-[10px] text-muted-foreground">Started {formatDateTime(group.earliest)}</span>
+                              <span className="text-[10px] text-muted-foreground hidden sm:inline">Started {formatDateTime(group.earliest)}</span>
                             </div>
                             <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                              <span>{group.sessions.length} session{group.sessions.length !== 1 ? 's' : ''}</span>
+                              <span className="font-medium">{group.sessions.length} session{group.sessions.length !== 1 ? 's' : ''}</span>
+                              {statusParts.length > 0 && (
+                                <span className="hidden sm:inline text-muted-foreground/80">
+                                  {statusParts.join(', ')}
+                                </span>
+                              )}
                               {agreedCount > 0 && (
                                 <span className="text-green-600 dark:text-green-400 font-medium">
-                                  {agreedCount} agreed · {formatCurrency(totalAgreed)}
+                                  {formatCurrency(totalAgreed)}
                                 </span>
                               )}
                             </div>
@@ -290,7 +344,7 @@ export default function NegotiationsPage() {
                         </td>
                       </tr>
                       {/* ── Sessions in this RFQ ── */}
-                      {group.sessions.map((session) => {
+                      {!isCollapsed && group.sessions.map((session) => {
                         const parties = formatParties(session);
                         return (
                           <tr
@@ -356,6 +410,11 @@ export default function NegotiationsPage() {
                                 {session.status === 'WALK_AWAY' && (
                                   <Button variant="ghost" size="sm" onClick={() => router.push(`${ROUTES.NEGOTIATIONS}/${session.session_id}`)} className="h-8 w-8 p-0 text-amber-600 hover:bg-amber-50 hover:text-amber-600" title="Walk Away - Review">
                                     <AlertTriangle className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {session.status === 'CLOSED_BY_BUYER' && (
+                                  <Button variant="ghost" size="sm" onClick={() => router.push(`${ROUTES.NEGOTIATIONS}/${session.session_id}`)} className="h-8 w-8 p-0 text-muted-foreground hover:bg-accent hover:text-foreground" title="Buyer Selected Other - Review">
+                                    <FileText className="h-4 w-4" />
                                   </Button>
                                 )}
                                 {isAdmin && session.status === 'ACTIVE' && (

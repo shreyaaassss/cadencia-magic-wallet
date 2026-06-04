@@ -39,7 +39,11 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   IDLE:          { label: 'Idle',          className: 'bg-muted text-muted-foreground border-border' },
   TERMINATED:    { label: 'Terminated',    className: 'bg-muted text-muted-foreground border-border' },
 
+  // Gray — closed by external action
+  CLOSED_BY_BUYER: { label: 'Buyer Selected Other', className: 'bg-muted text-muted-foreground border-border' },
+
   // Red — error / failure states
+  PARSE_FAILED:  { label: 'Parse Failed',  className: 'bg-red-50 text-red-700 border-red-200' },
   FAILED:        { label: 'Not Selected',   className: 'bg-amber-50 text-amber-700 border-amber-200' },
   REJECTED:      { label: 'Rejected',      className: 'bg-red-50 text-red-700 border-red-200' },
   FROZEN:        { label: 'Frozen',        className: 'bg-red-50 text-red-700 border-red-200' },
