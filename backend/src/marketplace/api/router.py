@@ -41,6 +41,7 @@ from src.marketplace.application.commands import (
 from src.marketplace.application.services import MarketplaceService
 from src.marketplace.infrastructure.models import (
     AddressModel,
+    CapabilityProfileModel,
     CatalogueItemModel,
     PincodeGeocodeModel,
     SellerCapacityProfileModel,
@@ -405,15 +406,15 @@ async def market_overview(
 
     from src.identity.infrastructure.models import EnterpriseModel
 
-    # Count sellers by industry
+    # Count sellers by industry (industry_vertical is on CapabilityProfileModel)
     industry_stmt = (
         select(
-            SellerCapacityProfileModel.industry_vertical,
-            func.count(func.distinct(SellerCapacityProfileModel.enterprise_id)).label("seller_count"),
+            CapabilityProfileModel.industry_vertical,
+            func.count(func.distinct(CapabilityProfileModel.enterprise_id)).label("seller_count"),
         )
-        .where(SellerCapacityProfileModel.industry_vertical.isnot(None))
-        .group_by(SellerCapacityProfileModel.industry_vertical)
-        .order_by(func.count(func.distinct(SellerCapacityProfileModel.enterprise_id)).desc())
+        .where(CapabilityProfileModel.industry_vertical.isnot(None))
+        .group_by(CapabilityProfileModel.industry_vertical)
+        .order_by(func.count(func.distinct(CapabilityProfileModel.enterprise_id)).desc())
     )
     industry_result = await session.execute(industry_stmt)
     industries = [
