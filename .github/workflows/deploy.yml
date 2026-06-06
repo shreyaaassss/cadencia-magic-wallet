@@ -118,23 +118,14 @@ jobs:
             # Run database migrations before restarting
             echo "Running alembic migrations..."
             set +e
-            # Find the right python — try venv, then python3, then python
-            PYBIN=""
-            if [ -f .venv/bin/python ]; then PYBIN=".venv/bin/python";
-            elif command -v python3 &>/dev/null; then PYBIN="python3";
-            elif command -v python &>/dev/null; then PYBIN="python";
-            fi
-            if [ -n "$PYBIN" ]; then
-              echo "Using python: $PYBIN"
-              $PYBIN -m alembic upgrade head 2>&1
-              MIGRATION_EXIT=$?
-              if [ $MIGRATION_EXIT -ne 0 ]; then
-                echo "WARNING: alembic exit code $MIGRATION_EXIT — may need manual run"
-              else
-                echo "Migrations applied successfully"
-              fi
+            ALEMBIC_BIN="$HOME/.local/bin/alembic"
+            if [ ! -f "$ALEMBIC_BIN" ]; then ALEMBIC_BIN="alembic"; fi
+            $ALEMBIC_BIN upgrade head 2>&1
+            MIGRATION_EXIT=$?
+            if [ $MIGRATION_EXIT -ne 0 ]; then
+              echo "WARNING: alembic exit code $MIGRATION_EXIT — may need manual run"
             else
-              echo "WARNING: no python found — skipping migrations"
+              echo "Migrations applied successfully"
             fi
             set -e
 
