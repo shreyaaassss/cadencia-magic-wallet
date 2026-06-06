@@ -21,7 +21,7 @@ from src.negotiation.domain.events import (
     HumanOverrideApplied,
 )
 from src.negotiation.domain.offer import Offer, ProposerRole
-from src.negotiation.domain.session import NegotiationSession, SessionStatus
+from src.negotiation.domain.session import MAX_ROUNDS, NegotiationSession, SessionStatus
 from src.negotiation.domain.value_objects import OfferValue
 from src.negotiation.infrastructure.llm_agent_driver import LLMExhaustedException
 from src.shared.domain.exceptions import ConflictError, NotFoundError, PolicyViolation
@@ -34,7 +34,6 @@ from src.shared.infrastructure.metrics import (
 log = structlog.get_logger(__name__)
 
 SESSION_TTL_HOURS = 24
-MAX_ROUNDS = 20
 
 
 def _build_transcript_text(transcript: dict) -> str:
@@ -530,22 +529,22 @@ class NegotiationService:
         agreed_price = OfferValue(amount=agreed_amount, currency="INR")
         event = session.mark_agreed(agreed_price, {})
 
-        # Compute deal quality score (buyer's share of ZOPA surplus, 0.0–1.0)
-        # Read ZOPA values from session.opponent_beliefs["_zopa"] — persisted by neutral_engine
+        # Compute deal quality score using canonical formula from convergence.py
         try:
             zopa_data = (session.opponent_beliefs or {}).get("_zopa", {})
             if not zopa_data:
-                # Fallback: try in-memory cache (same process only)
                 zopa_data = getattr(self.neutral_engine, '_zopa_cache', {}).get(str(session.id), {})
             buyer_ceiling = zopa_data.get('buyer_ceiling')
             seller_floor = zopa_data.get('seller_floor')
             if buyer_ceiling and seller_floor:
-                bc = float(buyer_ceiling)
-                sf = float(seller_floor)
-                zopa_range = abs(bc - sf)
-                if zopa_range > 0:
-                    buyer_gain = bc - float(agreed_amount)
-                    session.deal_quality_score = round(max(0.0, min(1.0, buyer_gain / zopa_range)), 4)
+                from src.negotiation.infrastructure.engine.convergence import compute_deal_quality
+                deal_q = compute_deal_quality(
+                    Decimal(str(agreed_amount)),
+                    Decimal(str(buyer_ceiling)),
+                    Decimal(str(seller_floor)),
+                )
+                if deal_q.get("score"):
+                    session.deal_quality_score = deal_q.get("score")
         except Exception:
             pass  # Non-fatal
 
@@ -782,8 +781,12 @@ class NegotiationService:
 
         if session.status == SessionStatus.HUMAN_REVIEW:
             session.resume_from_human_review()
+            session.reset_stall_counter()  # FSM-03: reset stall after human intervention
+            session.stall_recovery_attempted = False  # Allow fresh stall recovery cycle
         elif session.status == SessionStatus.STALLED:
             session.resume_from_human_review()  # STALLED → will go through escalation first
+            session.reset_stall_counter()
+            session.stall_recovery_attempted = False
         elif not session.status.is_active:
             raise ConflictError(f"Session {cmd.session_id} is {session.status.value}")
 

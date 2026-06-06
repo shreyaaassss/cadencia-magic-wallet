@@ -25,7 +25,7 @@ SESSION_TTL_HOURS: int = 24
 MAX_ROUNDS: int = 15  # Reduced from 20 — prevents dragging negotiations
 STALL_ROUNDS: int = 3  # No concession for 3 rounds → STALLED
 MAX_SCHEMA_FAILURES: int = 3  # 3x invalid schema → POLICY_BREACH
-CONVERGENCE_TOLERANCE: float = 0.02  # 2% gap → AGREED
+CONVERGENCE_TOLERANCE: float = 0.035  # 3.5% gap → AGREED (industry standard for B2B procurement)
 
 
 def _utcnow() -> datetime:
@@ -564,7 +564,7 @@ class NegotiationSession(BaseEntity):
         seller_price = last_seller.price.amount
         if buyer_price <= Decimal("0"):
             return False
-        gap = abs(seller_price - buyer_price) / buyer_price
+        gap = abs(seller_price - buyer_price) / max(seller_price, buyer_price)
         return float(gap) <= tolerance
 
     @property

@@ -151,6 +151,7 @@ class StrategyEngine:
         time_remaining_pct: float = 1.0,
         is_buyer: bool = True,
         aspirational_price: Decimal | None = None,
+        opponent_type: str = "strategic",
     ) -> StrategyRecommendation:
         """
         Select the optimal strategy for this turn.
@@ -235,6 +236,17 @@ class StrategyEngine:
                 or (is_buyer and my_last_price >= aspirational_price * Decimal("0.98"))
             )
             if at_aspirational:
+                # Gap-aware override: if opponent is close enough, don't hold
+                # firm — close the deal instead of grinding through HARDBALL.
+                if opponent_last_price is not None and my_last_price is not None:
+                    gap_here = abs(my_last_price - opponent_last_price) / max(
+                        my_last_price, Decimal("1")
+                    )
+                    if float(gap_here) < 0.05:  # gap < 5% — closeable
+                        return self._concessive(
+                            my_last_price, reservation_price, target_price,
+                            is_buyer, round_num=round_num,
+                        )
                 return self._hardball(
                     my_last_price,
                     effective_floor,
@@ -295,6 +307,34 @@ class StrategyEngine:
         ):
             return self._walk_away(reservation_price, opponent_last_price, is_buyer)
 
+        # ── Archetype-specific routing (8-type Bayesian model) ──────────────
+        _ot = opponent_type.lower()
+        if _ot == "deadline_driven" and time_remaining_pct < 0.35:
+            # Deadline-driven opponents cave near the end — apply pressure early
+            return self._deadline_pressure(
+                round_num, my_last_price or target_price,
+                opponent_last_price, reservation_price, target_price, is_buyer,
+            )
+        if _ot == "reciprocator":
+            # Reciprocators respond well to matching moves — always tit-for-tat
+            return self._tit_for_tat(
+                my_last_price or target_price, opponent_last_price,
+                effective_floor, target_price, modifier=Decimal("0.90"),
+                is_buyer=is_buyer,
+            )
+        if _ot == "hardball_then_cave" and rounds_since_concession >= 2:
+            # They'll cave eventually — wait them out with small steps
+            return self._conservative(
+                my_last_price or target_price, reservation_price,
+                target_price, is_buyer, round_num=round_num,
+            )
+        if _ot == "escalator":
+            # Don't escalate back — constrained micro-moves to de-escalate
+            return self._constrained(
+                my_last_price or target_price, reservation_price,
+                target_price, is_buyer,
+            )
+
         # CONDITIONAL — large gap, cooperative opponent → bundle terms
         if (
             opponent_flexibility > 0.4
@@ -331,7 +371,7 @@ class StrategyEngine:
             gap_abs = abs(float(my_last_price) - float(opponent_last_price))
             gap_pct_abs = gap_abs / max(float(my_last_price), 1.0)
             if 0.05 <= gap_pct_abs <= 0.35:  # Gap is closeable — force movement
-                return self._concessive(my_last_price, reservation_price, target_price, is_buyer)
+                return self._concessive(my_last_price, reservation_price, target_price, is_buyer, round_num=round_num)
 
         # ── CONCESSIVE: mid-to-late rounds, large gap — accelerate closing ──
         if (
@@ -342,11 +382,11 @@ class StrategyEngine:
             gap = abs(float(my_last_price) - float(opponent_last_price))
             gap_pct = gap / max(float(my_last_price), 1.0)
             if gap_pct > 0.08:  # Lowered from 0.10 for earlier trigger
-                return self._concessive(my_last_price, reservation_price, target_price, is_buyer)
+                return self._concessive(my_last_price, reservation_price, target_price, is_buyer, round_num=round_num)
 
         # ── CONSERVATIVE: moderate opponent, no stall ──
         if 0.3 <= opponent_flexibility <= 0.5 and rounds_since_concession < 2:
-            return self._conservative(my_last_price or target_price, reservation_price, target_price, is_buyer)
+            return self._conservative(my_last_price or target_price, reservation_price, target_price, is_buyer, round_num=round_num)
 
         # Default: Boulware — concedes toward aspirational (NOT true floor)
         return self._boulware(
@@ -641,17 +681,21 @@ class StrategyEngine:
         floor: Decimal,
         target: Decimal,
         is_buyer: bool,
+        round_num: int = 0,
     ) -> StrategyRecommendation:
-        """Small step: 1.5% concession toward target."""
-        step = my_last * Decimal("0.015")
+        """Small step using linear concession curve."""
+        curve_pct = _linear_curve(round_num, self.max_rounds)
+        step_pct = max(0.005, curve_pct * 0.03)  # scale linear curve to 0.5%-3% range
+        step = my_last * Decimal(str(step_pct))
         if is_buyer:
-            price = min(my_last + step, target)
+            # Buyer concedes UP — cap at budget ceiling (floor=reservation for buyer)
+            price = min(my_last + step, floor)
         else:
             price = max(my_last - step, floor)
         price = price.quantize(Decimal("0.01"))
         return StrategyRecommendation(
             strategy=StrategyType.CONSERVATIVE,
-            concession_fraction=Decimal("0.015"),
+            concession_fraction=Decimal(str(round(step_pct, 4))),
             suggested_price=price,
             rationale="Conservative: moderate opponent, small deliberate step.",
             action="OFFER",
@@ -663,17 +707,21 @@ class StrategyEngine:
         floor: Decimal,
         target: Decimal,
         is_buyer: bool,
+        round_num: int = 0,
     ) -> StrategyRecommendation:
-        """Larger step: 3-4% concession to close gap in mid-late rounds."""
-        step = my_last * Decimal("0.035")
+        """Larger step using conceder curve to close gap in mid-late rounds."""
+        curve_pct = _conceder_curve(round_num, self.max_rounds)
+        step_pct = max(0.015, curve_pct * 0.06)  # scale conceder curve to 1.5%-6% range
+        step = my_last * Decimal(str(step_pct))
         if is_buyer:
-            price = min(my_last + step, target)
+            # Buyer concedes UP — cap at budget ceiling (floor=reservation for buyer)
+            price = min(my_last + step, floor)
         else:
             price = max(my_last - step, floor)
         price = price.quantize(Decimal("0.01"))
         return StrategyRecommendation(
             strategy=StrategyType.CONCESSIVE,
-            concession_fraction=Decimal("0.035"),
+            concession_fraction=Decimal(str(round(step_pct, 4))),
             suggested_price=price,
             rationale="Concessive: mid-to-late stage, closing gap to reach agreement.",
             action="OFFER",
@@ -689,7 +737,8 @@ class StrategyEngine:
         """Near-floor: 0.5-1% micro-concession while signaling constraint."""
         step = my_last * Decimal("0.007")
         if is_buyer:
-            price = min(my_last + step, target)
+            # Buyer concedes UP — cap at budget ceiling (floor=reservation for buyer)
+            price = min(my_last + step, floor)
         else:
             price = max(my_last - step, floor)
         price = price.quantize(Decimal("0.01"))

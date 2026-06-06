@@ -39,14 +39,16 @@ class NegotiationPolicy:
     def check_convergence(
         buyer_price: Decimal | None,
         seller_price: Decimal | None,
-        tolerance: float = 0.02,
+        tolerance: float = 0.035,
     ) -> bool:
         if buyer_price is None or seller_price is None:
             return False
         if buyer_price <= Decimal("0"):
             return False
-        gap = abs(seller_price - buyer_price) / buyer_price
-        return float(gap) <= tolerance
+        from src.negotiation.infrastructure.engine.convergence import (
+            is_within_convergence_tolerance,
+        )
+        return is_within_convergence_tolerance(buyer_price, seller_price, tolerance)
 
     @staticmethod
     def check_turn_order(

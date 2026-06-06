@@ -420,6 +420,27 @@ async def terminate_session(
     return success_response(data={"terminated": True, "session_id": str(session_id)})
 
 
+@router.post("/{session_id}/resume")
+async def resume_session(
+    session_id: uuid.UUID,
+    svc: NegotiationService = Depends(get_negotiation_service),
+    _user: object = Depends(require_role("ADMIN")),
+) -> dict:
+    """POST /v1/sessions/{id}/resume — resume a HUMAN_REVIEW session."""
+    session = await svc.session_repo.get_by_id(session_id)  # type: ignore[union-attr]
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        session.resume_from_human_review()
+        session.reset_stall_counter()
+        session.stall_recovery_attempted = False
+        await svc.session_repo.update(session)  # type: ignore[union-attr]
+        await svc.uow.commit()  # type: ignore[union-attr]
+    except Exception as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return success_response(data={"resumed": True, "session_id": str(session_id), "status": session.status.value})
+
+
 @router.get(
     "/{session_id}/analytics",
     summary="Get deal quality and relational quality analytics for a completed session",

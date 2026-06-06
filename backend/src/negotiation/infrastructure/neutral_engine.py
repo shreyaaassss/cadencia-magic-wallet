@@ -88,11 +88,17 @@ class NeutralEngine:
         market_feed: object | None = None,  # IMarketPriceFeed (optional)
         record_repo: object | None = None,   # INegotiationRecordRepository (vault)
         insight_repo: object | None = None,  # INegotiationInsightRepository (vault)
+        config: object | None = None,  # NegotiationConfig (from config_service)
     ) -> None:
         self.agent_driver = agent_driver
         self.personalization = personalization_builder or PersonalizationBuilder()
         self.sse_publisher = sse_publisher
-        self.strategy_engine = strategy_engine or StrategyEngine()
+        # Store resolved config (NegotiationConfig or defaults)
+        from src.negotiation.application.config_service import NegotiationConfig
+        self.config = config if config is not None else NegotiationConfig()
+        self.strategy_engine = strategy_engine or StrategyEngine(
+            max_rounds=self.config.max_rounds, config=self.config,
+        )
         self.guardrail_engine = guardrail_engine or GuardrailEngine()
         self.bayesian_model = bayesian_model or BayesianOpponentModel()
         self.personalization_service = personalization_service
@@ -189,10 +195,9 @@ class NeutralEngine:
             b_res = buyer_val.reservation_price
             s_res = seller_val.reservation_price
             if b_res > Decimal("0") and s_res > Decimal("0"):
-                # MANDATORY ZOPA check — never bypass regardless of price magnitude.
-                # Previous code skipped this for ratio outside 0.001-1000, causing
-                # negotiations to continue with unbridgeable gaps.
-                if b_res < s_res:
+                # MANDATORY ZOPA check — use canonical function from convergence.py
+                from src.negotiation.infrastructure.engine.convergence import check_zopa_exists
+                if not check_zopa_exists(buyer_ceiling=b_res, seller_floor=s_res):
                     gap = s_res - b_res
                     log.warning(
                         "no_zopa_detected",
@@ -272,10 +277,12 @@ class NeutralEngine:
             time_remaining_pct=self._time_remaining_pct(session),
             is_buyer=is_buyer,
             aspirational_price=aspirational,   # ZOPA-midpoint fix
+            opponent_type=belief.dominant_type.value,
         )
 
-        # Apply Bayesian modifier to concession
-        _modifier = self.bayesian_model.strategy_modifier(belief)
+        # Apply Bayesian modifier to concession — use strategy_modifier() output
+        bayesian_modifier = self.bayesian_model.strategy_modifier(belief)
+        modifier_concession_rate = Decimal(str(bayesian_modifier.get("concession_rate", 1.0)))
         if strategy_rec.concession_fraction > Decimal("0"):
             # ── Improvement #4: Reciprocity Ratio ──────────────────────────────────
             # Compute how much I'm giving relative to opponent's last move.
@@ -295,9 +302,12 @@ class NeutralEngine:
             adjusted_concession = adaptive_concession(
                 base_concession=strategy_rec.concession_fraction,
                 opponent_flexibility=belief.cooperative,
-                opponent_type="cooperative" if belief.cooperative > 0.6 else
-                              "stubborn" if belief.cooperative < 0.3 else "strategic",
+                opponent_type=belief.dominant_type.value,
                 reciprocity_ratio=reciprocity_ratio,
+            )
+            # Scale concession by Bayesian modifier's recommended rate
+            adjusted_concession = (adjusted_concession * modifier_concession_rate).quantize(
+                Decimal("0.0001")
             )
         else:
             adjusted_concession = Decimal("0")
@@ -496,6 +506,11 @@ class NeutralEngine:
         logistics_context = await self._get_logistics_context_async(
             session, rfq_parsed_fields
         )
+        # DEAD-08: Wire urgency-based max_rounds — critical deliveries get fewer rounds
+        if logistics_context and logistics_context.get("urgency_level"):
+            from src.negotiation.domain.strategy import get_max_rounds_for_urgency
+            urgency_rounds = get_max_rounds_for_urgency(logistics_context["urgency_level"])
+            self.strategy_engine.max_rounds = min(urgency_rounds, self.strategy_engine.max_rounds)
 
         llm_temperature = 0.6 if strategy_rec.strategy.value == "CONDITIONAL" else 0.3
         try:
@@ -552,6 +567,16 @@ class NeutralEngine:
         llm_price = Decimal(str(raw_output.get("price", strategy_rec.suggested_price)))
         confidence = raw_output.get("confidence", 0.5)
         reasoning = raw_output.get("reasoning", "")
+
+        # GRD-02: Scan LLM output for constraint leaks (prompt injection defense)
+        from src.negotiation.domain.guardrails import PromptInjectionDefense
+        if reasoning and PromptInjectionDefense.scan_output(reasoning):
+            log.warning(
+                "prompt_injection_leak_detected",
+                session_id=str(session.id),
+                round=session.round_count.value + 1,
+            )
+            reasoning = "Agent evaluation in progress."  # Sanitize leaked reasoning
 
         # ── LAYER 4: GUARDRAIL VETO ──
         # Use strategy price as fallback if LLM price violates guardrails.
@@ -757,7 +782,7 @@ class NeutralEngine:
             final_price = apply_negotiation_rounding(
                 final_price,
                 round_num=session.round_count.value,
-                max_rounds=20,
+                max_rounds=self.strategy_engine.max_rounds,
             )
             # Re-clamp after rounding: seller floor / buyer ceiling must hold
             if not is_buyer:
@@ -825,7 +850,7 @@ class NeutralEngine:
             s_price = (
                 final_price if not is_buyer else (last_seller.price.amount if last_seller else None)
             )
-            if NegotiationPolicy.check_convergence(b_price, s_price):
+            if NegotiationPolicy.check_convergence(b_price, s_price, tolerance=self.config.convergence_tolerance):
                 is_terminal = True
                 if b_price and s_price:
                     gap_pct = abs(s_price - b_price) / min(b_price, s_price) * 100
@@ -852,6 +877,31 @@ class NeutralEngine:
                         f"\u20b9{float(final_price):,.0f} "
                         f"(neutral 50/50 midpoint). "
                         f"Gap closed to {float(gap_pct):.1f}% (within 2% threshold)."
+                    )
+
+        # ── Auto-midpoint: micro-gap auto-settle ─────────────────────────────────
+        # When gap is < 1% but below convergence tolerance, auto-settle at
+        # midpoint rather than grinding through more useless micro-rounds.
+        if not is_terminal and action in ("OFFER", "COUNTER"):
+            _last_b = session.get_last_buyer_offer()
+            _last_s = session.get_last_seller_offer()
+            _bp = final_price if is_buyer else (_last_b.price.amount if _last_b else None)
+            _sp = final_price if not is_buyer else (_last_s.price.amount if _last_s else None)
+            if _bp and _sp:
+                _micro_gap = float(abs(_sp - _bp) / max(_sp, _bp))
+                if _micro_gap < 0.01:  # < 1% gap — just settle
+                    is_terminal = True
+                    _mid = ((_sp + _bp) / 2).quantize(Decimal("0.01"))
+                    sid = str(session.id)
+                    _floor = (
+                        self._zopa_cache[sid]["seller_floor"]
+                        if sid in self._zopa_cache
+                        else valuation.reservation_price
+                    )
+                    final_price = max(_mid, _floor)
+                    reasoning = (
+                        f"Micro-gap auto-settle at \u20b9{float(final_price):,.0f} "
+                        f"(gap {_micro_gap*100:.2f}% — below 1% threshold)."
                     )
 
         # ── Hard Gap WALK_AWAY Check ──────────────────────────────────────────────
@@ -888,15 +938,26 @@ class NeutralEngine:
             from src.negotiation.domain.session import MAX_ROUNDS, STALL_ROUNDS
             if session.stall_counter >= STALL_ROUNDS:
                 if not session.stall_recovery_attempted:
-                    # Phase 2: unfreeze move — jump 50% toward aspirational
+                    # Phase 2: unfreeze move — jump 50% toward OPPONENT's last
+                    # price (not aspirational, which may equal current → zero move)
                     my_prices_now = (
                         session.get_buyer_prices() if is_buyer
                         else session.get_seller_prices()
                     )
+                    opponent_prices_now = (
+                        session.get_seller_prices() if is_buyer
+                        else session.get_buyer_prices()
+                    )
                     if my_prices_now:
                         current_p = my_prices_now[-1]
+                        # Move toward opponent, not aspirational — always meaningful
+                        move_target = (
+                            opponent_prices_now[-1]
+                            if opponent_prices_now
+                            else aspirational
+                        )
                         unfreeze_price = (
-                            current_p + (aspirational - current_p) * Decimal("0.50")
+                            current_p + (move_target - current_p) * Decimal("0.50")
                         ).quantize(Decimal("0.01"))
                         # Clamp to valid range
                         if is_buyer:
@@ -959,25 +1020,12 @@ class NeutralEngine:
                 z = self._zopa_cache[sid]
                 seller_floor = z["seller_floor"]
                 buyer_ceiling = z["buyer_ceiling"]
-                zopa_width = buyer_ceiling - seller_floor
-                if zopa_width > Decimal("0"):
-                    buyer_surplus = buyer_ceiling - final_price
-                    seller_surplus = final_price - seller_floor
-                    total_surplus = buyer_surplus + seller_surplus
-                    buyer_share = (
-                        float(buyer_surplus / total_surplus)
-                        if total_surplus > Decimal("0") else 0.5
-                    )
-                    session.deal_quality_score = {
-                        "score": round(buyer_share, 3),
-                        "buyer_surplus_inr": float(buyer_surplus),
-                        "seller_surplus_inr": float(seller_surplus),
-                        "zopa_width_inr": float(zopa_width),
-                        "zopa_position_pct": round(
-                            float((final_price - seller_floor) / zopa_width) * 100, 1
-                        ),
-                        "agreed_price_inr": float(final_price),
-                    }
+                from src.negotiation.infrastructure.engine.convergence import (
+                    compute_deal_quality,
+                )
+                deal_q = compute_deal_quality(final_price, buyer_ceiling, seller_floor)
+                if deal_q.get("score"):
+                    session.deal_quality_score = deal_q
                     log.info(
                         "deal_quality_score",
                         score=session.deal_quality_score,

@@ -65,15 +65,15 @@ class OpponentBelief(BaseValueObject):
     default to 0.0 for backward compatibility with existing 4-type beliefs.
     """
 
-    cooperative: float = 0.25
-    strategic: float = 0.25
-    stubborn: float = 0.25
-    bluffing: float = 0.25
-    # Extended archetypes — default 0.0 for backward compat
-    deadline_driven: float = 0.0
-    reciprocator: float = 0.0
-    hardball_then_cave: float = 0.0
-    escalator: float = 0.0
+    cooperative: float = 0.125
+    strategic: float = 0.125
+    stubborn: float = 0.125
+    bluffing: float = 0.125
+    # Extended archetypes — now uniform prior (was 0.0 for backward compat)
+    deadline_driven: float = 0.125
+    reciprocator: float = 0.125
+    hardball_then_cave: float = 0.125
+    escalator: float = 0.125
 
     def __post_init__(self) -> None:
         total = (

@@ -78,13 +78,11 @@ class Valuation(BaseValueObject):
 
 # ── Aspirational Price Helper ─────────────────────────────────────────────────
 
-# ZOPA-MIDPOINT FIX: fraction of (target - reservation) the agent holds above
-# its true floor. 0.40 = 40% → seller won't publicly concede below
+# Fraction of (target - reservation) the agent holds above its true floor.
+# 0.40 = 40% → seller won't publicly concede below
 # reservation + 0.40*(target - reservation) in normal rounds.
-# How far between reservation and target the agent holds firm.
-# 0.25 = agent can negotiate down to 25% of the gap from their floor.
-# Lower = more room to converge. Higher = more resistance.
-_ASPIRATIONAL_FRACTION = Decimal("0.25")
+# Higher = more resistance but less convergence room.
+_ASPIRATIONAL_FRACTION = Decimal("0.40")
 
 
 def compute_aspirational_price(
@@ -263,9 +261,12 @@ def compute_seller_valuation(
     if target <= Decimal("0"):
         target = Decimal("0.01")
 
+    aspirational = compute_aspirational_price(reservation, target, is_buyer=False)
+
     return Valuation(
         reservation_price=reservation,
         target_price=target,
+        aspirational_price=aspirational,
         walkaway_delta=walkaway_delta,
     )
 
