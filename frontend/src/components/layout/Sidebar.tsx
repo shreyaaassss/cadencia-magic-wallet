@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, ShoppingCart, Handshake, Landmark, Banknote,
   ClipboardList, Settings, ShieldCheck, LogOut, Building2, Store,
-  PackageSearch,
+  PackageSearch, MessageSquare, Search, FileText,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -26,8 +26,11 @@ const navItems: NavItem[] = [
   { label: 'Marketplace',     href: ROUTES.MARKETPLACE,     icon: ShoppingCart,    roles: ['BUYER'] },
   { label: 'Seller Profile',  href: ROUTES.SELLER_PROFILE,  icon: Store,           roles: ['SELLER'] },
   { label: 'Catalogue',       href: '/marketplace/catalogue', icon: PackageSearch,  roles: ['SELLER'] },
+  { label: 'Discover',         href: '/marketplace/discover', icon: Search },
   { label: 'Negotiations',    href: ROUTES.NEGOTIATIONS,    icon: Handshake },
+  { label: 'Messages',        href: '/messages',            icon: MessageSquare },
   { label: 'Escrow',          href: ROUTES.ESCROW,          icon: Landmark },
+  { label: 'Procurement',     href: '/procurement',         icon: FileText },
   { label: 'Treasury',        href: ROUTES.TREASURY,        icon: Banknote,    roles: ['ADMIN'] },
   { label: 'Compliance',      href: ROUTES.COMPLIANCE,      icon: ClipboardList, roles: ['ADMIN'] },
   { label: 'Settings',        href: ROUTES.SETTINGS,        icon: Settings },
