@@ -110,8 +110,8 @@ def _profile_model_to_domain(m: AgentProfileModel) -> AgentProfile:
         id=m.id,
         enterprise_id=m.enterprise_id,
         strategy_weights=StrategyWeights(
-            concession_rate=sw_data.get("concession_rate", 0.05),
-            acceptance_threshold=sw_data.get("acceptance_threshold", 0.02),
+            concession_rate=max(0.0, min(1.0, sw_data.get("concession_rate", 0.05))),
+            acceptance_threshold=max(0.0, min(1.0, sw_data.get("acceptance_threshold", 0.02))),
             avg_deviation=sw_data.get("avg_deviation", 0.0),
             avg_rounds=sw_data.get("avg_rounds", 5.0),
             win_rate=sw_data.get("win_rate", 0.5),

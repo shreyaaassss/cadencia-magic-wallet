@@ -87,7 +87,9 @@ class AgentProfile(BaseEntity):
         new_concession_rate = w.concession_rate
         if session_agreed and final_price is not None and budget_ceiling > Decimal("0"):
             actual_concession = float(abs(final_price - budget_ceiling) / budget_ceiling)
+            actual_concession = min(1.0, actual_concession)  # Clamp to valid range
             new_concession_rate = w.concession_rate * (1 - alpha) + actual_concession * alpha
+            new_concession_rate = max(0.0, min(1.0, new_concession_rate))  # Ensure valid
 
         # Rebuild frozen StrategyWeights (frozen dataclass — use object.__setattr__)
         object.__setattr__(
