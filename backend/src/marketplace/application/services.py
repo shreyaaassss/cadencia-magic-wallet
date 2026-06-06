@@ -839,12 +839,14 @@ class MarketplaceService:
         from src.shared.infrastructure.events.publisher import get_publisher
 
         async with get_session_factory()() as db_session:
+            from src.negotiation.application.config_service import NegotiationConfig as _NC
             engine = NeutralEngine(
                 agent_driver=get_agent_driver(),
                 personalization_builder=PersonalizationBuilder(),
                 sse_publisher=None,
                 record_repo=PostgresNegotiationRecordRepository(db_session),
                 insight_repo=PostgresNegotiationInsightRepository(db_session),
+                config=_NC(),
             )
             svc = NegotiationService(
                 session_repo=PostgresSessionRepository(db_session),
@@ -888,15 +890,30 @@ class MarketplaceService:
         # Wait for session creation to be committed
         await asyncio.sleep(1.0)
 
-        max_rounds = 20
+        from src.negotiation.application.config_service import NegotiationConfig
+        from src.negotiation.domain.session import MAX_ROUNDS
+        from src.negotiation.infrastructure.llm_agent_driver import get_analysis_driver
+        from src.negotiation.infrastructure.repositories import (
+            PostgresOpponentProfileRepository,
+        )
+
+        max_rounds = MAX_ROUNDS * 2  # buyer + seller turns
         async with get_session_factory()() as db_session:
             try:
+                _analysis_driver = None
+                try:
+                    _analysis_driver = get_analysis_driver()
+                except Exception:
+                    pass
                 engine = NeutralEngine(
                     agent_driver=get_agent_driver(),
                     personalization_builder=PersonalizationBuilder(),
                     sse_publisher=None,
+                    opponent_profile_repo=PostgresOpponentProfileRepository(db_session),
+                    analysis_driver=_analysis_driver,
                     record_repo=PostgresNegotiationRecordRepository(db_session),
                     insight_repo=PostgresNegotiationInsightRepository(db_session),
+                    config=NegotiationConfig(),
                 )
                 svc = NegotiationService(
                     session_repo=PostgresSessionRepository(db_session),
@@ -911,6 +928,7 @@ class MarketplaceService:
 
                 import os as _os
                 _inter_turn_delay = float(_os.getenv("AUTO_TURN_DELAY_SECONDS", "1.5"))
+                _consecutive_errors = 0
 
                 for _round in range(max_rounds):
                     session = await svc.session_repo.get_by_id(session_id)
@@ -918,13 +936,22 @@ class MarketplaceService:
                         break
                     try:
                         await svc.run_agent_turn(session_id)
+                        _consecutive_errors = 0  # reset on success
                     except Exception as turn_exc:
+                        _consecutive_errors += 1
                         log.warning(
                             "auto_negotiation_turn_error",
                             session_id=str(session_id),
+                            round=_round,
                             error=str(turn_exc),
+                            consecutive_errors=_consecutive_errors,
                         )
-                        break
+                        # Only break after 3 consecutive errors, not on first failure
+                        if _consecutive_errors >= 3:
+                            log.error("auto_negotiation_abort_after_3_errors", session_id=str(session_id))
+                            break
+                        await asyncio.sleep(2.0)  # back off before retry
+                        continue
                     if _inter_turn_delay > 0 and _round < max_rounds - 1:
                         await asyncio.sleep(_inter_turn_delay)
 
