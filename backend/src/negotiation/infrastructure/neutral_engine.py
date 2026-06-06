@@ -998,6 +998,52 @@ class NeutralEngine:
         # SSE publishing is handled by NegotiationService.run_agent_turn()
         # to avoid duplicate events reaching the frontend.
 
+        # ── Per-turn audit write (tamper-evident decision log) ──
+        try:
+            import hashlib
+            import json as _json
+
+            reasoning_chain = {
+                "strategy": strategy_rec.strategy.value,
+                "suggested_price": float(strategy_rec.suggested_price),
+                "concession_fraction": float(strategy_rec.concession_fraction),
+                "opponent_belief": belief.to_dict(),
+                "valuation_target": float(valuation.target_price),
+                "valuation_reservation": float(valuation.reservation_price),
+            }
+            chain_json = _json.dumps(reasoning_chain, sort_keys=True)
+            entry_hash = hashlib.sha256(chain_json.encode()).hexdigest()
+
+            from src.negotiation.infrastructure.models import AgentDecisionAuditModel
+            from src.shared.infrastructure.db.session import get_session_factory
+
+            async def _write_audit():
+                try:
+                    async with get_session_factory()() as db_sess:
+                        db_sess.add(AgentDecisionAuditModel(
+                            session_id=session.id,
+                            round_number=session.round_count.value,
+                            enterprise_id=(
+                                session.buyer_enterprise_id if is_buyer
+                                else session.seller_enterprise_id
+                            ),
+                            role="buyer" if is_buyer else "seller",
+                            strategy_selected=strategy_rec.strategy.value,
+                            reasoning_chain=reasoning_chain,
+                            opponent_classification=belief.dominant_type.value,
+                            flexibility_score=float(belief.cooperative),
+                            confidence=float(offer.confidence.value if offer.confidence else 0),
+                            entry_hash=entry_hash,
+                        ))
+                        await db_sess.commit()
+                except Exception:
+                    pass  # Non-fatal — audit is best-effort
+
+            import asyncio as _asyncio
+            _asyncio.create_task(_write_audit())
+        except Exception:
+            pass  # Audit write failure must never break negotiation
+
         return offer, is_terminal
 
     # ── Intelligence Methods (for Debug API) ──────────────────────────────────

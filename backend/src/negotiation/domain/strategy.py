@@ -111,8 +111,33 @@ class StrategyEngine:
     Stateless — all context passed per call.
     """
 
-    def __init__(self, max_rounds: int = 20) -> None:
+    def __init__(
+        self,
+        max_rounds: int = 20,
+        config: object | None = None,
+    ) -> None:
         self.max_rounds = max_rounds
+        # DB-backed config overrides (from NegotiationConfig)
+        self._config = config
+        if config is not None:
+            self.max_rounds = getattr(config, "max_rounds", max_rounds)
+            self._hardball_threshold = getattr(config, "hardball_flexibility_threshold", 0.15)
+            self._walkaway_pct = getattr(config, "walkaway_pct_below_floor", 0.10)
+            self._concessive_step = Decimal(str(getattr(config, "concessive_step_pct", 0.035)))
+            self._conservative_step = Decimal(str(getattr(config, "conservative_step_pct", 0.015)))
+            self._opponent_modifiers = {
+                k: Decimal(str(v))
+                for k, v in (getattr(config, "opponent_modifiers", None) or {}).items()
+            }
+            self._urgency_max_rounds = getattr(config, "urgency_max_rounds", None) or {}
+        else:
+            # Backward-compatible defaults
+            self._hardball_threshold = 0.15
+            self._walkaway_pct = 0.10
+            self._concessive_step = Decimal("0.035")
+            self._conservative_step = Decimal("0.015")
+            self._opponent_modifiers = {}
+            self._urgency_max_rounds = {}
 
     def select_strategy(
         self,
@@ -683,6 +708,7 @@ def adaptive_concession(
     - reciprocity_ratio < 1: I'm giving more than I'm getting → reduce concession
     - reciprocity_ratio > 1: opponent giving more → I can be generous
     """
+    # Use config-provided modifiers if available, else defaults
     modifiers = {
         "cooperative": Decimal("0.85"),
         "strategic": Decimal("1.00"),

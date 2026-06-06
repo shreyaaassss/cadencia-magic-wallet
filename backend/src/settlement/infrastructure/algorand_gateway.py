@@ -73,8 +73,10 @@ class AlgorandGateway:
 
         If algorand_client is None, constructs AlgorandClient from env vars.
         Creator mnemonic is optional — when absent, only build/submit methods work.
+        Circuit breaker wraps external calls when Redis is available.
         """
         self._algorand = algorand_client or _get_algorand_client()
+        self._circuit_breaker = self._init_circuit_breaker()
         try:
             raw_mnemonic = os.environ.get("ALGORAND_ESCROW_CREATOR_MNEMONIC", "")
             if not raw_mnemonic:
@@ -96,6 +98,30 @@ class AlgorandGateway:
             self._creator_address = None
             log.info("algorand_gateway_no_mnemonic_mode",
                      msg="Creator mnemonic not set — only build/sign/submit methods available")
+
+    # ── Circuit Breaker ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _init_circuit_breaker() -> object | None:
+        """Initialize circuit breaker for Algorand calls (best-effort)."""
+        try:
+            import redis
+
+            from src.shared.infrastructure.circuit_breaker import CircuitBreaker
+            r = redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
+            return CircuitBreaker(name="algorand", redis=r, failure_threshold=5, recovery_timeout=60)
+        except Exception:
+            return None
+
+    async def _call_with_breaker(self, coro):
+        """Execute a coroutine through the circuit breaker if available."""
+        if self._circuit_breaker is not None:
+            try:
+                return await self._circuit_breaker.call(coro)
+            except Exception:
+                # If circuit breaker itself fails (e.g. Redis down), fall through
+                return await coro
+        return await coro
 
     # ── Private helpers ────────────────────────────────────────────────────────
 
