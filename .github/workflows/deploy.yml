@@ -117,8 +117,12 @@ jobs:
 
             # Run database migrations before restarting
             echo "Running alembic migrations..."
-            source .venv/bin/activate 2>/dev/null || true
-            python -m alembic upgrade head || echo "WARNING: alembic migration failed (may already be up to date)"
+            set +e  # Don't exit on migration failure
+            # Source venv and .env for DATABASE_URL
+            if [ -f .venv/bin/activate ]; then source .venv/bin/activate; fi
+            if [ -f .env ]; then set -a; source .env; set +a; fi
+            cd ~/cadencia/backend && python -m alembic upgrade head 2>&1 || echo "WARNING: alembic migration failed — may need manual run"
+            set -e
 
             pm2 restart cadencia-backend
             echo "Backend deployed and restarted"
