@@ -182,35 +182,22 @@ async def _resume_stalled_negotiations() -> None:
 
     _log.info("resuming_stalled_sessions", count=len(stalled_ids))
 
+    # Import the standalone runner directly — no MarketplaceService needed
     from src.marketplace.application.services import MarketplaceService
-    from src.marketplace.infrastructure.repositories import (
-        PostgresCatalogueRepository,
-        PostgresMatchRepository,
-        PostgresRFQRepository,
-    )
-    from src.shared.infrastructure.db.session import get_session_factory as _gsf
-    from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
-    from src.shared.infrastructure.events.publisher import get_publisher
 
-    async with _gsf()() as db_session:
-        svc = MarketplaceService(
-            rfq_repo=PostgresRFQRepository(db_session),
-            match_repo=PostgresMatchRepository(db_session),
-            catalogue_repo=PostgresCatalogueRepository(db_session),
-            uow=SqlAlchemyUnitOfWork(db_session),
-            event_publisher=get_publisher(),
-        )
-        for i, sid in enumerate(stalled_ids):
-            async def _resume(s_id: str, delay: float) -> None:
-                if delay > 0:
-                    await asyncio.sleep(delay)
-                try:
-                    import uuid as _uuid
-                    await svc._run_auto_negotiation_standalone(_uuid.UUID(s_id))
-                    _log.info("session_resumed_ok", session_id=s_id)
-                except Exception as e:
-                    _log.warning("session_resume_failed", session_id=s_id, error=str(e))
-            asyncio.create_task(_resume(sid, i * 5.0))
+    for i, sid in enumerate(stalled_ids):
+        async def _resume(s_id: str, delay: float) -> None:
+            if delay > 0:
+                await asyncio.sleep(delay)
+            try:
+                import uuid as _uuid
+                # Use a throwaway MarketplaceService instance just for the standalone runner
+                svc = MarketplaceService.__new__(MarketplaceService)
+                await svc._run_auto_negotiation_standalone(_uuid.UUID(s_id))
+                _log.info("session_resumed_ok", session_id=s_id)
+            except Exception as e:
+                _log.warning("session_resume_failed", session_id=s_id, error=str(e))
+        asyncio.create_task(_resume(sid, i * 5.0))
 
 
 # ── Request ID Middleware ─────────────────────────────────────────────────────
