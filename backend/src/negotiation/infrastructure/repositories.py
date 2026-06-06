@@ -94,6 +94,7 @@ def _session_model_to_domain(m: NegotiationSessionModel) -> NegotiationSession:
         expires_at=getattr(m, "expires_at", None) or (m.created_at + _timedelta(hours=24)),
         schema_failure_count=getattr(m, "schema_failure_count", 0) or 0,
         stall_counter=getattr(m, "stall_counter", 0) or 0,
+        stall_recovery_attempted=getattr(m, "stall_recovery_attempted", False) or False,
         # BUG-12 FIX: restore persisted Bayesian beliefs
         opponent_beliefs=getattr(m, "opponent_beliefs", None),
         conversation_transcript=getattr(m, "conversation_transcript", None),
@@ -171,6 +172,7 @@ class PostgresSessionRepository:
             completed_at=session.completed_at,
             schema_failure_count=session.schema_failure_count,
             stall_counter=session.stall_counter,
+            stall_recovery_attempted=session.stall_recovery_attempted,
             opponent_beliefs=session.opponent_beliefs,  # BUG-12 FIX
             conversation_transcript=getattr(session, "conversation_transcript", None),
             deal_quality_score=getattr(session, "deal_quality_score", None),
@@ -211,6 +213,7 @@ class PostgresSessionRepository:
                 completed_at=session.completed_at,
                 schema_failure_count=session.schema_failure_count,
                 stall_counter=session.stall_counter,
+                stall_recovery_attempted=session.stall_recovery_attempted,
                 opponent_beliefs=session.opponent_beliefs,  # BUG-12 FIX
                 conversation_transcript=getattr(session, "conversation_transcript", None),
                 deal_quality_score=getattr(session, "deal_quality_score", None),
