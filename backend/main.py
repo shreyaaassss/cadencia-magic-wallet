@@ -151,6 +151,68 @@ async def _seed_default_playbooks() -> None:
         raise
 
 
+async def _resume_stalled_negotiations() -> None:
+    """
+    On startup, find ACTIVE negotiation sessions that have incomplete rounds
+    and resume their auto-negotiation. This handles sessions orphaned by
+    PM2 restarts (asyncio.create_task tasks are lost on process restart).
+    """
+    import asyncio
+
+    from sqlalchemy import text
+    from src.shared.infrastructure.db.session import get_session_factory
+
+    _log = structlog.get_logger("startup.resume_negotiations")
+
+    async with get_session_factory()() as db_session:
+        # Find active sessions that haven't completed (round_count < max_rounds, not terminal)
+        result = await db_session.execute(text("""
+            SELECT id FROM negotiation_sessions
+            WHERE status IN ('ACTIVE', 'ROUND_LOOP', 'SELLER_RESPONSE', 'BUYER_ANCHOR')
+              AND round_count < 30
+              AND created_at > NOW() - INTERVAL '24 hours'
+            ORDER BY created_at DESC
+            LIMIT 20
+        """))
+        stalled_ids = [str(row[0]) for row in result.fetchall()]
+
+    if not stalled_ids:
+        _log.info("no_stalled_sessions_found")
+        return
+
+    _log.info("resuming_stalled_sessions", count=len(stalled_ids))
+
+    from src.marketplace.application.services import MarketplaceService
+    from src.marketplace.infrastructure.repositories import (
+        PostgresCatalogueRepository,
+        PostgresMatchRepository,
+        PostgresRFQRepository,
+    )
+    from src.shared.infrastructure.db.session import get_session_factory as _gsf
+    from src.shared.infrastructure.db.uow import SqlAlchemyUnitOfWork
+    from src.shared.infrastructure.events.publisher import get_publisher
+
+    async with _gsf()() as db_session:
+        svc = MarketplaceService(
+            rfq_repo=PostgresRFQRepository(db_session),
+            match_repo=PostgresMatchRepository(db_session),
+            catalogue_repo=PostgresCatalogueRepository(db_session),
+            uow=SqlAlchemyUnitOfWork(db_session),
+            event_publisher=get_publisher(),
+        )
+        for i, sid in enumerate(stalled_ids):
+            async def _resume(s_id: str, delay: float) -> None:
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                try:
+                    import uuid as _uuid
+                    await svc._run_auto_negotiation_standalone(_uuid.UUID(s_id))
+                    _log.info("session_resumed_ok", session_id=s_id)
+                except Exception as e:
+                    _log.warning("session_resume_failed", session_id=s_id, error=str(e))
+            asyncio.create_task(_resume(sid, i * 5.0))
+
+
 # ── Request ID Middleware ─────────────────────────────────────────────────────
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
@@ -270,6 +332,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.info("startup_playbooks_seeded")
     except Exception as exc:
         log.warning("startup_playbooks_seed_failed", error=str(exc))
+
+    # 7. Resume any active negotiation sessions that were orphaned by restart
+    try:
+        await _resume_stalled_negotiations()
+        log.info("startup_stalled_negotiations_resumed")
+    except Exception as exc:
+        log.warning("startup_resume_negotiations_failed", error=str(exc))
 
     log.info("cadencia_ready")
 

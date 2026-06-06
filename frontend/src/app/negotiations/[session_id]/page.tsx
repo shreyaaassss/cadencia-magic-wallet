@@ -164,7 +164,7 @@ export default function NegotiationRoomPage() {
   const buyerOffers = offers.filter(o => o.proposer_role === 'BUYER').map(o => o.price);
   const sellerOffers = offers.filter(o => o.proposer_role === 'SELLER').map(o => o.price);
   const latestRound = offers.length > 0 ? offers[offers.length - 1].round_number : (session?.round_count ?? 0);
-  const maxRounds = 20;
+  const maxRounds = 15;
   const isActive = sessionStatus === 'ACTIVE';
   const isEnded = ['AGREED','FAILED','TIMEOUT','WALK_AWAY','POLICY_BREACH','TERMINATED','CLOSED_BY_BUYER'].includes(sessionStatus);
 

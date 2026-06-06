@@ -381,7 +381,7 @@ export default function NegotiationsPage() {
                               <SessionStatusPill
                                 status={session.status}
                                 currentRound={session.round_count}
-                                maxRounds={20}
+                                maxRounds={15}
                               />
                             </td>
                             <td className="px-4 py-3">
