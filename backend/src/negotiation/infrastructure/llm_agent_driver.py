@@ -182,6 +182,41 @@ class LLMAgentDriver:
         ) from last_error
 
 
+class FailoverAgentDriver:
+    """Wraps a primary driver with an automatic fallback on exhaustion.
+
+    If the primary LLM provider fails after all retries, transparently
+    switches to a fallback provider for the same request.
+    Configured via FALLBACK_LLM_PROVIDER, FALLBACK_LLM_API_KEY, FALLBACK_LLM_MODEL.
+    """
+
+    def __init__(self, primary: object, fallback: object | None = None) -> None:
+        self.primary = primary
+        self.fallback = fallback
+
+    async def generate_offer(
+        self,
+        system_prompt: str,
+        session_context: dict,
+        offer_history: list[dict],
+        logistics_context: dict | None = None,
+        temperature: float | None = None,
+    ) -> dict:
+        try:
+            return await self.primary.generate_offer(
+                system_prompt, session_context, offer_history,
+                logistics_context=logistics_context, temperature=temperature,
+            )
+        except LLMExhaustedException:
+            if self.fallback is None:
+                raise
+            log.warning("llm_failover_to_fallback", primary=getattr(self.primary, "model", "?"))
+            return await self.fallback.generate_offer(
+                system_prompt, session_context, offer_history,
+                logistics_context=logistics_context, temperature=temperature,
+            )
+
+
 class StubAgentDriver:
     """Deterministic stub for testing — no LLM calls. Implements IAgentDriver."""
 
@@ -238,6 +273,7 @@ def get_agent_driver() -> object:
         return _agent_driver_singleton
 
     driver = _create_agent_driver()
+    driver = _wrap_with_failover(driver)
     _agent_driver_singleton = driver
     return driver
 
@@ -320,6 +356,39 @@ def _create_agent_driver() -> object:
         )
 
     return StubAgentDriver()
+
+
+def _wrap_with_failover(primary: object) -> object:
+    """Wrap driver with failover if FALLBACK_LLM_PROVIDER is configured."""
+    fallback_provider = os.environ.get("FALLBACK_LLM_PROVIDER", "").strip()
+    fallback_key = os.environ.get("FALLBACK_LLM_API_KEY", "").strip()
+    fallback_model = os.environ.get("FALLBACK_LLM_MODEL", "")
+
+    if not fallback_provider or not fallback_key:
+        return primary
+
+    temperature = float(os.environ.get("LLM_TEMPERATURE", "0.3"))
+    max_tokens = int(os.environ.get("LLM_MAX_TOKENS", "2048"))
+
+    base_urls = {
+        "groq": "https://api.groq.com/openai/v1",
+        "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    }
+    defaults = {
+        "openai": "gpt-4o",
+        "groq": "llama-3.3-70b-versatile",
+        "gemini": "gemini-2.0-flash",
+    }
+
+    fallback = LLMAgentDriver(
+        api_key=fallback_key,
+        model=fallback_model or defaults.get(fallback_provider, "gpt-4o"),
+        temperature=temperature,
+        max_tokens=max_tokens,
+        base_url=base_urls.get(fallback_provider),
+    )
+    log.info("llm_failover_configured", primary=getattr(primary, "model", "stub"), fallback=fallback.model)
+    return FailoverAgentDriver(primary=primary, fallback=fallback)
 
 
 def get_analysis_driver() -> object:
