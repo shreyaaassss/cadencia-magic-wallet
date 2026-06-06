@@ -412,6 +412,11 @@ class IndustryTaxonomyModel(Base):
     default_certifications: Mapped[dict] = mapped_column(JSONB, server_default="[]", nullable=False)
     capacity_unit: Mapped[str] = mapped_column(String(20), server_default="MT", nullable=False)
     is_manufacturing: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
+    matching_weights: Mapped[dict | None] = mapped_column(
+        JSONB,
+        server_default='{"semantic":0.25,"delivery":0.20,"capacity":0.15,"price":0.15,"proximity":0.10,"payment":0.10,"certification":0.05}',
+        nullable=True,
+    )
     created_at: Mapped[str] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -442,3 +447,32 @@ class CatalogueChangeLogModel(Base):
 
 
 _changelog_item_idx = Index("ix_catalogue_change_log_item_id", CatalogueChangeLogModel.catalogue_item_id)
+
+
+class SellerRatingModel(Base):
+    """Post-delivery seller rating (migration 028)."""
+
+    __tablename__ = "seller_ratings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    escrow_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("escrow_contracts.id"), nullable=False, unique=True
+    )
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("negotiation_sessions.id"), nullable=True
+    )
+    buyer_enterprise_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("enterprises.id"), nullable=False
+    )
+    seller_enterprise_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("enterprises.id"), nullable=False
+    )
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    feedback_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivery_quality: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    communication_quality: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[str] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

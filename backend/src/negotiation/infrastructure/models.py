@@ -24,7 +24,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.shared.infrastructure.db.base import Base
@@ -541,4 +541,70 @@ class NegotiationInsightModel(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+
+class NegotiationConfigModel(Base):
+    """DB-backed negotiation configuration (migration 030)."""
+
+    __tablename__ = "negotiation_config"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    config_name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    max_rounds: Mapped[int] = mapped_column(Integer, server_default="20", nullable=False)
+    stall_rounds: Mapped[int] = mapped_column(Integer, server_default="3", nullable=False)
+    convergence_tolerance: Mapped[float] = mapped_column(
+        Numeric(5, 4), server_default="0.02", nullable=False
+    )
+    session_ttl_hours: Mapped[int] = mapped_column(Integer, server_default="24", nullable=False)
+    hardball_flexibility_threshold: Mapped[float | None] = mapped_column(
+        Numeric(4, 3), server_default="0.15", nullable=True
+    )
+    walkaway_pct_below_floor: Mapped[float | None] = mapped_column(
+        Numeric(4, 3), server_default="0.10", nullable=True
+    )
+    concessive_step_pct: Mapped[float | None] = mapped_column(
+        Numeric(4, 3), server_default="0.035", nullable=True
+    )
+    conservative_step_pct: Mapped[float | None] = mapped_column(
+        Numeric(4, 3), server_default="0.015", nullable=True
+    )
+    opponent_modifiers: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    urgency_max_rounds: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    applies_to_industries: Mapped[list | None] = mapped_column(
+        ARRAY(String), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
+    created_at: Mapped[str] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class AgentDecisionAuditModel(Base):
+    """Per-turn tamper-evident agent decision log (migration 031)."""
+
+    __tablename__ = "agent_decision_audit"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("negotiation_sessions.id"), nullable=False
+    )
+    round_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    enterprise_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("enterprises.id"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    strategy_selected: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reasoning_chain: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    opponent_classification: Mapped[str | None] = mapped_column(Text, nullable=True)
+    flexibility_score: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
+    prev_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entry_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
