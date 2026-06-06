@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect } from 'react';
-import { Wallet, RefreshCw, Copy, ExternalLink, Sparkles } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Wallet, RefreshCw, Copy, ExternalLink, Sparkles, ArrowUpRight, ArrowDownRight, Clock } from 'lucide-react';
 import { toast } from 'sonner';
+import { api } from '@/lib/api';
+import { formatDate } from '@/lib/utils';
 
 import { AppShell } from '@/components/layout/AppShell';
 import { Button } from '@/components/ui/button';
@@ -165,7 +168,74 @@ export default function WalletPage() {
             </div>
           )}
         </div>
+
+        {/* Wallet Transaction History */}
+        {isLinked && <WalletTransactionHistory />}
       </div>
     </AppShell>
+  );
+}
+
+
+function WalletTransactionHistory() {
+  const { data: transactions = [], isLoading } = useQuery<any[]>({
+    queryKey: ['wallet-transactions-settings'],
+    queryFn: () => api.get('/v1/wallet/transactions?limit=30').then(r => r.data?.data || []),
+  });
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+        <Clock className="h-4 w-4 text-muted-foreground" />
+        Transaction History
+      </h2>
+      <p className="text-xs text-muted-foreground">All ALGO movements linked to your wallet — escrow funding, releases, refunds, and payments.</p>
+
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground py-4 text-center">Loading transactions...</p>
+      ) : transactions.length === 0 ? (
+        <div className="border border-dashed border-border rounded-lg py-8 text-center">
+          <Wallet className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+          <p className="text-sm text-muted-foreground">No transactions yet</p>
+          <p className="text-xs text-muted-foreground">Transactions will appear here after escrow funding or release.</p>
+        </div>
+      ) : (
+        <div className="border border-border rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50">
+              <tr>
+                <th className="text-left px-4 py-2 font-medium text-muted-foreground">Event</th>
+                <th className="text-left px-4 py-2 font-medium text-muted-foreground">Direction</th>
+                <th className="text-right px-4 py-2 font-medium text-muted-foreground">Amount</th>
+                <th className="text-left px-4 py-2 font-medium text-muted-foreground">TX ID</th>
+                <th className="text-left px-4 py-2 font-medium text-muted-foreground">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.map((tx: any) => (
+                <tr key={tx.id} className="border-t border-border hover:bg-muted/30">
+                  <td className="px-4 py-2 text-foreground text-xs font-medium">{tx.event_type?.replace(/_/g, ' ')}</td>
+                  <td className="px-4 py-2">
+                    <span className={tx.direction === 'CREDIT' ? 'text-green-600 text-xs' : 'text-red-600 text-xs'}>
+                      {tx.direction === 'CREDIT' ? <ArrowDownRight className="inline h-3 w-3 mr-0.5" /> : <ArrowUpRight className="inline h-3 w-3 mr-0.5" />}
+                      {tx.direction}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 text-right text-foreground font-mono text-xs">{tx.amount_algo} ALGO</td>
+                  <td className="px-4 py-2 text-xs">
+                    {tx.tx_id ? (
+                      <a href={`https://testnet.explorer.perawallet.app/tx/${tx.tx_id}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-mono">
+                        {tx.tx_id.slice(0, 10)}...
+                      </a>
+                    ) : <span className="text-muted-foreground">—</span>}
+                  </td>
+                  <td className="px-4 py-2 text-muted-foreground text-xs">{tx.created_at ? formatDate(tx.created_at) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }

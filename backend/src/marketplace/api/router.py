@@ -1227,12 +1227,10 @@ async def get_platform_stats(
     )
     industries = industries_result.scalar() or []
 
+    # Only expose safe aggregate counts — no settlement amounts or deal counts
     return success_response(data={
         "total_sellers": seller_count.scalar() or 0,
         "total_buyers": buyer_count.scalar() or 0,
-        "negotiations_completed": session_count.scalar() or 0,
-        "escrows_released": escrow_released.scalar() or 0,
-        "total_value_settled_inr": float(total_value.scalar() or 0),
         "industries_represented": [i for i in industries if i],
     })
 
@@ -1293,7 +1291,7 @@ async def list_suppliers(
                 else "5-10" if (enterprise.years_in_operation or 0) < 11
                 else "10+"
             ),
-            "min_order_value_inr": profile.min_order_value,
+            # min_order_value_inr removed — pricing should not be exposed publicly
         })
 
     return success_response(data=suppliers)

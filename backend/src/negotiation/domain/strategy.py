@@ -275,11 +275,20 @@ class StrategyEngine:
                 is_buyer=is_buyer,
             )
 
-        # WALK_AWAY — opponent persistently 10%+ below seller's TRUE floor
+        # WALK_AWAY — seller: opponent persistently 10%+ below floor
         if (
             opponent_last_price is not None
             and not is_buyer
             and opponent_last_price < reservation_price * Decimal("0.90")
+            and rounds_since_concession >= 3
+        ):
+            return self._walk_away(reservation_price, opponent_last_price, is_buyer)
+
+        # WALK_AWAY — buyer: seller persistently 30%+ above buyer's ceiling
+        if (
+            opponent_last_price is not None
+            and is_buyer
+            and opponent_last_price > reservation_price * Decimal("1.30")
             and rounds_since_concession >= 3
         ):
             return self._walk_away(reservation_price, opponent_last_price, is_buyer)

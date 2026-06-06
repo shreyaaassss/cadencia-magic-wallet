@@ -189,54 +189,46 @@ class NeutralEngine:
             b_res = buyer_val.reservation_price
             s_res = seller_val.reservation_price
             if b_res > Decimal("0") and s_res > Decimal("0"):
-                ratio = b_res / s_res
-                if Decimal("0.001") < ratio < Decimal("1000"):
-                    # Same order of magnitude — safe to compare
-                    if b_res < s_res:
-                        gap = s_res - b_res
-                        log.warning(
-                            "no_zopa_detected",
-                            buyer_ceiling=float(b_res),
-                            seller_floor=float(s_res),
-                            gap=float(gap),
-                            session_id=str(session.id),
-                        )
-                        return self._create_no_zopa_offer(
-                            session, current_role,
-                            seller_target=seller_val.target_price,
-                            buyer_ceiling=b_res,
-                            seller_floor=s_res,
-                        ), True
-                    # ZOPA exists — cache floor/ceiling for weighted settlement
-                    sid = str(session.id)
-                    zopa_data = {
-                        "seller_floor": str(s_res),
-                        "buyer_ceiling": str(b_res),
-                    }
-                    self._zopa_cache[sid] = {
-                        "seller_floor": s_res,
-                        "buyer_ceiling": b_res,
-                    }
-                    session.opponent_beliefs = {
-                        **(session.opponent_beliefs or {}),
-                        "_zopa": zopa_data,
-                    }
-                    log.info(
-                        "zopa_cached",
-                        seller_floor=float(s_res),
-                        buyer_ceiling=float(b_res),
-                        zopa_width=float(b_res - s_res),
-                        midpoint=float((b_res + s_res) / Decimal("2")),
-                        session_id=sid,
-                    )
-                else:
+                # MANDATORY ZOPA check — never bypass regardless of price magnitude.
+                # Previous code skipped this for ratio outside 0.001-1000, causing
+                # negotiations to continue with unbridgeable gaps.
+                if b_res < s_res:
+                    gap = s_res - b_res
                     log.warning(
-                        "zopa_check_skipped_price_basis_mismatch",
-                        buyer_reservation=float(b_res),
-                        seller_reservation=float(s_res),
-                        ratio=float(ratio),
-                        hint="Likely per-unit vs total-order mismatch; skipping ZOPA check",
+                        "no_zopa_detected",
+                        buyer_ceiling=float(b_res),
+                        seller_floor=float(s_res),
+                        gap=float(gap),
+                        session_id=str(session.id),
                     )
+                    return self._create_no_zopa_offer(
+                        session, current_role,
+                        seller_target=seller_val.target_price,
+                        buyer_ceiling=b_res,
+                        seller_floor=s_res,
+                    ), True
+                # ZOPA exists — cache floor/ceiling for weighted settlement
+                sid = str(session.id)
+                zopa_data = {
+                    "seller_floor": str(s_res),
+                    "buyer_ceiling": str(b_res),
+                }
+                self._zopa_cache[sid] = {
+                    "seller_floor": s_res,
+                    "buyer_ceiling": b_res,
+                }
+                session.opponent_beliefs = {
+                    **(session.opponent_beliefs or {}),
+                    "_zopa": zopa_data,
+                }
+                log.info(
+                    "zopa_cached",
+                    seller_floor=float(s_res),
+                    buyer_ceiling=float(b_res),
+                    zopa_width=float(b_res - s_res),
+                    midpoint=float((b_res + s_res) / Decimal("2")),
+                    session_id=sid,
+                )
 
         # ── LAYER 1: VALUATION ──
         valuation = await self._compute_valuation(
@@ -861,6 +853,30 @@ class NeutralEngine:
                         f"(neutral 50/50 midpoint). "
                         f"Gap closed to {float(gap_pct):.1f}% (within 2% threshold)."
                     )
+
+        # ── Hard Gap WALK_AWAY Check ──────────────────────────────────────────────
+        # If price gap exceeds 40% after round 6, force WALK_AWAY.
+        # This prevents negotiations from dragging on with unbridgeable gaps.
+        if not is_terminal and session.round_count.value >= 6:
+            buyer_prices = session.get_buyer_prices()
+            seller_prices = session.get_seller_prices()
+            if buyer_prices and seller_prices:
+                last_buyer = buyer_prices[-1]
+                last_seller = seller_prices[-1]
+                if last_seller > Decimal("0"):
+                    gap_pct = float(abs(last_seller - last_buyer) / last_seller)
+                    if gap_pct > 0.40:
+                        is_terminal = True
+                        offer.agent_reasoning = (
+                            f"WALK_AWAY: Price gap {gap_pct:.0%} exceeds 40% threshold "
+                            f"after {session.round_count.value} rounds — no convergence possible."
+                        )
+                        log.warning(
+                            "hard_gap_walk_away",
+                            session_id=str(session.id),
+                            gap_pct=gap_pct,
+                            round=session.round_count.value,
+                        )
 
         # ── Improvement #5: Stall Recovery ───────────────────────────────────────
         # Before terminating on stall, attempt a pattern interrupt:

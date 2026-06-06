@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from src.negotiation.domain.events import SessionCreated
 
 SESSION_TTL_HOURS: int = 24
-MAX_ROUNDS: int = 20
+MAX_ROUNDS: int = 15  # Reduced from 20 — prevents dragging negotiations
 STALL_ROUNDS: int = 3  # No concession for 3 rounds → STALLED
 MAX_SCHEMA_FAILURES: int = 3  # 3x invalid schema → POLICY_BREACH
 CONVERGENCE_TOLERANCE: float = 0.02  # 2% gap → AGREED
