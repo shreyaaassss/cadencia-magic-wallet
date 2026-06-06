@@ -279,8 +279,20 @@ def get_agent_driver() -> object:
 
 
 def _create_agent_driver() -> object:
-    """Internal factory — called once by get_agent_driver()."""
-    provider = os.getenv("LLM_PROVIDER", "stub")
+    """Internal factory — called once by get_agent_driver().
+
+    The main negotiation agent uses OpenAI GPT-4o for production-grade
+    offer generation. If OPENAI_API_KEY is available, it takes priority
+    over any other provider setting to ensure consistent negotiation quality.
+    """
+    # Force OpenAI GPT-4o when API key is available — negotiation requires
+    # a high-quality reasoning model, not a lightweight/free-tier model.
+    openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if openai_key:
+        provider = "openai"
+        log.info("negotiation_driver_forced_openai", reason="OPENAI_API_KEY available, using GPT-4o for negotiations")
+    else:
+        provider = os.getenv("LLM_PROVIDER", "openai")
     temperature = float(os.getenv("LLM_TEMPERATURE", "0.3"))
     max_tokens = int(os.getenv("LLM_MAX_TOKENS", "2048"))
 

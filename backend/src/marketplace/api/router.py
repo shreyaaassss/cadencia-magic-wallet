@@ -1203,9 +1203,6 @@ async def get_platform_stats(
     seller_count = await session.execute(
         select(sa_func.count()).where(EnterpriseModel.trade_role.in_(["SELLER", "BOTH"]))
     )
-    buyer_count = await session.execute(
-        select(sa_func.count()).where(EnterpriseModel.trade_role.in_(["BUYER", "BOTH"]))
-    )
 
     # Industries represented
     from src.marketplace.infrastructure.models import CapabilityProfileModel
@@ -1215,10 +1212,9 @@ async def get_platform_stats(
     )
     industries = industries_result.scalar() or []
 
-    # Only expose safe aggregate counts — no settlement amounts or deal counts
+    # Only expose seller count + industries — no buyer count or deal data
     return success_response(data={
         "total_sellers": seller_count.scalar() or 0,
-        "total_buyers": buyer_count.scalar() or 0,
         "industries_represented": [i for i in industries if i],
     })
 

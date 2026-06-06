@@ -855,20 +855,20 @@ class NeutralEngine:
                     )
 
         # ── Hard Gap WALK_AWAY Check ──────────────────────────────────────────────
-        # If price gap exceeds 40% after round 6, force WALK_AWAY.
+        # If price gap exceeds 25% after round 4, force WALK_AWAY.
         # This prevents negotiations from dragging on with unbridgeable gaps.
-        if not is_terminal and session.round_count.value >= 6:
+        if not is_terminal and session.round_count.value >= 4:
             buyer_prices = session.get_buyer_prices()
             seller_prices = session.get_seller_prices()
             if buyer_prices and seller_prices:
                 last_buyer = buyer_prices[-1]
                 last_seller = seller_prices[-1]
-                if last_seller > Decimal("0"):
-                    gap_pct = float(abs(last_seller - last_buyer) / last_seller)
-                    if gap_pct > 0.40:
+                ref_price = max(last_seller, last_buyer, Decimal("1"))
+                gap_pct = float(abs(last_seller - last_buyer) / ref_price)
+                if gap_pct > 0.25:
                         is_terminal = True
                         offer.agent_reasoning = (
-                            f"WALK_AWAY: Price gap {gap_pct:.0%} exceeds 40% threshold "
+                            f"WALK_AWAY: Price gap {gap_pct:.0%} exceeds 25% threshold "
                             f"after {session.round_count.value} rounds — no convergence possible."
                         )
                         log.warning(
@@ -1478,11 +1478,13 @@ class NeutralEngine:
 
         change = abs(new_price - last_price) / last_price
         abs_change = abs(new_price - last_price)
-        # BUG-06 FIX: compare against Decimal literal for type safety.
-        # Dual-threshold: both must be below threshold to count as a stall.
-        # ₹5,000 minimum movement is always meaningful in Indian B2B context.
-        MIN_ABSOLUTE_CONCESSION = Decimal("5000")
-        if change < Decimal("0.002") and abs_change < MIN_ABSOLUTE_CONCESSION:
+        # Stall detection: a move is "meaningful" only if it exceeds 1% of
+        # the current price. The ₹5K absolute floor catches edge cases where
+        # 1% is too small (e.g., ₹50K deal → 1% = ₹500 is too sensitive).
+        MIN_PERCENT_CONCESSION = Decimal("0.01")   # 1% minimum meaningful move
+        MIN_ABSOLUTE_CONCESSION = Decimal("5000")   # ₹5K floor for small deals
+        is_meaningful = change >= MIN_PERCENT_CONCESSION and abs_change >= MIN_ABSOLUTE_CONCESSION
+        if not is_meaningful:
             session.record_no_concession()
             log.debug("stall_increment", stall_counter=session.stall_counter, change=float(change))
         else:

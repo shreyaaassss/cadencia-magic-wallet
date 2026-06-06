@@ -73,10 +73,9 @@ export default function DiscoverPage() {
 
         {/* Platform Overview */}
         {stats && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <StatCard icon={Building2} label="Verified Sellers" value={stats.total_sellers} />
             <StatCard icon={Factory} label="Industries" value={stats.industries_represented?.length || 0} />
-            <StatCard icon={Users} label="Active Buyers" value={stats.total_buyers} />
           </div>
         )}
 

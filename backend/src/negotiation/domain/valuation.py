@@ -81,7 +81,10 @@ class Valuation(BaseValueObject):
 # ZOPA-MIDPOINT FIX: fraction of (target - reservation) the agent holds above
 # its true floor. 0.40 = 40% → seller won't publicly concede below
 # reservation + 0.40*(target - reservation) in normal rounds.
-_ASPIRATIONAL_FRACTION = Decimal("0.40")
+# How far between reservation and target the agent holds firm.
+# 0.25 = agent can negotiate down to 25% of the gap from their floor.
+# Lower = more room to converge. Higher = more resistance.
+_ASPIRATIONAL_FRACTION = Decimal("0.25")
 
 
 def compute_aspirational_price(

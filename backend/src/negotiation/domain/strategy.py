@@ -284,11 +284,13 @@ class StrategyEngine:
         ):
             return self._walk_away(reservation_price, opponent_last_price, is_buyer)
 
-        # WALK_AWAY — buyer: seller persistently 30%+ above buyer's ceiling
+        # WALK_AWAY — buyer: seller is above buyer's absolute ceiling
+        # reservation_price for buyer = budget_max (their maximum willingness to pay)
+        # If seller is still above this after 3 stalled rounds, no deal is possible
         if (
             opponent_last_price is not None
             and is_buyer
-            and opponent_last_price > reservation_price * Decimal("1.30")
+            and opponent_last_price > reservation_price
             and rounds_since_concession >= 3
         ):
             return self._walk_away(reservation_price, opponent_last_price, is_buyer)
