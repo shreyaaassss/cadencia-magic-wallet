@@ -8,8 +8,8 @@ import structlog
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.negotiation.application.config_service import NegotiationConfig
 from src.negotiation.application.personalization_service import PersonalizationService
-from src.negotiation.application.config_service import NegotiationConfig, NegotiationConfigService
 from src.negotiation.application.services import NegotiationService
 from src.negotiation.infrastructure.embedding_pipeline import (
     GeminiEmbedder,
@@ -82,9 +82,6 @@ def get_negotiation_service(
         analysis_driver = get_analysis_driver()
     except Exception as e:
         _dep_log.warning("analysis_driver_init_failed", error=str(e))
-
-    # Resolve negotiation config from DB (industry-specific or DEFAULT)
-    config_service = NegotiationConfigService(session)
 
     neutral_engine = NeutralEngine(
         agent_driver=agent_driver,
