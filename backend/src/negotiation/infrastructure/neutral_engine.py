@@ -282,7 +282,8 @@ class NeutralEngine:
 
         # Apply Bayesian modifier to concession — use strategy_modifier() output
         bayesian_modifier = self.bayesian_model.strategy_modifier(belief)
-        modifier_concession_rate = Decimal(str(bayesian_modifier.get("concession_rate", 1.0)))
+        raw_rate = float(bayesian_modifier.get("concession_rate", 1.0))
+        modifier_concession_rate = Decimal(str(max(0.5, min(1.5, raw_rate))))
         if strategy_rec.concession_fraction > Decimal("0"):
             # ── Improvement #4: Reciprocity Ratio ──────────────────────────────────
             # Compute how much I'm giving relative to opponent's last move.
@@ -305,10 +306,11 @@ class NeutralEngine:
                 opponent_type=belief.dominant_type.value,
                 reciprocity_ratio=reciprocity_ratio,
             )
-            # Scale concession by Bayesian modifier's recommended rate
+            # Scale concession by Bayesian modifier's recommended rate, clamped to valid range
             adjusted_concession = (adjusted_concession * modifier_concession_rate).quantize(
                 Decimal("0.0001")
             )
+            adjusted_concession = max(Decimal("0"), min(Decimal("1"), adjusted_concession))
         else:
             adjusted_concession = Decimal("0")
             reciprocity_ratio = Decimal("1.0")

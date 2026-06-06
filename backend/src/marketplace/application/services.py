@@ -905,10 +905,18 @@ class MarketplaceService:
                     _analysis_driver = get_analysis_driver()
                 except Exception:
                     pass
+                # Wire SSE publisher so frontend gets real-time status updates
+                _sse_pub = None
+                try:
+                    from src.negotiation.infrastructure.sse_publisher import RedisSSEPublisher
+                    from src.shared.infrastructure.cache.redis_client import get_redis_client
+                    _sse_pub = RedisSSEPublisher(get_redis_client())
+                except Exception:
+                    pass
                 engine = NeutralEngine(
                     agent_driver=get_agent_driver(),
                     personalization_builder=PersonalizationBuilder(),
-                    sse_publisher=None,
+                    sse_publisher=_sse_pub,
                     opponent_profile_repo=PostgresOpponentProfileRepository(db_session),
                     analysis_driver=_analysis_driver,
                     record_repo=PostgresNegotiationRecordRepository(db_session),
@@ -921,7 +929,7 @@ class MarketplaceService:
                     profile_repo=PostgresAgentProfileRepository(db_session),
                     playbook_repo=PostgresPlaybookRepository(db_session),
                     neutral_engine=engine,
-                    sse_publisher=None,
+                    sse_publisher=_sse_pub,
                     event_publisher=get_publisher(),
                     uow=SqlAlchemyUnitOfWork(db_session),
                 )
