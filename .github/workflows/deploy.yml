@@ -116,12 +116,18 @@ jobs:
             tar xzf /tmp/backend-deploy.tar.gz --strip-components=0
 
             # Run database migrations before restarting
+            # alembic/env.py uses python-dotenv to load .env internally,
+            # so we just need the right python on PATH.
             echo "Running alembic migrations..."
-            set +e  # Don't exit on migration failure
-            # Source venv and .env for DATABASE_URL
+            set +e
             if [ -f .venv/bin/activate ]; then source .venv/bin/activate; fi
-            if [ -f .env ]; then set -a; source .env; set +a; fi
-            cd ~/cadencia/backend && python -m alembic upgrade head 2>&1 || echo "WARNING: alembic migration failed — may need manual run"
+            python -m alembic upgrade head 2>&1
+            MIGRATION_EXIT=$?
+            if [ $MIGRATION_EXIT -ne 0 ]; then
+              echo "WARNING: alembic exit code $MIGRATION_EXIT — may need manual run"
+            else
+              echo "Migrations applied successfully"
+            fi
             set -e
 
             pm2 restart cadencia-backend
