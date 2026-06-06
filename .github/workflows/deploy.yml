@@ -116,17 +116,25 @@ jobs:
             tar xzf /tmp/backend-deploy.tar.gz --strip-components=0
 
             # Run database migrations before restarting
-            # alembic/env.py uses python-dotenv to load .env internally,
-            # so we just need the right python on PATH.
             echo "Running alembic migrations..."
             set +e
-            if [ -f .venv/bin/activate ]; then source .venv/bin/activate; fi
-            python -m alembic upgrade head 2>&1
-            MIGRATION_EXIT=$?
-            if [ $MIGRATION_EXIT -ne 0 ]; then
-              echo "WARNING: alembic exit code $MIGRATION_EXIT — may need manual run"
+            # Find the right python — try venv, then python3, then python
+            PYBIN=""
+            if [ -f .venv/bin/python ]; then PYBIN=".venv/bin/python";
+            elif command -v python3 &>/dev/null; then PYBIN="python3";
+            elif command -v python &>/dev/null; then PYBIN="python";
+            fi
+            if [ -n "$PYBIN" ]; then
+              echo "Using python: $PYBIN"
+              $PYBIN -m alembic upgrade head 2>&1
+              MIGRATION_EXIT=$?
+              if [ $MIGRATION_EXIT -ne 0 ]; then
+                echo "WARNING: alembic exit code $MIGRATION_EXIT — may need manual run"
+              else
+                echo "Migrations applied successfully"
+              fi
             else
-              echo "Migrations applied successfully"
+              echo "WARNING: no python found — skipping migrations"
             fi
             set -e
 
