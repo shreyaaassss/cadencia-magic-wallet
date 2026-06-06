@@ -115,6 +115,11 @@ jobs:
             # Extract new backend source
             tar xzf /tmp/backend-deploy.tar.gz --strip-components=0
 
+            # Run database migrations before restarting
+            echo "Running alembic migrations..."
+            source .venv/bin/activate 2>/dev/null || true
+            python -m alembic upgrade head || echo "WARNING: alembic migration failed (may already be up to date)"
+
             pm2 restart cadencia-backend
             echo "Backend deployed and restarted"
 
