@@ -465,6 +465,25 @@ async def handle_session_agreed_deploy(event: object) -> None:
                 session_id=str(session_id),
                 escrow_id=str(result["escrow_id"]),
             )
+
+            # Auto-create messaging thread for buyer-seller communication
+            try:
+                import uuid as _uuid  # noqa: I001
+
+                from src.messaging.application.services import MessagingService
+                msg_svc = MessagingService(db_session)
+                await msg_svc.create_thread(
+                    buyer_enterprise_id=buyer_enterprise_id,
+                    seller_enterprise_id=seller_enterprise_id,
+                    thread_type="DEAL",
+                    subject="Deal agreed — coordinate delivery & logistics",
+                    session_id=session_id,
+                    escrow_id=_uuid.UUID(str(result["escrow_id"])),
+                )
+                log.info("messaging_thread_auto_created", session_id=str(session_id))
+            except Exception:
+                log.warning("messaging_thread_auto_create_failed", session_id=str(session_id))
+
     except Exception:
         log.exception(
             "handle_session_agreed_deploy_failed",
