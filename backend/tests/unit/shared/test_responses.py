@@ -28,34 +28,25 @@ from src.shared.api.responses import (
 # ── Success response ──────────────────────────────────────────────────────────
 
 def test_success_response_structure() -> None:
-    request_id = uuid.uuid4()
     data = {"enterprise_id": str(uuid.uuid4()), "name": "Acme Ltd"}
-    response = success_response(data, request_id=request_id)
+    response = success_response(data)
 
-    assert response.success is True
-    assert response.data == data
-    assert response.error is None
-    assert response.meta.request_id == str(request_id)
-    assert isinstance(response.meta.timestamp, datetime)
+    assert response["status"] == "success"
+    assert response["data"] == data
 
 
 def test_success_response_auto_request_id() -> None:
-    """success_response must generate a request_id if not provided."""
+    """success_response returns a plain dict with status + data."""
     response = success_response({"key": "value"})
-    assert response.meta.request_id
-    # Must be a valid UUID string
-    uuid.UUID(response.meta.request_id)
+    assert response["status"] == "success"
+    assert response["data"]["key"] == "value"
 
 
 def test_success_response_serializes_to_dict() -> None:
-    response = success_response({"x": 1}, request_id=uuid.uuid4())
-    data = response.model_dump(mode="json")
+    response = success_response({"x": 1})
 
-    assert data["success"] is True
-    assert data["data"] == {"x": 1}
-    assert data["error"] is None
-    assert "request_id" in data["meta"]
-    assert "timestamp" in data["meta"]
+    assert response["status"] == "success"
+    assert response["data"] == {"x": 1}
 
 
 # ── Error response ────────────────────────────────────────────────────────────

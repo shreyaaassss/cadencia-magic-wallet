@@ -69,15 +69,15 @@ class TestEscrowDeployment:
         esc = _make_escrow()
         assert esc.status == EscrowStatus.PENDING_APPROVAL
 
-    def test_record_approval_transitions_to_deployed(self):
-        """record_approval() advances PENDING_APPROVAL → DEPLOYED."""
+    def test_record_approval_transitions_to_approved(self):
+        """record_approval() advances PENDING_APPROVAL → APPROVED."""
         esc = _make_escrow()
         esc.record_approval()
-        assert esc.status == EscrowStatus.DEPLOYED
+        assert esc.status == EscrowStatus.APPROVED
 
     def test_record_deployment_success(self):
         esc = _make_escrow()
-        esc.record_approval()  # must be DEPLOYED before record_deployment
+        esc.record_approval()  # must be APPROVED before record_deployment
         event = _deploy(esc)
         assert esc.algo_app_id == AlgoAppId(value=12345)
         assert isinstance(event, EscrowDeployed)

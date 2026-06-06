@@ -196,7 +196,7 @@ class TestApproveEscrowStaysDeployed:
         )
 
     def test_approve_escrow_logs_deployed_not_funded(self):
-        """Log event name must reflect DEPLOYED state, not FUNDED."""
+        """Log event name must reflect APPROVED state, not FUNDED."""
         import inspect
         from src.settlement.application.services import SettlementService
 
@@ -205,22 +205,23 @@ class TestApproveEscrowStaysDeployed:
         assert "escrow_approved_deployed_funded" not in src, (
             "Old log key 'escrow_approved_deployed_funded' must be removed"
         )
-        assert "escrow_approved_deployed" in src, (
-            "New log key 'escrow_approved_deployed' must be present"
+        # Current flow: approve → APPROVED (buyer deploys separately)
+        assert "escrow_approved" in src, (
+            "approve_escrow must have an escrow_approved log key"
         )
 
-    def test_approve_escrow_prometheus_label_is_deployed(self):
-        """Prometheus counter must label state=DEPLOYED, not FUNDED."""
+    def test_approve_escrow_prometheus_label_is_approved(self):
+        """Prometheus counter must label state=APPROVED, not FUNDED."""
         import inspect
         from src.settlement.application.services import SettlementService
 
         src = inspect.getsource(SettlementService.approve_escrow)
 
-        # After fix: DEPLOYED label; old code had FUNDED
+        # After fix: APPROVED label; old code had FUNDED
         assert 'state="FUNDED"' not in src, (
-            "Prometheus label must not be FUNDED in approve_escrow after Phase 3"
+            "Prometheus label must not be FUNDED in approve_escrow"
         )
-        assert 'state="DEPLOYED"' in src
+        assert 'state="APPROVED"' in src
 
 
 # ── [V-4] record_pera_fund transitions DEPLOYED → FUNDED ─────────────────────
@@ -274,13 +275,13 @@ class TestRecordPeraFund:
             seller_address="B" * 58,
             amount=EscrowAmount(value=MicroAlgo(value=100_000)),
         )
-        # Step 1: admin approves → PENDING_APPROVAL → DEPLOYED
+        # Step 1: admin approves → PENDING_APPROVAL → APPROVED
         esc.record_approval()
-        assert esc.status == EscrowStatus.DEPLOYED, (
-            "record_approval must transition status to DEPLOYED"
+        assert esc.status == EscrowStatus.APPROVED, (
+            "record_approval must transition status to APPROVED"
         )
 
-        # Step 2: attach on-chain app_id (record_deployment requires DEPLOYED)
+        # Step 2: attach on-chain app_id (record_deployment works from APPROVED)
         esc.record_deployment(
             app_id=AlgoAppId(value=12345),
             app_address=AlgoAppAddress(value="C" * 58),
