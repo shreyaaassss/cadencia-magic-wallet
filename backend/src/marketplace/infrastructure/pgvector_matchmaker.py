@@ -25,8 +25,8 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
-# Default composite scoring weights
-_WEIGHTS = {
+# Default composite scoring weights (used when no industry-specific weights available)
+_DEFAULT_WEIGHTS = {
     "semantic": 0.25,
     "delivery": 0.20,
     "capacity": 0.15,
@@ -35,6 +35,33 @@ _WEIGHTS = {
     "payment": 0.10,
     "certification": 0.05,
 }
+
+# Module-level alias for backward compatibility
+_WEIGHTS = _DEFAULT_WEIGHTS
+
+
+async def _load_industry_weights(session: object, industry_vertical: str | None) -> dict:
+    """Load per-industry matching weights from industry_taxonomies table.
+
+    Falls back to _DEFAULT_WEIGHTS if no industry-specific weights found.
+    """
+    if not industry_vertical:
+        return _DEFAULT_WEIGHTS
+    try:
+        from sqlalchemy import select as _sa_select
+
+        from src.marketplace.infrastructure.models import IndustryTaxonomyModel
+        result = await session.execute(
+            _sa_select(IndustryTaxonomyModel.matching_weights).where(
+                IndustryTaxonomyModel.display_name.ilike(f"%{industry_vertical}%")
+            )
+        )
+        row = result.scalar_one_or_none()
+        if row and isinstance(row, dict):
+            return row
+    except Exception:
+        pass
+    return _DEFAULT_WEIGHTS
 
 
 class PgvectorMatchmaker:
@@ -396,3 +423,46 @@ class StubMatchmakingEngine:
         # fabricating random UUIDs with misleading high scores.
         log.warning("stub_matchmaker_no_session", rfq_id=str(rfq.id))
         return []
+
+
+def explain_match(match_data: dict) -> dict:
+    """Generate human-readable explanation for why a seller was recommended.
+
+    Takes the scored match data and produces an explanation string
+    for each scoring factor.
+    """
+    explanations = []
+    total = match_data.get("composite_score", 0)
+
+    factors = {
+        "semantic_score": ("Product Match", "How well the seller's products match your RFQ"),
+        "delivery_feasibility_score": ("Delivery", "Estimated delivery feasibility based on distance and capacity"),
+        "capacity_score": ("Capacity", "Seller's available production capacity for your order size"),
+        "price_score": ("Price Fit", "How competitive the seller's pricing is vs. your budget"),
+        "proximity_score": ("Proximity", "Geographic distance between seller and delivery location"),
+        "payment_score": ("Payment Terms", "Overlap between your preferred payment terms and seller's accepted terms"),
+        "certification_score": ("Certifications", "Quality certifications held by the seller"),
+    }
+
+    for key, (label, description) in factors.items():
+        score = match_data.get(key, 0)
+        if score > 0:
+            # Score contribution as percentage of composite
+            contribution = (score * _DEFAULT_WEIGHTS.get(key.replace("_score", ""), 0.1)) / total * 100 if total > 0 else 0
+            strength = "Strong" if score > 0.7 else "Moderate" if score > 0.4 else "Weak"
+            explanations.append({
+                "factor": label,
+                "score": round(score, 3),
+                "strength": strength,
+                "contribution_pct": round(contribution, 1),
+                "description": description,
+            })
+
+    return {
+        "composite_score": round(total, 3),
+        "factors": sorted(explanations, key=lambda x: x["score"], reverse=True),
+        "summary": (
+            f"This seller scored {total:.1%} overall. "
+            f"Strongest factor: {explanations[0]['factor'] if explanations else 'N/A'}."
+        ),
+    }

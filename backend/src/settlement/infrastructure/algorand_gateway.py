@@ -863,8 +863,14 @@ class AlgorandGateway:
 
     # ── Helper ────────────────────────────────────────────────────────────────
 
+    # Module-level singleton for AlgodClient to avoid connection pool leaks
+    _shared_algod: object | None = None
+
     def _get_algod_client(self):
-        """Get a raw AlgodClient instance for direct transaction building."""
+        """Get a raw AlgodClient instance (singleton — reused across calls)."""
+        if AlgorandGateway._shared_algod is not None:
+            return AlgorandGateway._shared_algod
+
         from algosdk.v2client.algod import AlgodClient
 
         algod_address = os.environ.get(
@@ -873,7 +879,34 @@ class AlgorandGateway:
         algod_token = os.environ.get(
             "ALGORAND_ALGOD_TOKEN", "a" * 64,
         )
-        return AlgodClient(algod_token, algod_address)
+        AlgorandGateway._shared_algod = AlgodClient(algod_token, algod_address)
+        return AlgorandGateway._shared_algod
+
+    async def close_out_app(self, app_id: int) -> dict:
+        """Delete on-chain app after RELEASED/REFUNDED to recover MBR.
+
+        Sends a DeleteApplication transaction to reclaim the 0.1 ALGO MBR
+        seeded to the contract account at deploy time.
+        """
+        try:
+            algod = self._get_algod_client()
+            from algosdk import transaction
+
+            sp = algod.suggested_params()
+            txn = transaction.ApplicationCallTxn(
+                sender=self._creator_address,
+                sp=sp,
+                index=app_id,
+                on_complete=transaction.OnComplete.DeleteApplicationOC,
+            )
+
+            signed = txn.sign(self._creator_sk)
+            tx_id = algod.send_transaction(signed)
+            log.info("close_out_app_sent", app_id=app_id, tx_id=tx_id)
+            return {"app_id": app_id, "tx_id": tx_id, "status": "deleted"}
+        except Exception as e:
+            log.warning("close_out_app_failed", app_id=app_id, error=str(e))
+            return {"app_id": app_id, "status": "failed", "error": str(e)}
 
     def _get_pera_algod_client(self):
         """

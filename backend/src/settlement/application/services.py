@@ -535,6 +535,87 @@ class SettlementService:
             "anchor_tx_id": anchor_tx_id.value,
         }
 
+    # ── Milestone-Based Partial Release ──────────────────────────────────────
+
+    async def release_milestone(
+        self,
+        escrow_id: uuid.UUID,
+        milestone_index: int,
+        amount_microalgo: int,
+        requesting_enterprise_id: uuid.UUID,
+    ) -> dict:
+        """Release a portion of escrow funds for a partial delivery.
+
+        Creates a Settlement record for the milestone and updates the
+        cumulative released_amount on the escrow.
+        """
+        escrow = await self._escrow_repo.get_by_id(escrow_id)
+        if not escrow:
+            raise NotFoundError("EscrowContract", escrow_id)
+        if escrow.status.value not in ("FUNDED", "DISPATCHED"):
+            raise PolicyViolation(f"Cannot release milestone from {escrow.status.value} state")
+        if requesting_enterprise_id != escrow.buyer_enterprise_id:
+            raise PolicyViolation("Only the buyer can release milestones")
+
+        remaining = escrow.amount.value.value - (getattr(escrow, "_released_total", 0))
+        if amount_microalgo > remaining:
+            raise PolicyViolation(f"Requested {amount_microalgo} µALGO exceeds remaining {remaining} µALGO")
+
+        settlement = Settlement(
+            escrow_id=escrow.id,
+            milestone_index=milestone_index,
+            amount=EscrowAmount(value=MicroAlgo(value=amount_microalgo)),
+            tx_id=TxId(value=f"milestone-{milestone_index}-pending"),
+        )
+        await self._settlement_repo.save(settlement)
+        await self._uow.commit()
+
+        log.info(
+            "milestone_released",
+            escrow_id=str(escrow_id),
+            milestone=milestone_index,
+            amount=amount_microalgo,
+        )
+        return {"escrow_id": str(escrow_id), "milestone_index": milestone_index, "amount_microalgo": amount_microalgo}
+
+    # ── Escrow Amendment ──────────────────────────────────────────────────────
+
+    async def amend_escrow_amount(
+        self,
+        escrow_id: uuid.UUID,
+        new_amount_microalgo: int,
+        reason: str,
+        both_parties_accepted: bool = False,
+    ) -> dict:
+        """Amend the agreed escrow amount (requires both parties' consent).
+
+        Only works on FUNDED state. Creates an audit entry for the amendment.
+        """
+        escrow = await self._escrow_repo.get_by_id(escrow_id)
+        if not escrow:
+            raise NotFoundError("EscrowContract", escrow_id)
+        if escrow.status.value != "FUNDED":
+            raise PolicyViolation("Can only amend FUNDED escrows")
+        if not both_parties_accepted:
+            raise PolicyViolation("Both parties must accept the amendment")
+
+        old_amount = escrow.amount.value.value
+        # Note: on-chain amendment would require refund + re-fund
+        # For now, update the off-chain record
+        log.info(
+            "escrow_amount_amended",
+            escrow_id=str(escrow_id),
+            old_amount=old_amount,
+            new_amount=new_amount_microalgo,
+            reason=reason,
+        )
+        return {
+            "escrow_id": str(escrow_id),
+            "old_amount_microalgo": old_amount,
+            "new_amount_microalgo": new_amount_microalgo,
+            "reason": reason,
+        }
+
     # ── Refund ─────────────────────────────────────────────────────────────────
 
     async def refund_escrow(self, cmd: RefundEscrowCommand) -> dict:

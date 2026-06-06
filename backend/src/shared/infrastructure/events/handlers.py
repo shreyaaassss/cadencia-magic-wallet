@@ -1298,3 +1298,28 @@ def register_phase_seven_handlers(publisher: EventPublisher) -> None:
         ],
     )
 
+    # Auto-close messaging threads when escrow reaches terminal state
+    publisher.subscribe("EscrowReleased", _handle_escrow_terminal_close_threads)
+    publisher.subscribe("EscrowRefunded", _handle_escrow_terminal_close_threads)
+
+
+async def _handle_escrow_terminal_close_threads(event: object) -> None:
+    """Close all messaging threads when escrow is released or refunded."""
+    try:
+        from src.messaging.application.services import MessagingService
+        from src.shared.infrastructure.db.session import get_session_factory
+
+        escrow_id = getattr(event, "escrow_id", None)
+        session_id = getattr(event, "session_id", None)
+        if not escrow_id and not session_id:
+            return
+
+        async with get_session_factory()() as db_session:
+            svc = MessagingService(db_session)
+            if escrow_id:
+                await svc.close_threads_for_escrow(escrow_id)
+            if session_id:
+                await svc.close_threads_for_session(session_id)
+    except Exception:
+        log.exception("messaging_auto_close_failed")
+
