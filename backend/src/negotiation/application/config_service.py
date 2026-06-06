@@ -21,9 +21,9 @@ class NegotiationConfig:
     """Resolved configuration for a negotiation session."""
 
     config_name: str = "DEFAULT"
-    max_rounds: int = 20
+    max_rounds: int = 15  # Aligned with session.py MAX_ROUNDS
     stall_rounds: int = 3
-    convergence_tolerance: float = 0.02
+    convergence_tolerance: float = 0.035  # 3.5% — B2B procurement standard
     session_ttl_hours: int = 24
     hardball_flexibility_threshold: float = 0.15
     walkaway_pct_below_floor: float = 0.10
@@ -31,6 +31,7 @@ class NegotiationConfig:
     conservative_step_pct: float = 0.015
     opponent_modifiers: dict = field(default_factory=lambda: {
         "cooperative": 0.85, "strategic": 1.0, "stubborn": 1.2, "bluffing": 0.7,
+        "deadline_driven": 1.1, "reciprocator": 0.90, "hardball_then_cave": 1.15, "escalator": 1.3,
     })
     urgency_max_rounds: dict = field(default_factory=lambda: {
         "CRITICAL": 3, "HIGH": 5, "MODERATE": 8, "LOW": 15,

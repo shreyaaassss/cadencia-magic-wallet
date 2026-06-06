@@ -261,7 +261,7 @@ async def run_turn(
 @router.post("/{session_id}/run-auto")
 async def run_auto_negotiation(
     session_id: uuid.UUID,
-    max_rounds: int = Query(default=20, ge=1, le=50, description="Maximum rounds to execute"),
+    max_rounds: int = Query(default=30, ge=1, le=50, description="Maximum turns (buyer+seller) to execute"),
     svc: NegotiationService = Depends(get_negotiation_service),
     user: User = Depends(get_current_user),
 ):

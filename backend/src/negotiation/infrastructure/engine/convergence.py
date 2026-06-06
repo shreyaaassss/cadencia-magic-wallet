@@ -45,7 +45,7 @@ def compute_deal_quality(
 
 
 def is_within_convergence_tolerance(
-    price_a: Decimal, price_b: Decimal, tolerance: float = 0.02
+    price_a: Decimal, price_b: Decimal, tolerance: float = 0.035
 ) -> bool:
     """Check if two prices are within convergence tolerance."""
     if price_a <= 0 or price_b <= 0:

@@ -556,10 +556,10 @@ class NegotiationConfigModel(Base):
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
     )
     config_name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    max_rounds: Mapped[int] = mapped_column(Integer, server_default="20", nullable=False)
+    max_rounds: Mapped[int] = mapped_column(Integer, server_default="15", nullable=False)
     stall_rounds: Mapped[int] = mapped_column(Integer, server_default="3", nullable=False)
     convergence_tolerance: Mapped[float] = mapped_column(
-        Numeric(5, 4), server_default="0.02", nullable=False
+        Numeric(5, 4), server_default="0.035", nullable=False
     )
     session_ttl_hours: Mapped[int] = mapped_column(Integer, server_default="24", nullable=False)
     hardball_flexibility_threshold: Mapped[float | None] = mapped_column(

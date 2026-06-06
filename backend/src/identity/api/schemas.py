@@ -90,7 +90,7 @@ class CreateAPIKeyRequest(BaseModel):
 class AgentConfigInner(BaseModel):
     """The actual AI agent configuration the frontend sends/reads."""
     negotiation_style: Literal["AGGRESSIVE", "MODERATE", "CONSERVATIVE"] = "MODERATE"
-    max_rounds: int = Field(default=20, ge=1, le=50)
+    max_rounds: int = Field(default=15, ge=1, le=50)
     auto_escalate: bool = False
     min_acceptable_price: Optional[float] = None
 
@@ -161,7 +161,7 @@ class APIKeyListItem(BaseModel):
 class AgentConfigResponse(BaseModel):
     """Nested agent_config inside EnterpriseResponse."""
     negotiation_style: str = "MODERATE"
-    max_rounds: int = 20
+    max_rounds: int = 15
     auto_escalate: bool = False
     min_acceptable_price: Optional[float] = None
 
@@ -211,7 +211,7 @@ class EnterpriseResponse(BaseModel):
         if hasattr(enterprise, 'agent_config') and enterprise.agent_config:
             agent_cfg = AgentConfigResponse(
                 negotiation_style=enterprise.agent_config.get("negotiation_style", "MODERATE"),
-                max_rounds=enterprise.agent_config.get("max_rounds", 20),
+                max_rounds=enterprise.agent_config.get("max_rounds", 15),
                 auto_escalate=enterprise.agent_config.get("auto_escalate", False),
                 min_acceptable_price=enterprise.agent_config.get("min_acceptable_price"),
             )

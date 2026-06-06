@@ -113,7 +113,7 @@ class StrategyEngine:
 
     def __init__(
         self,
-        max_rounds: int = 20,
+        max_rounds: int = 15,
         config: object | None = None,
     ) -> None:
         self.max_rounds = max_rounds

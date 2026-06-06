@@ -806,7 +806,7 @@ class NeutralEngine:
             reservation=valuation.reservation_price,
             is_buyer=is_buyer,
             rounds_used=session.round_count.value,
-            max_rounds=20,
+            max_rounds=self.strategy_engine.max_rounds,
         )
         # Use LLM confidence if it's meaningfully non-default (not 0.5 fallback)
         if abs(confidence - 0.5) < 0.05:
