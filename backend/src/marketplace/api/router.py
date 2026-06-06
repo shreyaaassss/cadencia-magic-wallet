@@ -1199,24 +1199,12 @@ async def get_platform_stats(
     from sqlalchemy import func as sa_func
 
     from src.identity.infrastructure.models import EnterpriseModel
-    from src.negotiation.infrastructure.models import NegotiationSessionModel
-    from src.settlement.infrastructure.models import EscrowContractModel
 
     seller_count = await session.execute(
         select(sa_func.count()).where(EnterpriseModel.trade_role.in_(["SELLER", "BOTH"]))
     )
     buyer_count = await session.execute(
         select(sa_func.count()).where(EnterpriseModel.trade_role.in_(["BUYER", "BOTH"]))
-    )
-    session_count = await session.execute(
-        select(sa_func.count()).where(NegotiationSessionModel.status == "AGREED")
-    )
-    escrow_released = await session.execute(
-        select(sa_func.count()).where(EscrowContractModel.status == "RELEASED")
-    )
-    total_value = await session.execute(
-        select(sa_func.coalesce(sa_func.sum(EscrowContractModel.agreed_price_inr), 0))
-        .where(EscrowContractModel.status == "RELEASED")
     )
 
     # Industries represented
