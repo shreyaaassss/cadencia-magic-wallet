@@ -169,7 +169,7 @@ async def _resume_stalled_negotiations() -> None:
         result = await db_session.execute(text("""
             SELECT id FROM negotiation_sessions
             WHERE status IN ('ACTIVE', 'ROUND_LOOP', 'SELLER_RESPONSE', 'BUYER_ANCHOR')
-              AND round_count < 30
+              AND current_round < 30
               AND created_at > NOW() - INTERVAL '24 hours'
             ORDER BY created_at DESC
             LIMIT 20

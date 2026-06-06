@@ -967,7 +967,7 @@ class NeutralEngine:
                         # Update the offer's price to the unfreeze price
                         offer = Offer.create_agent_offer(
                             session_id=session.id,
-                            round_number=offer.round_number,
+                            round_number=offer.round_number.value,
                             proposer_role=current_role,
                             price=unfreeze_price,
                             currency="INR",
