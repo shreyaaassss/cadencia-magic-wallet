@@ -432,6 +432,14 @@ def create_app() -> FastAPI:
     from src.wallet.api.x402_routes import router as x402_router
     app.include_router(x402_router)
 
+    # Procurement — PO generation and seller acceptance
+    from src.procurement.api.router import router as procurement_router
+    app.include_router(procurement_router)
+
+    # Messaging — buyer-seller conversation threads
+    from src.messaging.api.router import router as messaging_router
+    app.include_router(messaging_router)
+
     # Prometheus metrics endpoint (RW-05)
     from src.shared.api.metrics_router import router as metrics_router
     app.include_router(metrics_router)
