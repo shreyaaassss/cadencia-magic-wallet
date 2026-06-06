@@ -66,7 +66,10 @@ class AgentProfile(BaseEntity):
         """
         w = self.strategy_weights
         n = max(self.version, 1)  # use version as session count proxy
-        alpha = 1.0 / (n + 1)    # EMA factor
+        # Windowed EMA: cap alpha at 0.05 so new data always has >= 5% influence
+        # even after hundreds of sessions. Without this, alpha → 0.001 after
+        # 100 sessions and the profile becomes effectively frozen.
+        alpha = max(1.0 / (n + 1), 0.05)
 
         new_win_rate = (
             w.win_rate * (1 - alpha) + (1.0 if session_agreed else 0.0) * alpha

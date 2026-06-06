@@ -170,6 +170,60 @@ class IdentityService:
         )
         await self._publisher.publish(event)
 
+        # 4.1 Auto-ingest registration data into agent memory for RAG context.
+        # This ensures the negotiation engine has context from day 1, even before
+        # any negotiations occur.
+        try:
+            import asyncio as _asyncio
+            registration_text = (
+                f"Enterprise: {enterprise.legal_name}. "
+                f"Industry: {cmd.industry_vertical or 'Not specified'}. "
+                f"Geography: {cmd.geography or 'Not specified'}. "
+                f"Role: {cmd.trade_role}. "
+                f"Commodities: {', '.join(cmd.commodities) if cmd.commodities else 'None'}. "
+                f"Payment terms: {', '.join(cmd.payment_terms_accepted) if cmd.payment_terms_accepted else 'Not specified'}. "
+                f"Certifications: {', '.join(cmd.quality_certifications) if cmd.quality_certifications else 'None'}. "
+                f"Years in operation: {cmd.years_in_operation or 'Not specified'}."
+            )
+            role = "seller" if cmd.trade_role in ("SELLER", "BOTH") else "buyer"
+
+            async def _ingest_registration():
+                try:
+                    import os
+
+                    from src.negotiation.application.personalization_service import (
+                        PersonalizationService,
+                    )
+                    from src.negotiation.infrastructure.embedding_pipeline import (
+                        GeminiEmbedder,
+                        StubEmbedder,
+                        TextChunker,
+                    )
+                    from src.negotiation.infrastructure.repositories import (
+                        PostgresAgentMemoryRepository,
+                    )
+                    from src.shared.infrastructure.db.session import get_session_factory
+
+                    async with get_session_factory()() as db_session:
+                        memory_repo = PostgresAgentMemoryRepository(db_session)
+                        embedder = GeminiEmbedder() if os.environ.get("GEMINI_API_KEY") else StubEmbedder()
+                        chunker = TextChunker()
+                        ps = PersonalizationService(
+                            s3_vault=None, memory_repo=memory_repo,
+                            embedding_service=embedder, text_chunker=chunker, uow=None,
+                        )
+                        await ps.ingest_text_directly(
+                            tenant_id=enterprise.id, text=registration_text,
+                            role=role, metadata={"source": "registration"},
+                        )
+                        await db_session.commit()
+                except Exception as exc:
+                    log.warning("registration_memory_ingest_failed", error=str(exc))
+
+            _asyncio.create_task(_ingest_registration())
+        except Exception:
+            pass  # Non-fatal — memory ingestion is best-effort
+
         # 5. Issue access token immediately
         access_token = self._jwt.create_access_token(
             subject=str(user.id),

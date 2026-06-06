@@ -56,6 +56,13 @@ const PAYMENT_TERM_SUGGESTIONS = [
 
 const CERT_SUGGESTIONS = ["ISO 9001", "BIS", "RDSO", "ISO 14001", "NABL"];
 
+const INDUSTRY_OPTIONS = [
+  "Metals & Steel", "Electronics & Technology", "Textiles & Apparel",
+  "Chemicals & Pharma", "Agriculture & Food", "Construction & Building Materials",
+  "Machinery & Equipment", "Automotive & Auto Parts", "Packaging & Paper",
+  "Energy & Power", "Others",
+];
+
 function ErrorBanner({ message }: { message: string }) {
   return (
     <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700 mb-4">
@@ -325,7 +332,7 @@ export default function RegisterPage() {
 
     if (isSeller) {
       if (state.step === 2) return <SellerFacilityForm initialData={state.sellerFacility} onSubmit={handleSellerFacilitySubmit} onBack={() => goToStep(1)} />;
-      if (state.step === 3) return <SellerCapacityForm initialData={state.sellerCapacity} onSubmit={handleSellerCapacitySubmit} onBack={() => goToStep(2)} />;
+      if (state.step === 3) return <SellerCapacityForm initialData={state.sellerCapacity} facilityType={state.sellerFacility?.facility_type} onSubmit={handleSellerCapacitySubmit} onBack={() => goToStep(2)} />;
       if (state.step === 4) return <Step2Form initialData={state.user} onSubmit={handleAccountSubmit} onBack={() => goToStep(3)} />;
       if (state.step === 5 && state.enterprise && state.user) {
         return <ReviewStep enterprise={state.enterprise} user={state.user} sellerFacility={state.sellerFacility} sellerCapacity={state.sellerCapacity} buyerLocation={null} onEdit={goToStep} onSubmit={submitRegistration} isSubmitting={isSubmittingForm} isSeller={true} />;
@@ -617,12 +624,34 @@ function Step1Form({ initialData, onSubmit, defaultTradeRole }: { initialData: S
           />
         </FormField>
         <FormField label="Industry Vertical" required error={touchedFields.industry_vertical ? errors.industry_vertical?.message : undefined}>
-          <Input {...register('industry_vertical')} />
+          <Controller
+            control={control}
+            name="industry_vertical"
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <SelectTrigger><SelectValue placeholder="Select industry" /></SelectTrigger>
+                <SelectContent position="popper" className="bg-popover border-border max-h-60">
+                  {INDUSTRY_OPTIONS.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+          />
         </FormField>
       </div>
 
       <FormField label="Geography" hint="Primary state or region" required error={touchedFields.geography ? errors.geography?.message : undefined}>
-        <Input {...register('geography')} />
+        <Controller
+          control={control}
+          name="geography"
+          render={({ field }) => (
+            <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <SelectTrigger><SelectValue placeholder="Select state" /></SelectTrigger>
+              <SelectContent position="popper" className="bg-popover border-border max-h-60">
+                {INDIAN_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
+        />
       </FormField>
 
       {showSellerFields && (
@@ -660,11 +689,24 @@ function Step1Form({ initialData, onSubmit, defaultTradeRole }: { initialData: S
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SellerFacilityForm({ initialData, onSubmit, onBack }: { initialData: SellerFacilityValues | null; onSubmit: (data: SellerFacilityValues) => void; onBack: () => void }) {
-  const { register, control, handleSubmit, formState: { errors, touchedFields } } = useForm<SellerFacilityValues>({
+  const { register, control, handleSubmit, setValue, formState: { errors, touchedFields } } = useForm<SellerFacilityValues>({
     resolver: zodResolver(sellerFacilitySchema),
     defaultValues: initialData || {},
     mode: 'onTouched',
   });
+  const [pincodeLoading, setPincodeLoading] = React.useState(false);
+
+  const handlePincodeAutofill = React.useCallback(async (pincode: string) => {
+    if (!/^\d{6}$/.test(pincode)) return;
+    setPincodeLoading(true);
+    try {
+      const { data } = await api.get(`/v1/marketplace/pincode/${pincode}`);
+      const geo = data?.data;
+      if (geo?.city) setValue('city', geo.city, { shouldValidate: true });
+      if (geo?.state) setValue('state', geo.state, { shouldValidate: true });
+    } catch { /* pincode not found — user types manually */ }
+    finally { setPincodeLoading(false); }
+  }, [setValue]);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 animate-in fade-in slide-in-from-bottom-2">
@@ -687,7 +729,7 @@ function SellerFacilityForm({ initialData, onSubmit, onBack }: { initialData: Se
             control={control}
             name="state"
             render={({ field }) => (
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value}>
                 <SelectTrigger><SelectValue placeholder="Select state" /></SelectTrigger>
                 <SelectContent position="popper" className="bg-popover border-border max-h-60">
                   {INDIAN_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
@@ -699,8 +741,13 @@ function SellerFacilityForm({ initialData, onSubmit, onBack }: { initialData: Se
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField label="Pincode" hint="6-digit" required error={touchedFields.pincode ? errors.pincode?.message : undefined}>
-          <Input {...register('pincode')} maxLength={6} />
+        <FormField label="Pincode" hint={pincodeLoading ? "Looking up..." : "6-digit — auto-fills city & state"} required error={touchedFields.pincode ? errors.pincode?.message : undefined}>
+          <Input
+            {...register('pincode', {
+              onChange: (e) => handlePincodeAutofill(e.target.value),
+            })}
+            maxLength={6}
+          />
         </FormField>
         <FormField label="Facility Type" required error={errors.facility_type?.message}>
           <Controller
@@ -733,7 +780,7 @@ function SellerFacilityForm({ initialData, onSubmit, onBack }: { initialData: Se
 // Step 2b: Seller Production & Capacity
 // ─────────────────────────────────────────────────────────────────────────────
 
-function SellerCapacityForm({ initialData, onSubmit, onBack }: { initialData: SellerCapacityValues | null; onSubmit: (data: SellerCapacityValues) => void; onBack: () => void }) {
+function SellerCapacityForm({ initialData, facilityType, onSubmit, onBack }: { initialData: SellerCapacityValues | null; facilityType?: string; onSubmit: (data: SellerCapacityValues) => void; onBack: () => void }) {
   const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<SellerCapacityValues>({
     resolver: zodResolver(sellerCapacitySchema) as Resolver<SellerCapacityValues>,
     defaultValues: initialData || { shift_pattern: 'SINGLE_SHIFT', avg_dispatch_days: 3, has_own_transport: false, preferred_transport_modes: [], payment_terms_accepted: [], quality_certifications: [] },
@@ -744,31 +791,43 @@ function SellerCapacityForm({ initialData, onSubmit, onBack }: { initialData: Se
   const certs = watch('quality_certifications') || [];
   const transportModes = watch('preferred_transport_modes') || [];
 
+  // Progressive disclosure: hide manufacturing fields for trading offices
+  const isManufacturer = !facilityType || facilityType === 'MANUFACTURING_PLANT' || facilityType === 'INTEGRATED';
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 animate-in fade-in slide-in-from-bottom-2">
-      <h3 className="text-sm font-semibold text-foreground">Production & Capacity</h3>
+      <h3 className="text-sm font-semibold text-foreground">
+        {isManufacturer ? 'Production & Capacity' : 'Business Capacity'}
+      </h3>
+      {!isManufacturer && (
+        <p className="text-xs text-muted-foreground -mt-3">
+          Manufacturing-specific fields are hidden for {facilityType?.replace(/_/g, ' ').toLowerCase()} facilities.
+        </p>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField label="Monthly Capacity" hint="MT/month" required error={errors.monthly_production_capacity_mt?.message}>
+        <FormField label="Monthly Capacity" hint={isManufacturer ? "MT/month" : "Units/month"} required error={errors.monthly_production_capacity_mt?.message}>
           <Input type="number" step="0.01" {...register('monthly_production_capacity_mt', { valueAsNumber: true })} />
         </FormField>
-        <FormField label="Shift Pattern" error={errors.shift_pattern?.message}>
-          <Controller
-            control={control}
-            name="shift_pattern"
-            render={({ field }) => (
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent position="popper" className="bg-popover border-border">
-                  <SelectItem value="SINGLE_SHIFT">Single Shift</SelectItem>
-                  <SelectItem value="DOUBLE_SHIFT">Double Shift</SelectItem>
-                  <SelectItem value="TRIPLE_SHIFT">Triple Shift</SelectItem>
-                  <SelectItem value="CONTINUOUS">Continuous</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-          />
-        </FormField>
+        {isManufacturer && (
+          <FormField label="Shift Pattern" error={errors.shift_pattern?.message}>
+            <Controller
+              control={control}
+              name="shift_pattern"
+              render={({ field }) => (
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent position="popper" className="bg-popover border-border">
+                    <SelectItem value="SINGLE_SHIFT">Single Shift</SelectItem>
+                    <SelectItem value="DOUBLE_SHIFT">Double Shift</SelectItem>
+                    <SelectItem value="TRIPLE_SHIFT">Triple Shift</SelectItem>
+                    <SelectItem value="CONTINUOUS">Continuous</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </FormField>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -829,11 +888,24 @@ function SellerCapacityForm({ initialData, onSubmit, onBack }: { initialData: Se
 // ─────────────────────────────────────────────────────────────────────────────
 
 function BuyerLocationForm({ initialData, onSubmit, onBack }: { initialData: BuyerLocationValues | null; onSubmit: (data: BuyerLocationValues) => void; onBack: () => void }) {
-  const { register, control, handleSubmit, formState: { errors, touchedFields } } = useForm<BuyerLocationValues>({
+  const { register, control, handleSubmit, setValue, formState: { errors, touchedFields } } = useForm<BuyerLocationValues>({
     resolver: zodResolver(buyerLocationSchema) as Resolver<BuyerLocationValues>,
     defaultValues: initialData || { site_type: 'FACTORY' },
     mode: 'onTouched',
   });
+  const [pincodeLoading, setPincodeLoading] = React.useState(false);
+
+  const handlePincodeAutofill = React.useCallback(async (pincode: string) => {
+    if (!/^\d{6}$/.test(pincode)) return;
+    setPincodeLoading(true);
+    try {
+      const { data } = await api.get(`/v1/marketplace/pincode/${pincode}`);
+      const geo = data?.data;
+      if (geo?.city) setValue('city', geo.city, { shouldValidate: true });
+      if (geo?.state) setValue('state', geo.state, { shouldValidate: true });
+    } catch { /* pincode not found — user types manually */ }
+    finally { setPincodeLoading(false); }
+  }, [setValue]);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 animate-in fade-in slide-in-from-bottom-2">
@@ -856,7 +928,7 @@ function BuyerLocationForm({ initialData, onSubmit, onBack }: { initialData: Buy
             control={control}
             name="state"
             render={({ field }) => (
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value}>
                 <SelectTrigger><SelectValue placeholder="Select state" /></SelectTrigger>
                 <SelectContent position="popper" className="bg-popover border-border max-h-60">
                   {INDIAN_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
@@ -868,8 +940,13 @@ function BuyerLocationForm({ initialData, onSubmit, onBack }: { initialData: Buy
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField label="Pincode" hint="6-digit" required error={touchedFields.pincode ? errors.pincode?.message : undefined}>
-          <Input {...register('pincode')} maxLength={6} />
+        <FormField label="Pincode" hint={pincodeLoading ? "Looking up..." : "6-digit — auto-fills city & state"} required error={touchedFields.pincode ? errors.pincode?.message : undefined}>
+          <Input
+            {...register('pincode', {
+              onChange: (e) => handlePincodeAutofill(e.target.value),
+            })}
+            maxLength={6}
+          />
         </FormField>
         <FormField label="Site Type" error={errors.site_type?.message}>
           <Controller

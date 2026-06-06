@@ -145,11 +145,12 @@ class PersonalizationService:
             cmd.query
         )
 
-        # Retrieve from pgvector
+        # Retrieve from pgvector (with optional role isolation)
         results = await self.memory_repo.retrieve_similar(  # type: ignore[union-attr]
             tenant_id=cmd.tenant_id,
             query_embedding=query_embedding,
             limit=cmd.limit,
+            role=cmd.role,
         )
 
         log.info(
@@ -165,16 +166,20 @@ class PersonalizationService:
         tenant_id: uuid.UUID,
         session_context: str,
         limit: int = 5,
+        role: str | None = None,
     ) -> list[str]:
         """
         Convenience: retrieve context strings for injection into Layer 3 LLM.
 
+        When role is provided, only returns memories stored under that role
+        (buyer/seller), preventing cross-perspective information leaks.
         Returns list of text chunks (most similar first).
         """
         cmd = RetrieveMemoryCommand(
             tenant_id=tenant_id,
             query=session_context,
             limit=limit,
+            role=role,
         )
         results = await self.retrieve_similar(cmd)
         return [r["content"] for r in results]

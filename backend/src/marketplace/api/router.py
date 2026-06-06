@@ -710,8 +710,33 @@ async def update_catalogue_item(
         raise HTTPException(status_code=404, detail="Catalogue item not found")
 
     update_data = body.model_dump(exclude_unset=True)
+
+    # Write change log entries for auditing
+    import uuid as _uuid
+
+    from src.marketplace.infrastructure.models import CatalogueChangeLogModel
+    for field_name, new_value in update_data.items():
+        old_value = getattr(item, field_name, None)
+        if str(old_value) != str(new_value):
+            session.add(CatalogueChangeLogModel(
+                id=_uuid.uuid4(),
+                catalogue_item_id=item.id,
+                field_name=field_name,
+                old_value=str(old_value) if old_value is not None else None,
+                new_value=str(new_value) if new_value is not None else None,
+                changed_by=getattr(current_user, "id", None),
+            ))
+
+    # Track price changes specifically
+    if "price_per_unit_inr" in update_data:
+        from datetime import datetime, timezone
+        item.price_updated_at = datetime.now(timezone.utc)
+
     for field_name, value in update_data.items():
         setattr(item, field_name, value)
+
+    # Increment version
+    item.version = (item.version or 1) + 1
 
     await session.commit()
     await session.refresh(item)
@@ -751,6 +776,76 @@ async def deactivate_catalogue_item(
     _svc = await _get_marketplace_service(session)
     _asyncio.create_task(_svc._recompute_embedding_standalone(current_user.enterprise_id))
     return success_response({"message": "Catalogue item deactivated"})
+
+
+# ── POST /v1/marketplace/catalogue/bulk ─────────────────────────────────────
+
+
+@router.post(
+    "/catalogue/bulk",
+    status_code=201,
+    summary="Bulk import catalogue items (single transaction, one embedding recompute)",
+)
+async def bulk_create_catalogue_items(
+    body: dict,
+    current_user: User = Depends(get_current_seller),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """
+    POST /v1/marketplace/catalogue/bulk — batch import catalogue items.
+
+    Accepts {"items": [...]} where each item has the same shape as the
+    single-item create request. All items are inserted in one transaction.
+    If any item is invalid, the entire batch is rolled back.
+    Triggers exactly ONE embedding recompute (not N).
+    """
+    from pydantic import ValidationError as PydanticValidationError
+
+    from src.marketplace.api.schemas import CatalogueItemCreateRequest
+
+    items_raw = body.get("items", [])
+    if not items_raw or not isinstance(items_raw, list):
+        raise HTTPException(status_code=422, detail="Request body must have 'items' array")
+    if len(items_raw) > 200:
+        raise HTTPException(status_code=422, detail="Maximum 200 items per bulk request")
+
+    # Validate all items first (fail fast before any DB writes)
+    validated: list[dict] = []
+    for idx, item_data in enumerate(items_raw):
+        try:
+            parsed = CatalogueItemCreateRequest(**item_data)
+            validated.append(parsed.model_dump())
+        except (PydanticValidationError, Exception) as e:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Item {idx} invalid: {e}",
+            )
+
+    import uuid as _uuid
+
+    created_ids = []
+    for item_dict in validated:
+        item_dict.pop("validity_end_date", None)  # handled separately if needed
+        model = CatalogueItemModel(
+            id=_uuid.uuid4(),
+            enterprise_id=current_user.enterprise_id,
+            **item_dict,
+        )
+        session.add(model)
+        created_ids.append(str(model.id))
+
+    await session.commit()
+
+    # Single embedding recompute for the entire batch
+    import asyncio as _asyncio
+    _svc = await _get_marketplace_service(session)
+    _asyncio.create_task(_svc._recompute_embedding_standalone(current_user.enterprise_id))
+
+    return success_response(data={
+        "created": len(created_ids),
+        "item_ids": created_ids,
+        "embedding_status": "COMPUTING",
+    })
 
 
 # ── PUT /v1/marketplace/capacity-profile ────────────────────────────────────
@@ -796,6 +891,7 @@ async def upsert_capacity_profile(
             id=profile.id,
             enterprise_id=profile.enterprise_id,
             monthly_production_capacity_mt=float(profile.monthly_production_capacity_mt),
+            capacity_unit=getattr(profile, "capacity_unit", "MT") or "MT",
             current_utilization_pct=profile.current_utilization_pct or 0,
             available_capacity_mt=float(profile.available_capacity_mt) if profile.available_capacity_mt else None,
             num_production_lines=profile.num_production_lines or 1,
@@ -837,6 +933,7 @@ async def get_capacity_profile(
             id=profile.id,
             enterprise_id=profile.enterprise_id,
             monthly_production_capacity_mt=float(profile.monthly_production_capacity_mt),
+            capacity_unit=getattr(profile, "capacity_unit", "MT") or "MT",
             current_utilization_pct=profile.current_utilization_pct or 0,
             available_capacity_mt=float(profile.available_capacity_mt) if profile.available_capacity_mt else None,
             num_production_lines=profile.num_production_lines or 1,
@@ -1005,3 +1102,80 @@ async def premium_match(
             "note": "Premium matching will be populated in future implementation",
         }
     )
+
+
+# ── Industry Taxonomy ──────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/industries",
+    summary="List industry taxonomies",
+)
+async def list_industries(
+    session: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """
+    GET /v1/marketplace/industries — list all industry taxonomies.
+
+    Returns default units, certifications, capacity unit, and manufacturing
+    flag for each industry so the frontend can render conditional forms.
+    """
+    from sqlalchemy import select as _sa_select
+
+    from src.marketplace.infrastructure.models import IndustryTaxonomyModel
+
+    result = await session.execute(
+        _sa_select(IndustryTaxonomyModel).order_by(IndustryTaxonomyModel.display_name)
+    )
+    rows = result.scalars().all()
+    return success_response(data=[
+        {
+            "id": str(row.id),
+            "industry_code": row.industry_code,
+            "display_name": row.display_name,
+            "parent_code": row.parent_code,
+            "default_units": row.default_units,
+            "default_certifications": row.default_certifications,
+            "capacity_unit": row.capacity_unit,
+            "is_manufacturing": row.is_manufacturing,
+        }
+        for row in rows
+    ])
+
+
+# ── Background Task Status ──────────────────────────────────────────────────
+
+
+@router.get(
+    "/task-status/embedding",
+    summary="Check embedding recompute status for current seller",
+)
+async def get_embedding_task_status(
+    current_user: User = Depends(get_current_seller),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """
+    GET /v1/marketplace/task-status/embedding — poll embedding status.
+
+    Returns the current embedding_status, embedding_version, and last_embedded_at
+    so the frontend can show progress/retry UI.
+    """
+    from src.marketplace.infrastructure.models import CapabilityProfileModel
+
+    result = await session.execute(
+        select(CapabilityProfileModel).where(
+            CapabilityProfileModel.enterprise_id == current_user.enterprise_id
+        )
+    )
+    profile = result.scalar_one_or_none()
+    if not profile:
+        return success_response(data={"status": "NO_PROFILE"})
+
+    return success_response(data={
+        "embedding_status": getattr(profile, "embedding_status", "UNKNOWN"),
+        "embedding_version": getattr(profile, "embedding_version", 0),
+        "last_embedded_at": (
+            profile.last_embedded_at.isoformat() if getattr(profile, "last_embedded_at", None) else None
+        ),
+        "has_embedding": profile.embedding is not None,
+    })

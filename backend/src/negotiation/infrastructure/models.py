@@ -54,8 +54,12 @@ class NegotiationSessionModel(Base):
         primary_key=True,
         server_default=func.gen_random_uuid(),
     )
-    rfq_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    match_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    rfq_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rfqs.id", ondelete="SET NULL"), nullable=False
+    )
+    match_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("matches.id", ondelete="SET NULL"), nullable=False
+    )
     buyer_enterprise_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("enterprises.id"),

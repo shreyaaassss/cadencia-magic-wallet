@@ -297,7 +297,54 @@ class NegotiationService:
                         )
 
             if selected_item is not None:
-                catalogue_price = Decimal(str(selected_item.price_per_unit_inr))
+                # Use bulk pricing if applicable: effective price for
+                # the RFQ quantity, not just the base list price.
+                rfq_qty: Decimal | None = None
+                if rfq_parsed_fields and rfq_parsed_fields.get("quantity"):
+                    try:
+                        import re as _re
+                        qty_str = str(rfq_parsed_fields["quantity"]).strip()
+                        m = _re.match(r"^(\d+(?:\.\d+)?)", qty_str)
+                        if m:
+                            rfq_qty = Decimal(m.group(1))
+                    except Exception:
+                        pass
+
+                if (
+                    rfq_qty is not None
+                    and rfq_qty > 0
+                    and getattr(selected_item, "bulk_pricing_tiers", None)
+                ):
+                    # CatalogueItem domain entity has get_price_for_quantity
+                    from src.marketplace.domain.catalogue_item import BulkPricingTier
+                    try:
+                        tiers = [
+                            BulkPricingTier(
+                                min_qty=Decimal(str(t.get("min_qty", 0))),
+                                max_qty=Decimal(str(t["max_qty"])) if t.get("max_qty") else None,
+                                price_per_unit_inr=Decimal(str(t["price_per_unit_inr"])),
+                            )
+                            for t in selected_item.bulk_pricing_tiers
+                        ]
+                        sorted_tiers = sorted(tiers, key=lambda t: t.min_qty)
+                        effective_price = Decimal(str(selected_item.price_per_unit_inr))
+                        for tier in reversed(sorted_tiers):
+                            if rfq_qty >= tier.min_qty:
+                                effective_price = tier.price_per_unit_inr
+                                break
+                        catalogue_price = effective_price
+                        log.info(
+                            "bulk_pricing_applied",
+                            item=selected_item.product_name,
+                            qty=str(rfq_qty),
+                            base_price=str(selected_item.price_per_unit_inr),
+                            effective_price=str(effective_price),
+                        )
+                    except Exception:
+                        catalogue_price = Decimal(str(selected_item.price_per_unit_inr))
+                else:
+                    catalogue_price = Decimal(str(selected_item.price_per_unit_inr))
+
                 # Inject item identity into rfq_parsed_fields for LLM context (Fix 4)
                 if rfq_parsed_fields is not None:
                     rfq_parsed_fields["_matched_item_name"] = selected_item.product_name
@@ -306,6 +353,22 @@ class NegotiationService:
                     rfq_parsed_fields["_matched_item_spec"] = (
                         selected_item.specification_text[:300]
                         if selected_item.specification_text else None
+                    )
+                    # Per-item commercial constraints for the negotiation engine
+                    rfq_parsed_fields["_item_floor_price"] = (
+                        float(selected_item.floor_price_inr)
+                        if getattr(selected_item, "floor_price_inr", None) else None
+                    )
+                    rfq_parsed_fields["_item_max_discount_pct"] = (
+                        float(selected_item.max_discount_pct)
+                        if getattr(selected_item, "max_discount_pct", None) else None
+                    )
+                    rfq_parsed_fields["_item_negotiation_enabled"] = getattr(
+                        selected_item, "negotiation_enabled", True
+                    )
+                    rfq_parsed_fields["_item_moq"] = (
+                        float(selected_item.moq)
+                        if getattr(selected_item, "moq", None) else None
                     )
 
         except Exception:
@@ -546,6 +609,10 @@ class NegotiationService:
             )
             await self.profile_repo.update(profile)  # type: ignore[union-attr]
 
+        # Evict cached engine state to prevent memory leaks
+        if hasattr(self.neutral_engine, 'evict_session_state'):
+            self.neutral_engine.evict_session_state(str(session.id))  # type: ignore[union-attr]
+
         log.info("session_agreed", session_id=str(session.id), price=float(agreed_amount))
 
     async def _handle_walk_away(self, session: NegotiationSession, reason: str) -> None:
@@ -553,11 +620,37 @@ class NegotiationService:
         event = session.mark_walk_away(reason)
 
         # Build conversation transcript for RAG re-ingestion
+        transcript = None
         try:
             transcript = session.build_conversation_transcript()
             session.conversation_transcript = transcript
         except Exception as _e:
             pass  # Non-fatal — transcript is best-effort
+
+        # Ingest failed session transcript — failed negotiations contain
+        # valuable lessons (what NOT to do, price ranges that don't work).
+        if hasattr(self, 'personalization_service') and self.personalization_service is not None and transcript is not None:
+            try:
+                import asyncio as _asyncio
+                transcript_text = _build_transcript_text(transcript)
+                _asyncio.create_task(
+                    self.personalization_service.ingest_text_directly(  # type: ignore[union-attr]
+                        tenant_id=session.buyer_enterprise_id,
+                        text=transcript_text,
+                        role="buyer",
+                        metadata={"session_id": str(session.id), "outcome": "WALK_AWAY"},
+                    )
+                )
+                _asyncio.create_task(
+                    self.personalization_service.ingest_text_directly(  # type: ignore[union-attr]
+                        tenant_id=session.seller_enterprise_id,
+                        text=transcript_text,
+                        role="seller",
+                        metadata={"session_id": str(session.id), "outcome": "WALK_AWAY"},
+                    )
+                )
+            except Exception:
+                pass  # Background ingestion is non-fatal
 
         await self.session_repo.update(session)  # type: ignore[union-attr]
         await self.event_publisher.publish(event)  # type: ignore[union-attr]
@@ -584,6 +677,10 @@ class NegotiationService:
                 session.id,
                 {"event": "session_failed", "reason": reason, "session_id": str(session.id)},
             )
+        # Evict cached engine state to prevent memory leaks
+        if hasattr(self.neutral_engine, 'evict_session_state'):
+            self.neutral_engine.evict_session_state(str(session.id))  # type: ignore[union-attr]
+
         log.info("session_failed", session_id=str(session.id), reason=reason)
 
     async def _handle_stall(self, session: NegotiationSession) -> None:
@@ -602,11 +699,46 @@ class NegotiationService:
                 {"event": "stall_detected", "reason": "stall_detected",
                  "round": session.round_count.value, "session_id": str(session.id)},
             )
+        # Evict cached engine state to prevent memory leaks
+        if hasattr(self.neutral_engine, 'evict_session_state'):
+            self.neutral_engine.evict_session_state(str(session.id))  # type: ignore[union-attr]
+
         log.info("session_stalled", session_id=str(session.id))
 
     async def _handle_timeout(self, session: NegotiationSession) -> None:
         """ROUND_LOOP → TIMEOUT: TTL expired."""
         event = session.mark_timeout()
+
+        # Ingest timeout transcript — stalled negotiations reveal price gaps
+        transcript = None
+        try:
+            transcript = session.build_conversation_transcript()
+            session.conversation_transcript = transcript
+        except Exception:
+            pass
+        if hasattr(self, 'personalization_service') and self.personalization_service is not None and transcript is not None:
+            try:
+                import asyncio as _asyncio
+                transcript_text = _build_transcript_text(transcript)
+                _asyncio.create_task(
+                    self.personalization_service.ingest_text_directly(  # type: ignore[union-attr]
+                        tenant_id=session.buyer_enterprise_id,
+                        text=transcript_text,
+                        role="buyer",
+                        metadata={"session_id": str(session.id), "outcome": "TIMEOUT"},
+                    )
+                )
+                _asyncio.create_task(
+                    self.personalization_service.ingest_text_directly(  # type: ignore[union-attr]
+                        tenant_id=session.seller_enterprise_id,
+                        text=transcript_text,
+                        role="seller",
+                        metadata={"session_id": str(session.id), "outcome": "TIMEOUT"},
+                    )
+                )
+            except Exception:
+                pass
+
         await self.session_repo.update(session)  # type: ignore[union-attr]
         await self.event_publisher.publish(event)  # type: ignore[union-attr]
 
@@ -619,6 +751,10 @@ class NegotiationService:
                 session.id,
                 {"event": "round_timeout", "timeout_round": session.round_count.value, "session_id": str(session.id)},
             )
+        # Evict cached engine state to prevent memory leaks
+        if hasattr(self.neutral_engine, 'evict_session_state'):
+            self.neutral_engine.evict_session_state(str(session.id))  # type: ignore[union-attr]
+
         log.info("session_timeout", session_id=str(session.id))
 
     async def _handle_policy_breach(self, session: NegotiationSession) -> None:
@@ -632,6 +768,10 @@ class NegotiationService:
                 session.id,
                 {"event": "session_failed", "reason": "POLICY_BREACH: Schema validation failed 3x", "session_id": str(session.id)},
             )
+        # Evict cached engine state to prevent memory leaks
+        if hasattr(self.neutral_engine, 'evict_session_state'):
+            self.neutral_engine.evict_session_state(str(session.id))  # type: ignore[union-attr]
+
         log.info("session_policy_breach", session_id=str(session.id))
 
     async def apply_human_override(self, cmd: HumanOverrideCommand) -> Offer:

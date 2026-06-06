@@ -99,16 +99,54 @@ class DeliveryFeasibilityService:
         seller_geo = rows.get(seller_pincode)
         buyer_geo = rows.get(buyer_pincode)
 
+        # Fallback to state centroid when pincode not in geocode table.
+        # New SEZs, developments, or pincodes not in seed data should not
+        # silently mark the seller as infeasible.
         if seller_geo is None or buyer_geo is None:
-            log.warning(
-                "pincode_geocode_missing",
-                seller_pincode=seller_pincode,
-                buyer_pincode=buyer_pincode,
-            )
-            return DeliveryFeasibility(
-                is_feasible=False, distance_km=0, transit_days=0,
-                total_days=0, urgency_level="CRITICAL",
-            )
+            from sqlalchemy import func as sa_func
+
+            # Try state-level centroid as fallback
+            missing = []
+            if seller_geo is None:
+                missing.append(("seller", seller_pincode))
+            if buyer_geo is None:
+                missing.append(("buyer", buyer_pincode))
+
+            for role, pincode in missing:
+                # Derive state from pincode prefix (first 2 digits)
+                state_stmt = (
+                    select(
+                        sa_func.avg(PincodeGeocodeModel.latitude).label("lat"),
+                        sa_func.avg(PincodeGeocodeModel.longitude).label("lon"),
+                    )
+                    .where(PincodeGeocodeModel.pincode.like(f"{pincode[:2]}%"))
+                )
+                centroid_result = await session.execute(state_stmt)
+                centroid = centroid_result.one_or_none()
+                if centroid and centroid.lat is not None:
+                    # Create a synthetic geo object
+                    class _CentroidGeo:
+                        def __init__(self, lat: float, lon: float):
+                            self.latitude = lat
+                            self.longitude = lon
+                    geo = _CentroidGeo(centroid.lat, centroid.lon)
+                    if role == "seller":
+                        seller_geo = geo
+                    else:
+                        buyer_geo = geo
+                    log.info("geocode_state_centroid_fallback", pincode=pincode, role=role)
+
+            # If still missing after fallback, return infeasible
+            if seller_geo is None or buyer_geo is None:
+                log.warning(
+                    "pincode_geocode_missing_no_fallback",
+                    seller_pincode=seller_pincode,
+                    buyer_pincode=buyer_pincode,
+                )
+                return DeliveryFeasibility(
+                    is_feasible=False, distance_km=0, transit_days=0,
+                    total_days=0, urgency_level="CRITICAL",
+                )
 
         haversine_km = self.haversine_distance(
             seller_geo.latitude, seller_geo.longitude,

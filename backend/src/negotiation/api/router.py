@@ -48,10 +48,55 @@ def _simplify_status(raw: str) -> str:
     return raw
 
 
-def _session_to_response(session: object) -> SessionResponse:
-    """Map domain NegotiationSession to API response."""
-    offers = [
-        OfferResponse(
+def _redact_deal_quality_for_party(
+    dqs: dict | float | None, is_buyer: bool
+) -> dict | float | None:
+    """Redact deal_quality_score so each party only sees their own surplus.
+
+    Prevents reverse-engineering of the opponent's reservation price.
+    """
+    if dqs is None or not isinstance(dqs, dict):
+        return dqs
+    if is_buyer:
+        return {
+            "score": dqs.get("score"),
+            "your_savings_inr": dqs.get("buyer_surplus_inr"),
+            "agreed_price_inr": dqs.get("agreed_price_inr"),
+            "zopa_position_pct": dqs.get("zopa_position_pct"),
+        }
+    return {
+        "score": dqs.get("score"),
+        "your_margin_inr": dqs.get("seller_surplus_inr"),
+        "agreed_price_inr": dqs.get("agreed_price_inr"),
+        "zopa_position_pct": dqs.get("zopa_position_pct"),
+    }
+
+
+def _session_to_response(
+    session: object, viewer_enterprise_id: uuid.UUID | None = None
+) -> SessionResponse:
+    """Map domain NegotiationSession to API response.
+
+    When viewer_enterprise_id is provided, filters agent_reasoning so each
+    party only sees their own agent's reasoning (opponent's is redacted).
+    """
+    # Determine viewer's role for reasoning redaction
+    viewer_role: str | None = None
+    if viewer_enterprise_id is not None:
+        if viewer_enterprise_id == getattr(session, "buyer_enterprise_id", None):
+            viewer_role = "buyer"
+        else:
+            viewer_role = "seller"
+
+    offers = []
+    for o in getattr(session, "offers", []):
+        # Redact opponent's agent_reasoning — it may contain internal strategy
+        # details, price floors, or cost information private to the other party.
+        if viewer_role is not None and o.proposer_role.value != viewer_role:
+            reasoning = None
+        else:
+            reasoning = o.agent_reasoning
+        offers.append(OfferResponse(
             offer_id=o.id,
             session_id=o.session_id,
             round_number=o.round_number.value,
@@ -61,11 +106,17 @@ def _session_to_response(session: object) -> SessionResponse:
             terms=o.terms,
             confidence=o.confidence.value if o.confidence else None,
             is_human_override=o.is_human_override,
-            agent_reasoning=o.agent_reasoning,
+            agent_reasoning=reasoning,
             created_at=o.created_at,
-        )
-        for o in getattr(session, "offers", [])
-    ]
+        ))
+
+    raw_dqs = getattr(session, "deal_quality_score", None)
+    if viewer_enterprise_id is not None:
+        is_buyer = viewer_role == "buyer"
+        redacted_dqs = _redact_deal_quality_for_party(raw_dqs, is_buyer)
+    else:
+        redacted_dqs = raw_dqs
+
     return SessionResponse(
         session_id=session.id,  # type: ignore[union-attr]
         rfq_id=session.rfq_id,  # type: ignore[union-attr]
@@ -83,7 +134,7 @@ def _session_to_response(session: object) -> SessionResponse:
         expires_at=session.expires_at,  # type: ignore[union-attr]
         schema_failure_count=getattr(session, "schema_failure_count", 0),
         stall_counter=getattr(session, "stall_counter", 0),
-        deal_quality_score=getattr(session, "deal_quality_score", None),
+        deal_quality_score=redacted_dqs,
         product_context=getattr(session, "product_context", None),
     )
 
@@ -104,7 +155,7 @@ async def list_sessions(
         limit=limit,
         offset=offset,
     )
-    items = [_session_to_response(s).model_dump(mode="json") for s in sessions]
+    items = [_session_to_response(s, viewer_enterprise_id=enterprise_id).model_dump(mode="json") for s in sessions]
 
     # Enrich with enterprise names for the table display
     ent_ids = set()
@@ -161,7 +212,7 @@ async def get_session(
         raise NotFoundError("NegotiationSession", session_id)
     if user.enterprise_id not in (session.buyer_enterprise_id, session.seller_enterprise_id):
         raise HTTPException(status_code=403, detail="Access denied")
-    return success_response(data=_session_to_response(session).model_dump(mode="json"))
+    return success_response(data=_session_to_response(session, viewer_enterprise_id=user.enterprise_id).model_dump(mode="json"))
 
 
 @router.post("/{session_id}/turn")
@@ -304,7 +355,7 @@ async def run_auto_negotiation(
             raise NotFoundError("NegotiationSession", session_id)
 
         return success_response(data={
-            "session": _session_to_response(session).model_dump(mode="json"),
+            "session": _session_to_response(session, viewer_enterprise_id=user.enterprise_id).model_dump(mode="json"),
             "rounds_executed": len(offers_this_run),
             "terminal": terminal,
             "final_status": _simplify_status(session.status.value),
@@ -406,11 +457,16 @@ async def get_session_analytics(
         for o in session.offers
     ]
 
+    is_buyer = current_user.enterprise_id == session.buyer_enterprise_id
+    redacted_dqs = _redact_deal_quality_for_party(
+        getattr(session, "deal_quality_score", None), is_buyer
+    )
+
     return success_response({
         "session_id": str(session.id),
         "status": session.status.value,
         "agreed_price": float(session.agreed_price.amount) if session.agreed_price else None,
-        "deal_quality_score": getattr(session, "deal_quality_score", None),
+        "deal_quality_score": redacted_dqs,
         "relational_quality": rq,
         "trajectory": trajectory,
         "rounds_taken": session.round_count.value,
@@ -425,10 +481,10 @@ async def get_intelligence(
     user: User = Depends(get_current_user),
 ) -> dict:
     """
-    GET /v1/sessions/{id}/intelligence — Debug: Bayesian beliefs.
+    GET /v1/sessions/{id}/intelligence — Bayesian beliefs (role-filtered).
 
-    Returns opponent type classifications, flexibility scores,
-    strategy modifiers, and convergence analysis.
+    Each party sees only a high-level classification of their opponent,
+    NOT the opponent's raw beliefs, price trajectory, or flexibility scores.
     """
     from src.shared.domain.exceptions import NotFoundError
     session = await svc.session_repo.get_by_id(session_id)  # type: ignore[union-attr]
@@ -437,7 +493,27 @@ async def get_intelligence(
     if user.enterprise_id not in (session.buyer_enterprise_id, session.seller_enterprise_id):
         raise HTTPException(status_code=403, detail="Access denied")
     data = await svc.get_session_intelligence(session_id)
-    return success_response(data=data)
+
+    # Role-filter: each party sees only opponent classification, not raw data
+    is_buyer = user.enterprise_id == session.buyer_enterprise_id
+    opponent_intel = data.get("seller_intelligence" if is_buyer else "buyer_intelligence", {})
+    own_intel = data.get("buyer_intelligence" if is_buyer else "seller_intelligence", {})
+
+    filtered = {
+        "session_id": data.get("session_id"),
+        "round_count": data.get("round_count"),
+        "status": data.get("status"),
+        "your_intelligence": own_intel,
+        "opponent_classification": {
+            "dominant_type": opponent_intel.get("dominant_type"),
+            "flexibility_hint": (
+                "high" if (opponent_intel.get("flexibility") or 0) > 0.4 else "low"
+            ),
+        },
+        "convergence": data.get("convergence"),
+        "stall_counter": data.get("stall_counter"),
+    }
+    return success_response(data=filtered)
 
 
 @router.get("/{session_id}/stream")

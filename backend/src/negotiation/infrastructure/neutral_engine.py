@@ -101,12 +101,36 @@ class NeutralEngine:
         self.market_feed = market_feed
         self.record_repo = record_repo
         self.insight_repo = insight_repo
-        # Per-session belief cache (session_id → {role → belief})
+        # Per-session belief cache (session_id → {role → belief}).
+        # Bounded to prevent memory leaks in long-running processes.
         self._belief_cache: dict[str, dict[str, OpponentBelief]] = {}
         # Per-session ZOPA cache: stores true seller_reservation for convergence
         # settlement calculation. Populated at round-0 ZOPA pre-check.
         # Key: session_id → {"seller_floor": Decimal, "buyer_ceiling": Decimal}
         self._zopa_cache: dict[str, dict[str, Decimal]] = {}
+        # Max sessions to keep in caches before LRU-style eviction
+        self._CACHE_MAX_SIZE = 5000
+
+    def evict_session_state(self, session_id: str) -> None:
+        """Remove cached state for a completed/terminal session.
+
+        Must be called by NegotiationService after any terminal transition
+        (AGREED, WALK_AWAY, STALL, TIMEOUT, POLICY_BREACH) to prevent
+        unbounded memory growth in long-running processes.
+        """
+        self._belief_cache.pop(session_id, None)
+        self._zopa_cache.pop(session_id, None)
+
+    def _enforce_cache_limits(self) -> None:
+        """Evict oldest entries if caches exceed max size."""
+        if len(self._belief_cache) > self._CACHE_MAX_SIZE:
+            excess = len(self._belief_cache) - self._CACHE_MAX_SIZE
+            for key in list(self._belief_cache)[:excess]:
+                self._belief_cache.pop(key, None)
+        if len(self._zopa_cache) > self._CACHE_MAX_SIZE:
+            excess = len(self._zopa_cache) - self._CACHE_MAX_SIZE
+            for key in list(self._zopa_cache)[:excess]:
+                self._zopa_cache.pop(key, None)
 
     async def process_turn(
         self,
@@ -298,17 +322,26 @@ class NeutralEngine:
                     if is_buyer
                     else session.seller_enterprise_id
                 )
-                product_hint = (rfq_parsed_fields or {}).get("product", "")
-                rag_query = (
-                    f"Negotiation for {product_hint or 'commodity'} "
-                    f"RFQ {session.rfq_id} "
-                    f"round {session.round_count.value} "
-                    f"price range {strategy_rec.suggested_price}"
-                )
+                # Build semantically rich RAG query from RFQ context.
+                # Avoid UUIDs and round numbers — they have zero semantic value
+                # and waste embedding dimensionality.
+                _rpf = rfq_parsed_fields or {}
+                product_hint = _rpf.get("product", "")
+                rag_parts = [f"{product_hint} negotiation" if product_hint else "commodity negotiation"]
+                if _rpf.get("quantity"):
+                    rag_parts.append(f"{_rpf['quantity']} {_rpf.get('quantity_unit', '')}")
+                if _rpf.get("budget_max") and is_buyer:
+                    rag_parts.append(f"budget {_rpf['budget_max']} INR")
+                if _rpf.get("geography") or _rpf.get("delivery_city"):
+                    rag_parts.append(f"{_rpf.get('geography') or _rpf.get('delivery_city', '')} delivery")
+                if _rpf.get("_matched_item_grade"):
+                    rag_parts.append(f"grade {_rpf['_matched_item_grade']}")
+                rag_query = " ".join(rag_parts)
                 memory_chunks = await self.personalization_service.retrieve_context_for_negotiation(
                     tenant_id=enterprise_id,
                     session_context=rag_query,
                     limit=5,
+                    role="buyer" if is_buyer else "seller",
                 ) or []
                 if memory_chunks:
                     log.info(
@@ -420,21 +453,29 @@ class NeutralEngine:
             "reciprocity_ratio": float(reciprocity_ratio),
         }
 
-        # Inject ZOPA midpoint hint if we have cached data for this session.
-        # This gives both agents a shared reference point to anchor toward.
+        # Inject per-role fairness anchor derived from own valuation.
+        # SECURITY: Do NOT inject a symmetric ZOPA midpoint — it allows either
+        # party to reverse-engineer the opponent's reservation price.
         sid = str(session.id)
         if sid in self._zopa_cache:
-            zopa = self._zopa_cache[sid]
-            zopa_mid = (
-                (zopa["seller_floor"] + zopa["buyer_ceiling"]) / Decimal("2")
-            ).quantize(Decimal("0.01"))
-            session_context["zopa_midpoint_hint_inr"] = float(zopa_mid)
-            session_context["negotiation_note"] = (
-                "A fair agreement lands near the ZOPA midpoint "
-                f"(\u20b9{float(zopa_mid):,.0f}). "
-                "Hold firm at your minimum acceptable price; "
-                "do NOT concede below it unless deadline pressure forces it."
-            )
+            if is_buyer:
+                # Buyer anchor: slightly above their target (aspirational)
+                fairness_anchor = float(
+                    (valuation.target_price * Decimal("1.05")).quantize(Decimal("0.01"))
+                )
+                session_context["fairness_anchor_inr"] = fairness_anchor
+                session_context["negotiation_note"] = (
+                    f"A fair deal is achievable near \u20b9{fairness_anchor:,.0f}. "
+                    "Move toward this without revealing your ceiling."
+                )
+            else:
+                # Seller anchor: their aspirational price
+                fairness_anchor = float(aspirational)
+                session_context["fairness_anchor_inr"] = fairness_anchor
+                session_context["negotiation_note"] = (
+                    f"A fair deal is achievable near \u20b9{fairness_anchor:,.0f}. "
+                    "Hold firm; the buyer has room to move up."
+                )
         # Inject rfq_context into user message as well for full LLM clarity
         if rfq_ctx:
             session_context["rfq_context"] = rfq_ctx
@@ -550,12 +591,27 @@ class NeutralEngine:
                 rationale=reasoning,
             )
 
+            # Compute cost_basis for seller margin floor enforcement.
+            # Uses catalogue_price * quantity when available so the guardrail
+            # can verify the seller's offer maintains the configured margin.
+            seller_cost_basis: Decimal | None = None
+            if not is_buyer and catalogue_price is not None:
+                qty_raw = (rfq_parsed_fields or {}).get("quantity")
+                if qty_raw is not None:
+                    try:
+                        qty_val = Decimal(str(qty_raw))
+                        if qty_val > 0:
+                            seller_cost_basis = catalogue_price * qty_val
+                    except Exception:
+                        pass
+
             violations = self.guardrail_engine.validate_envelope(
                 envelope=envelope,
                 reservation_price=valuation.reservation_price,
                 budget_ceiling=(
                     effective_budget_ceiling if is_buyer else None
                 ),
+                cost_basis=seller_cost_basis,
                 margin_floor=(
                     current_profile.risk_profile.margin_floor if not is_buyer else None
                 ),
@@ -1199,32 +1255,36 @@ class NeutralEngine:
                         if parsed_qty is not None and parsed_qty > 0:
                             cost_basis = catalogue_price * parsed_qty
                         else:
-                            # No usable quantity — derive from budget with match_score heuristic
-                            match_score = Decimal(str(rfq_parsed_fields.get("_match_score", 0.5)))
-                            cost_basis = market_ref * (Decimal("0.85") - Decimal("0.25") * match_score)
+                            # No usable quantity — fall through to profile-based
+                            # fallback instead of using buyer's budget_max, which
+                            # would anchor the seller's position on the buyer's
+                            # stated budget (information leak).
+                            log.warning(
+                                "seller_valuation_qty_parse_failed",
+                                raw_qty=str(quantity_raw_b) if quantity_raw_b else None,
+                                hint="Falling back to profile budget_ceiling",
+                            )
+                            cost_basis = None
                     else:
-                        # No catalogue price — use match_score to differentiate sellers.
-                        # Higher match score → lower cost basis → more competitive pricing.
-                        # Score 1.0 → 60% of budget, score 0.5 → 72.5% of budget.
-                        match_score = Decimal(str(
-                            rfq_parsed_fields.get("_match_score", 0.5)
-                        ))
-                        cost_factor = Decimal("0.85") - Decimal("0.25") * match_score
-                        cost_basis = market_ref * cost_factor
-                    val = compute_seller_valuation_from_catalogue(
-                        catalogue_price=cost_basis,
-                        margin_floor=profile.risk_profile.margin_floor,
-                        risk_appetite=profile.risk_profile.risk_appetite,
-                    )
-                    log.info(
-                        "valuation_computed",
-                        source="rfq_budget_seller",
-                        role="seller",
-                        cost_basis=str(cost_basis),
-                        reservation=str(val.reservation_price),
-                        target=str(val.target_price),
-                    )
-                    return val
+                        # No catalogue price available
+                        cost_basis = None
+
+                    if cost_basis is not None:
+                        val = compute_seller_valuation_from_catalogue(
+                            catalogue_price=cost_basis,
+                            margin_floor=profile.risk_profile.margin_floor,
+                            risk_appetite=profile.risk_profile.risk_appetite,
+                        )
+                        log.info(
+                            "valuation_computed",
+                            source="rfq_budget_seller",
+                            role="seller",
+                            cost_basis=str(cost_basis),
+                            reservation=str(val.reservation_price),
+                            target=str(val.target_price),
+                        )
+                        return val
+                    # cost_basis is None → fall through to generic fallback
 
         except (KeyError, TypeError, ValueError, ArithmeticError) as e:
             log.warning(
@@ -1330,6 +1390,9 @@ class NeutralEngine:
             **(session.opponent_beliefs or {}),
             role_key: updated_belief.to_dict(),
         }
+
+        # Prevent unbounded cache growth
+        self._enforce_cache_limits()
 
     def _track_concession(
         self,
@@ -1453,12 +1516,21 @@ class NeutralEngine:
         if buyer_ceiling is not None and seller_floor is not None:
             gap = seller_floor - buyer_ceiling
             gap_pct = float(gap / seller_floor * 100) if seller_floor > 0 else 0
-            # Prefix with WALK_AWAY so NegotiationService routes this to _handle_walk_away
+            # Log exact values for internal diagnostics (not exposed to parties)
+            log.info(
+                "no_zopa_walk_away",
+                session_id=str(session.id),
+                seller_floor=float(seller_floor),
+                buyer_ceiling=float(buyer_ceiling),
+                gap=float(gap),
+                gap_pct=gap_pct,
+            )
+            # Prefix with WALK_AWAY so NegotiationService routes to _handle_walk_away.
+            # Generic message — do NOT leak exact private prices to either party.
             reasoning = (
-                f"WALK_AWAY: No deal possible — Seller's minimum "
-                f"\u20b9{float(seller_floor):,.0f} exceeds Buyer's budget "
-                f"\u20b9{float(buyer_ceiling):,.0f}. "
-                f"Gap: \u20b9{float(gap):,.0f} ({gap_pct:.1f}%) — walking away."
+                f"WALK_AWAY: No deal possible — the seller's minimum acceptable price "
+                f"exceeds the buyer's maximum budget. "
+                f"The gap is approximately {gap_pct:.0f}% — walking away."
             )
         else:
             reasoning = (

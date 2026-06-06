@@ -49,3 +49,4 @@ class RetrieveMemoryCommand:
     tenant_id: uuid.UUID
     query: str = ""
     limit: int = 5
+    role: str | None = None  # "buyer" or "seller" — filters memory by perspective

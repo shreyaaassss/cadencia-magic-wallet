@@ -22,6 +22,13 @@ log = structlog.get_logger(__name__)
 
 RETRY_DELAYS = [2.0, 5.0, 10.0, 20.0]
 
+# Global rate limiter — bounds concurrent LLM API calls across all sessions.
+# With Groq's 30 RPM limit and 7 API keys, max theoretical throughput is
+# 210 RPM = 3.5 RPS. Semaphore(5) ensures at most 5 concurrent inflight
+# requests, preventing rate-limit cascades when 10+ sessions run in parallel.
+_LLM_CONCURRENCY_LIMIT = int(os.environ.get("LLM_CONCURRENCY_LIMIT", "5"))
+_llm_semaphore = asyncio.Semaphore(_LLM_CONCURRENCY_LIMIT)
+
 
 class LLMExhaustedException(DomainError):
     """LLM failed after all retry attempts. Mapped to HTTP 503."""
@@ -106,13 +113,14 @@ class LLMAgentDriver:
             # key doesn't block the request — try the next key immediately.
             for key_idx, client in enumerate(self._clients):
                 try:
-                    response = await client.chat.completions.create(
-                        model=self.model,
-                        messages=messages,
-                        temperature=temperature if temperature is not None else self.temperature,
-                        max_tokens=self.max_tokens,
-                        response_format={"type": "json_object"},
-                    )
+                    async with _llm_semaphore:
+                        response = await client.chat.completions.create(
+                            model=self.model,
+                            messages=messages,
+                            temperature=temperature if temperature is not None else self.temperature,
+                            max_tokens=self.max_tokens,
+                            response_format={"type": "json_object"},
+                        )
                     raw_content = response.choices[0].message.content or ""
                     result = validate_agent_output(raw_content)
 
@@ -199,9 +207,18 @@ class StubAgentDriver:
         }
 
 
+# Module-level singleton — avoids creating a new LLM client (with its own
+# connection pool) for every negotiation session.  The driver is stateless
+# so sharing it across sessions is safe.
+_agent_driver_singleton: object | None = None
+
+
 def get_agent_driver() -> object:
     """
     Wire the correct LLM agent driver based on environment configuration.
+
+    Returns a module-level singleton so connection pools are reused across
+    sessions instead of being created and leaked per session.
 
     Environment Variables:
         LLM_PROVIDER:   "openai" | "gemini" | "stub" (default: "stub")
@@ -216,6 +233,17 @@ def get_agent_driver() -> object:
     Returns:
         LLMAgentDriver for production LLM, StubAgentDriver for testing.
     """
+    global _agent_driver_singleton
+    if _agent_driver_singleton is not None:
+        return _agent_driver_singleton
+
+    driver = _create_agent_driver()
+    _agent_driver_singleton = driver
+    return driver
+
+
+def _create_agent_driver() -> object:
+    """Internal factory — called once by get_agent_driver()."""
     provider = os.getenv("LLM_PROVIDER", "stub")
     temperature = float(os.getenv("LLM_TEMPERATURE", "0.3"))
     max_tokens = int(os.getenv("LLM_MAX_TOKENS", "2048"))

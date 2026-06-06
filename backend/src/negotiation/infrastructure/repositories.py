@@ -494,31 +494,48 @@ class PostgresAgentMemoryRepository:
         tenant_id: uuid.UUID,
         query_embedding: list[float],
         limit: int = 5,
+        role: str | None = None,
     ) -> list[dict]:
         """
         Retrieve Top-N similar chunks via cosine similarity.
 
         Uses pgvector <=> operator for HNSW-accelerated search.
+        When role is provided, filters to only return memories stored
+        under that role (buyer/seller) — prevents cross-perspective leaks.
         Returns list of {id, content, metadata, similarity}.
         """
         from sqlalchemy import text
 
-        stmt = text(
-            "SELECT id, content, metadata, "
-            "1 - (embedding <=> :query_embedding) AS similarity "
-            "FROM agent_memory "
-            "WHERE tenant_id = :tenant_id "
-            "ORDER BY embedding <=> :query_embedding "
-            "LIMIT :limit"
-        )
-        result = await self._session.execute(
-            stmt,
-            {
+        if role:
+            stmt = text(
+                "SELECT id, content, metadata, "
+                "1 - (embedding <=> :query_embedding) AS similarity "
+                "FROM agent_memory "
+                "WHERE tenant_id = :tenant_id AND role = :role "
+                "ORDER BY embedding <=> :query_embedding "
+                "LIMIT :limit"
+            )
+            params = {
+                "tenant_id": str(tenant_id),
+                "query_embedding": str(query_embedding),
+                "role": role,
+                "limit": limit,
+            }
+        else:
+            stmt = text(
+                "SELECT id, content, metadata, "
+                "1 - (embedding <=> :query_embedding) AS similarity "
+                "FROM agent_memory "
+                "WHERE tenant_id = :tenant_id "
+                "ORDER BY embedding <=> :query_embedding "
+                "LIMIT :limit"
+            )
+            params = {
                 "tenant_id": str(tenant_id),
                 "query_embedding": str(query_embedding),
                 "limit": limit,
-            },
-        )
+            }
+        result = await self._session.execute(stmt, params)
         rows = result.fetchall()
         return [
             {

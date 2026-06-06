@@ -18,6 +18,7 @@ from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -145,6 +146,16 @@ class CapabilityProfileModel(Base):
     profile_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     # pgvector 1536-dim embedding (context.md §11)
     embedding: Mapped[list | None] = mapped_column(Vector(1536), nullable=True)
+    # Embedding lifecycle tracking (migration ea191f1c2d54)
+    embedding_status: Mapped[str] = mapped_column(
+        String(20), server_default="OUTDATED", nullable=False
+    )
+    embedding_version: Mapped[int] = mapped_column(
+        Integer, server_default="0", nullable=False
+    )
+    last_embedded_at: Mapped[str | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[str] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -295,6 +306,23 @@ class CatalogueItemModel(Base):
     in_stock_qty: Mapped[float | None] = mapped_column(Numeric(12, 4), server_default="0", nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
     certifications: Mapped[list | None] = mapped_column(ARRAY(String), nullable=True)
+    # Commercial negotiation constraints (migration ea191f1c2d53)
+    floor_price_inr: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
+    max_discount_pct: Mapped[float | None] = mapped_column(
+        Numeric(5, 2), server_default="10.0", nullable=True
+    )
+    negotiation_enabled: Mapped[bool] = mapped_column(
+        Boolean, server_default="true", nullable=False
+    )
+    approval_threshold_inr: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
+    validity_end_date: Mapped[str | None] = mapped_column(Date, nullable=True)
+    payment_terms: Mapped[dict | None] = mapped_column(JSONB, server_default="[]", nullable=True)
+    region_restrictions: Mapped[dict | None] = mapped_column(JSONB, server_default="[]", nullable=True)
+    # Versioning (migration 024)
+    version: Mapped[int] = mapped_column(Integer, server_default="1", nullable=False)
+    status: Mapped[str] = mapped_column(String(20), server_default="ACTIVE", nullable=False)
+    previous_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    price_updated_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[str] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -334,7 +362,8 @@ class SellerCapacityProfileModel(Base):
     current_utilization_pct: Mapped[int | None] = mapped_column(Integer, server_default="0", nullable=True)
     available_capacity_mt: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)
     num_production_lines: Mapped[int | None] = mapped_column(Integer, server_default="1", nullable=True)
-    shift_pattern: Mapped[str] = mapped_column(String(30), server_default="SINGLE_SHIFT", nullable=False)
+    shift_pattern: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    capacity_unit: Mapped[str] = mapped_column(String(20), server_default="MT", nullable=False)
     avg_dispatch_days: Mapped[int] = mapped_column(Integer, server_default="3", nullable=False)
     max_delivery_radius_km: Mapped[int | None] = mapped_column(Integer, nullable=True)
     has_own_transport: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
@@ -362,3 +391,54 @@ class PincodeGeocodeModel(Base):
 
 
 _pincode_state_idx = Index("ix_pincode_geocodes_state", PincodeGeocodeModel.state)
+
+
+class IndustryTaxonomyModel(Base):
+    """DB-driven industry taxonomy (migration 022).
+
+    Replaces hardcoded steel assumptions with a queryable table so each
+    industry defines its own default units, certifications, and capacity unit.
+    """
+
+    __tablename__ = "industry_taxonomies"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    industry_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    display_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    parent_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    default_units: Mapped[dict] = mapped_column(JSONB, server_default="[]", nullable=False)
+    default_certifications: Mapped[dict] = mapped_column(JSONB, server_default="[]", nullable=False)
+    capacity_unit: Mapped[str] = mapped_column(String(20), server_default="MT", nullable=False)
+    is_manufacturing: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
+    created_at: Mapped[str] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class CatalogueChangeLogModel(Base):
+    """Audit trail for catalogue item field changes (migration 024)."""
+
+    __tablename__ = "catalogue_change_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    catalogue_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("catalogue_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    field_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    new_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    changed_at: Mapped[str] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+_changelog_item_idx = Index("ix_catalogue_change_log_item_id", CatalogueChangeLogModel.catalogue_item_id)

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import uuid
 from typing import TYPE_CHECKING
 
@@ -41,9 +42,46 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
-# Fix 6: module-level debounce lock — prevents parallel embedding recomputes
+# Fix 6: debounce lock — prevents parallel embedding recomputes
 # for the same enterprise (e.g. seller bulk-uploading 20 catalogue items at once).
+# Uses Redis SET NX EX for distributed locking when available, falls back to
+# in-process dict for single-pod deployments.
 _EMBEDDING_RECOMPUTE_LOCK: dict[str, bool] = {}
+
+
+async def _acquire_embedding_lock(enterprise_id: str, ttl_seconds: int = 60) -> bool:
+    """Try to acquire a distributed embedding lock via Redis.
+
+    Falls back to in-process dict if Redis is unavailable.
+    Returns True if lock acquired, False if another worker holds it.
+    """
+    try:
+        import redis.asyncio as aioredis
+        redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+        r = aioredis.from_url(redis_url)
+        key = f"embedding_lock:{enterprise_id}"
+        acquired = await r.set(key, "1", nx=True, ex=ttl_seconds)
+        await r.aclose()
+        return bool(acquired)
+    except Exception:
+        # Redis unavailable — fall back to in-process lock
+        if _EMBEDDING_RECOMPUTE_LOCK.get(enterprise_id):
+            return False
+        _EMBEDDING_RECOMPUTE_LOCK[enterprise_id] = True
+        return True
+
+
+async def _release_embedding_lock(enterprise_id: str) -> None:
+    """Release the distributed embedding lock."""
+    try:
+        import redis.asyncio as aioredis
+        redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+        r = aioredis.from_url(redis_url)
+        await r.delete(f"embedding_lock:{enterprise_id}")
+        await r.aclose()
+    except Exception:
+        pass
+    _EMBEDDING_RECOMPUTE_LOCK.pop(enterprise_id, None)
 
 
 class MarketplaceService:
@@ -173,12 +211,14 @@ class MarketplaceService:
                     )
                 )
 
-                # 3. Generate embedding
+                # 3. Generate embedding(s)
+                # Primary RFQ embedding (for the RFQ row itself)
                 embed_text = (rfq.raw_document or "") + " " + json.dumps(parsed)
                 embedding = await self._parser.generate_embedding(embed_text)
                 rfq.embedding = embedding
 
                 # 4. Find matches — loop variants for multi-product RFQs
+                # Each variant gets its own embedding for more precise matching.
                 import re as _re
 
                 from sqlalchemy import (
@@ -188,6 +228,26 @@ class MarketplaceService:
                 from src.marketplace.infrastructure.models import AddressModel, MatchModel
 
                 parsed_variants = build_parsed_variants(parsed)
+
+                # Pre-compute per-variant embeddings for multi-product RFQs
+                variant_embeddings: dict[int, list[float]] = {}
+                if len(parsed_variants) > 1:
+                    for idx, variant in enumerate(parsed_variants):
+                        if idx == 0:
+                            variant_embeddings[idx] = embedding  # reuse primary
+                        else:
+                            variant_text = (
+                                f"{variant.get('product', '')} "
+                                f"{variant.get('hsn_code', '')} "
+                                f"{variant.get('product_category', '')} "
+                                f"quantity {variant.get('quantity', '')} "
+                                f"budget {variant.get('budget_max', '')} INR"
+                            )
+                            try:
+                                variant_embeddings[idx] = await self._parser.generate_embedding(variant_text)
+                            except Exception:
+                                variant_embeddings[idx] = embedding  # fallback to primary
+
                 merged_raw_scores: dict = {}
                 merged_enhanced_by_seller: dict = {}
 
@@ -210,8 +270,10 @@ class MarketplaceService:
                 per_product_matches: dict = {}   # product → [(eid, score)]
                 per_product_variant: dict = {}   # product → parsed_variant dict
 
-                for variant in parsed_variants:
+                for v_idx, variant in enumerate(parsed_variants):
                     rfq.parsed_fields = variant
+                    # Use per-variant embedding when available (multi-product RFQs)
+                    v_embedding = variant_embeddings.get(v_idx, embedding)
                     has_delivery_data = bool(
                         variant.get("delivery_window_days")
                         or variant.get("quantity")
@@ -234,7 +296,7 @@ class MarketplaceService:
                     if has_delivery_data and hasattr(matchmaker, "find_enhanced_matches"):
                         enhanced_results = await matchmaker.find_enhanced_matches(
                             rfq=rfq,
-                            rfq_embedding=embedding,
+                            rfq_embedding=v_embedding,
                             buyer_pincode=buyer_pincode,
                             buyer_delivery_window=int(buyer_delivery_window) if buyer_delivery_window else None,
                             buyer_qty=float(buyer_qty) if buyer_qty else None,
@@ -257,7 +319,7 @@ class MarketplaceService:
                                 per_product_matches[prod_key].append((eid, m_data["composite_score"]))
                         else:
                             _kw = KeywordMatchmaker(session)
-                            _kw_results = await _kw.find_matches(rfq, embedding, self._top_n)
+                            _kw_results = await _kw.find_matches(rfq, v_embedding, self._top_n)
                             prod_key_kw = variant.get("product", "unknown")
                             per_product_variant[prod_key_kw] = variant
                             if prod_key_kw not in per_product_matches:
@@ -269,12 +331,12 @@ class MarketplaceService:
                                 per_product_matches[prod_key_kw].append((eid, sc))
                     else:
                         variant_raw = await matchmaker.find_matches(
-                            rfq, embedding, self._top_n
+                            rfq, v_embedding, self._top_n
                         )
                         if not variant_raw or all(s < 0.3 for _, s in variant_raw):
                             keyword_matchmaker = KeywordMatchmaker(session)
                             variant_raw = await keyword_matchmaker.find_matches(
-                                rfq, embedding, self._top_n
+                                rfq, v_embedding, self._top_n
                             )
                         for eid, sc in variant_raw:
                             if eid not in merged_raw_scores or sc > merged_raw_scores[eid]:
@@ -953,15 +1015,53 @@ class MarketplaceService:
         asyncio.create_task(self._recompute_embedding_standalone(cmd.enterprise_id))
         return profile
 
+    @staticmethod
+    async def deactivate_expired_catalogue_items() -> int:
+        """Background job: deactivate catalogue items past their validity_end_date.
+
+        Should be called by a cron/scheduler (e.g. daily at midnight).
+        Returns the number of items deactivated.
+        """
+        from datetime import date
+
+        from sqlalchemy import update as _sa_update
+
+        from src.marketplace.infrastructure.models import CatalogueItemModel
+        from src.shared.infrastructure.db.session import get_session_factory
+
+        today = date.today()
+        async with get_session_factory()() as session:
+            result = await session.execute(
+                _sa_update(CatalogueItemModel)
+                .where(
+                    CatalogueItemModel.is_active == True,  # noqa: E712
+                    CatalogueItemModel.validity_end_date != None,  # noqa: E711
+                    CatalogueItemModel.validity_end_date < today,
+                )
+                .values(is_active=False)
+            )
+            await session.commit()
+            count = result.rowcount
+            if count:
+                log.info("expired_catalogue_items_deactivated", count=count)
+            return count
+
     async def _recompute_embedding_standalone(self, enterprise_id: uuid.UUID) -> None:
-        """Background: generate embedding for capability profile with its own DB session.
+        """Background: generate rich embedding for capability profile.
 
-        Fix 5: embedding text now includes all active catalogue items
-        (product_name, hsn_code, grade, specification_text) so the seller vector
-        reflects their actual product range, not just coarse commodity tags.
+        Embedding text composition (7 signal sources):
+          1. Profile text + commodities + geographies + industry vertical
+          2. Active catalogue items (name, HSN, grade, spec, certifications)
+          3. Pricing range across catalogue
+          4. Capacity & logistics (monthly capacity, dispatch days, transport)
+          5. Enterprise metadata (payment terms, certifications, years)
+          6. Negotiation history (deal count, success rate) if available
+          7. Per-item certifications aggregated
 
-        Fix 6: debounce guard prevents N concurrent recomputes when a seller
-        bulk-uploads multiple catalogue items in quick succession.
+        Also manages embedding_status lifecycle:
+          OUTDATED → COMPUTING → ACTIVE (success) or FAILED (error)
+
+        Fix 6: debounce guard prevents N concurrent recomputes.
         """
         from src.marketplace.infrastructure.repositories import (
             PostgresCapabilityProfileRepository,
@@ -969,23 +1069,30 @@ class MarketplaceService:
         from src.shared.infrastructure.db.session import get_session_factory
 
         eid_str = str(enterprise_id)
-        # Fix 6: debounce — if another task already queued for this seller, skip
-        if _EMBEDDING_RECOMPUTE_LOCK.get(eid_str):
+        if not await _acquire_embedding_lock(eid_str):
             log.info("embedding_recompute_debounced", enterprise_id=eid_str)
             return
-        _EMBEDDING_RECOMPUTE_LOCK[eid_str] = True
 
         try:
-            # Wait for the parent request's transaction to commit before we read.
             await asyncio.sleep(0.5)
 
             factory = get_session_factory()
             async with factory() as session:
                 try:
+                    from datetime import datetime, timezone
+
+                    from sqlalchemy import select as _sa_select
+
+                    from src.identity.infrastructure.models import EnterpriseModel
+                    from src.marketplace.infrastructure.models import (
+                        CapabilityProfileModel,
+                        CatalogueItemModel,
+                        SellerCapacityProfileModel,
+                    )
+
                     profile_repo = PostgresCapabilityProfileRepository(session)
                     profile = await profile_repo.get_by_enterprise(enterprise_id)
 
-                    # Retry if profile not yet visible (transaction isolation)
                     if profile is None:
                         for _attempt in range(3):
                             await asyncio.sleep(0.5)
@@ -996,6 +1103,20 @@ class MarketplaceService:
                         log.warning("embedding_profile_not_found", enterprise_id=eid_str)
                         return
 
+                    # Mark COMPUTING
+                    await session.execute(
+                        _sa_select(CapabilityProfileModel)
+                        .where(CapabilityProfileModel.enterprise_id == enterprise_id)
+                    )
+                    from sqlalchemy import update as _sa_update
+                    await session.execute(
+                        _sa_update(CapabilityProfileModel)
+                        .where(CapabilityProfileModel.enterprise_id == enterprise_id)
+                        .values(embedding_status="COMPUTING")
+                    )
+                    await session.commit()
+
+                    # ── Source 1: Profile core ──
                     text_parts = [
                         profile.profile_text or "",
                         " ".join(profile.product_categories),
@@ -1003,10 +1124,7 @@ class MarketplaceService:
                         profile.industry_vertical or "",
                     ]
 
-                    # Fix 5: fetch all active catalogue items and include in embedding
-                    from sqlalchemy import select as _sa_select
-
-                    from src.marketplace.infrastructure.models import CatalogueItemModel
+                    # ── Source 2: Active catalogue items ──
                     cat_result = await session.execute(
                         _sa_select(CatalogueItemModel).where(
                             CatalogueItemModel.enterprise_id == enterprise_id,
@@ -1015,33 +1133,124 @@ class MarketplaceService:
                     )
                     catalogue_items = cat_result.scalars().all()
                     catalogue_lines = []
+                    all_certs: set[str] = set()
+                    prices: list[float] = []
                     for item in catalogue_items:
-                        parts = [
-                            item.product_name,
-                            item.hsn_code,
-                            item.product_category,
-                        ]
+                        parts = [item.product_name, item.hsn_code, item.product_category]
                         if item.grade:
                             parts.append(item.grade)
                         if item.specification_text:
                             parts.append(item.specification_text[:200])
                         catalogue_lines.append(" | ".join(p for p in parts if p))
+                        if item.certifications:
+                            all_certs.update(item.certifications)
+                        if item.price_per_unit_inr:
+                            prices.append(float(item.price_per_unit_inr))
                     if catalogue_lines:
                         text_parts.append(". ".join(catalogue_lines))
 
+                    # ── Source 3: Pricing range ──
+                    if prices:
+                        unit = catalogue_items[0].unit if catalogue_items else "MT"
+                        text_parts.append(
+                            f"Price range: INR {min(prices):,.0f} - INR {max(prices):,.0f} per {unit}"
+                        )
+
+                    # ── Source 4: Capacity & logistics ──
+                    cap_result = await session.execute(
+                        _sa_select(SellerCapacityProfileModel).where(
+                            SellerCapacityProfileModel.enterprise_id == enterprise_id
+                        )
+                    )
+                    capacity = cap_result.scalar_one_or_none()
+                    if capacity:
+                        text_parts.append(
+                            f"Monthly capacity: {float(capacity.monthly_production_capacity_mt)} MT, "
+                            f"{capacity.current_utilization_pct or 0}% utilized"
+                        )
+                        text_parts.append(
+                            f"Dispatch: {capacity.avg_dispatch_days} days"
+                        )
+                        if capacity.max_delivery_radius_km:
+                            text_parts.append(f"Delivery radius: {capacity.max_delivery_radius_km}km")
+                        if capacity.preferred_transport_modes:
+                            text_parts.append(
+                                f"Transport: {', '.join(capacity.preferred_transport_modes)}"
+                            )
+
+                    # ── Source 5: Enterprise metadata ──
+                    ent_result = await session.execute(
+                        _sa_select(EnterpriseModel).where(EnterpriseModel.id == enterprise_id)
+                    )
+                    enterprise = ent_result.scalar_one_or_none()
+                    if enterprise:
+                        if enterprise.quality_certifications:
+                            all_certs.update(enterprise.quality_certifications)
+                        if enterprise.payment_terms_accepted:
+                            text_parts.append(
+                                f"Payment: {', '.join(enterprise.payment_terms_accepted)}"
+                            )
+                        if enterprise.years_in_operation:
+                            text_parts.append(f"Years in operation: {enterprise.years_in_operation}")
+
+                    # ── Source 7: Aggregated certifications ──
+                    if all_certs:
+                        text_parts.append(f"Certifications: {', '.join(sorted(all_certs))}")
+
+                    # ── Source 6: Negotiation history (best-effort) ──
+                    try:
+                        from src.negotiation.infrastructure.models import NegotiationInsightModel
+                        insight_result = await session.execute(
+                            _sa_select(NegotiationInsightModel).where(
+                                NegotiationInsightModel.enterprise_id == enterprise_id
+                            )
+                        )
+                        insight = insight_result.scalar_one_or_none()
+                        if insight and insight.total_negotiations > 0:
+                            text_parts.append(
+                                f"Deal history: {insight.total_negotiations} negotiations, "
+                                f"{float(insight.success_rate) * 100:.0f}% success rate"
+                            )
+                    except Exception:
+                        pass  # Negotiation tables may not exist in test environments
+
+                    # ── Generate embedding ──
                     text = " ".join(p for p in text_parts if p)
                     if not text.strip():
                         return
                     embedding = await self._parser.generate_embedding(text)
                     profile.set_embedding(embedding)
                     await profile_repo.update(profile)
+
+                    # Mark ACTIVE + update tracking fields
+                    await session.execute(
+                        _sa_update(CapabilityProfileModel)
+                        .where(CapabilityProfileModel.enterprise_id == enterprise_id)
+                        .values(
+                            embedding_status="ACTIVE",
+                            embedding_version=CapabilityProfileModel.embedding_version + 1,
+                            last_embedded_at=datetime.now(timezone.utc),
+                        )
+                    )
                     await session.commit()
                     log.info(
                         "embedding_recomputed",
                         enterprise_id=eid_str,
                         catalogue_items=len(catalogue_items),
+                        sources=len([p for p in text_parts if p]),
                     )
                 except Exception:
                     log.exception("embedding_recompute_failed", enterprise_id=eid_str)
+                    # Mark FAILED so UI can show retry option
+                    try:
+                        from sqlalchemy import update as _sa_update_err
+                        await session.execute(
+                            _sa_update_err(CapabilityProfileModel)
+                            .where(CapabilityProfileModel.enterprise_id == enterprise_id)
+                            .values(embedding_status="FAILED")
+                        )
+                        await session.commit()
+                    except Exception:
+                        pass
         finally:
-            _EMBEDDING_RECOMPUTE_LOCK.pop(eid_str, None)  # always release
+            await _release_embedding_lock(eid_str)

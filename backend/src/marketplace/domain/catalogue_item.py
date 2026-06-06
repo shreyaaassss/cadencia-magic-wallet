@@ -10,7 +10,24 @@ from enum import Enum
 from src.shared.domain.base_entity import BaseEntity
 from src.shared.domain.exceptions import ValidationError
 
+# Well-known product categories (backward-compatible constants).
+# product_category is now a free-form string at both API and DB level,
+# so any industry can use descriptive labels (e.g. "DSLR_CAMERA", "BASMATI_RICE").
+STEEL_CATEGORIES = frozenset({
+    "HR_COIL", "CR_COIL", "TMT_BAR", "WIRE_ROD", "BILLET", "SLAB",
+    "PLATE", "PIPE", "SHEET", "ANGLE", "CHANNEL", "BEAM", "CUSTOM",
+})
 
+# Well-known pricing units. The unit field is free-form (max 20 chars)
+# so non-standard units like "LITRE", "METRE", "DOZEN" are accepted.
+COMMON_UNITS = frozenset({
+    "MT", "KG", "PIECE", "BUNDLE", "COIL",
+    "LITRE", "METRE", "DOZEN", "UNIT", "BOX", "CARTON",
+})
+
+
+# Kept for backward compatibility — code that does `ProductCategory.HR_COIL`
+# still works, and `.value` returns the string.
 class ProductCategory(str, Enum):
     HR_COIL = "HR_COIL"
     CR_COIL = "CR_COIL"
@@ -63,10 +80,10 @@ class CatalogueItem(BaseEntity):
     enterprise_id: uuid.UUID = field(default_factory=uuid.uuid4)
     product_name: str = ""
     hsn_code: str = ""
-    product_category: ProductCategory = ProductCategory.CUSTOM
+    product_category: str = "CUSTOM"  # free-form; see STEEL_CATEGORIES for legacy values
     grade: str | None = None
     specification_text: str | None = None
-    unit: PricingUnit = PricingUnit.MT
+    unit: str = "MT"  # free-form; see COMMON_UNITS for well-known values
     price_per_unit_inr: Decimal = Decimal("0")
     bulk_pricing_tiers: list[BulkPricingTier] = field(default_factory=list)
     moq: Decimal = Decimal("1")
@@ -75,6 +92,14 @@ class CatalogueItem(BaseEntity):
     in_stock_qty: Decimal = Decimal("0")
     is_active: bool = True
     certifications: list[str] = field(default_factory=list)
+    # Commercial negotiation constraints
+    floor_price_inr: Decimal | None = None
+    max_discount_pct: Decimal = Decimal("10")
+    negotiation_enabled: bool = True
+    approval_threshold_inr: Decimal | None = None
+    validity_end_date: str | None = None  # ISO date string YYYY-MM-DD
+    payment_terms: list[str] = field(default_factory=list)
+    region_restrictions: list[str] = field(default_factory=list)
 
     def validate(self) -> None:
         if self.price_per_unit_inr <= Decimal("0"):
@@ -85,6 +110,8 @@ class CatalogueItem(BaseEntity):
             raise ValidationError("Max order qty must be >= MOQ.", field="max_order_qty")
         if not 1 <= self.lead_time_days <= 180:
             raise ValidationError("Lead time must be 1-180 days.", field="lead_time_days")
+        if self.floor_price_inr is not None and self.floor_price_inr > self.price_per_unit_inr:
+            raise ValidationError("Floor price must be <= list price.", field="floor_price_inr")
         self._validate_bulk_tiers()
 
     def _validate_bulk_tiers(self) -> None:

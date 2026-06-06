@@ -144,16 +144,18 @@ class IncomingRFQResponse(BaseModel):
 
 
 class CatalogueItemCreateRequest(BaseModel):
-    """POST /marketplace/catalogue — create a seller catalogue entry."""
+    """POST /marketplace/catalogue — create a seller catalogue entry.
+
+    product_category is free-form (max 100 chars) to support any industry.
+    Existing steel values (HR_COIL, TMT_BAR, etc.) still work.
+    unit is free-form (max 20 chars) with common defaults suggested.
+    """
     product_name: str = Field(min_length=3, max_length=200)
     hsn_code: str = Field(pattern=r"^\d{4,8}$")
-    product_category: Literal[
-        "HR_COIL", "CR_COIL", "TMT_BAR", "WIRE_ROD", "BILLET", "SLAB",
-        "PLATE", "PIPE", "SHEET", "ANGLE", "CHANNEL", "BEAM", "CUSTOM"
-    ]
+    product_category: str = Field(min_length=1, max_length=100)
     grade: Optional[str] = Field(None, max_length=100)
     specification_text: Optional[str] = Field(None, max_length=2000)
-    unit: Literal["MT", "KG", "PIECE", "BUNDLE", "COIL"] = "MT"
+    unit: str = Field(default="MT", min_length=1, max_length=20)
     price_per_unit_inr: float = Field(gt=0)
     bulk_pricing_tiers: Optional[list[dict]] = None
     moq: float = Field(gt=0)
@@ -161,11 +163,21 @@ class CatalogueItemCreateRequest(BaseModel):
     lead_time_days: int = Field(ge=1, le=180)
     in_stock_qty: float = 0
     certifications: list[str] = Field(default_factory=list)
+    # Commercial negotiation constraints (optional — defaults apply)
+    floor_price_inr: Optional[float] = Field(None, gt=0)
+    max_discount_pct: Optional[float] = Field(None, ge=0, le=50)
+    negotiation_enabled: bool = True
+    approval_threshold_inr: Optional[float] = Field(None, gt=0)
+    validity_end_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    payment_terms: Optional[list[str]] = Field(default_factory=list)
+    region_restrictions: Optional[list[str]] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_qty(self) -> Self:
         if self.max_order_qty < self.moq:
             raise ValueError("max_order_qty must be >= moq")
+        if self.floor_price_inr is not None and self.floor_price_inr > self.price_per_unit_inr:
+            raise ValueError("floor_price_inr must be <= price_per_unit_inr")
         return self
 
 
@@ -173,13 +185,10 @@ class CatalogueItemUpdateRequest(BaseModel):
     """PUT /marketplace/catalogue/:id — partial update."""
     product_name: Optional[str] = Field(None, min_length=3, max_length=200)
     hsn_code: Optional[str] = Field(None, pattern=r"^\d{4,8}$")
-    product_category: Optional[Literal[
-        "HR_COIL", "CR_COIL", "TMT_BAR", "WIRE_ROD", "BILLET", "SLAB",
-        "PLATE", "PIPE", "SHEET", "ANGLE", "CHANNEL", "BEAM", "CUSTOM"
-    ]] = None
+    product_category: Optional[str] = Field(None, min_length=1, max_length=100)
     grade: Optional[str] = Field(None, max_length=100)
     specification_text: Optional[str] = Field(None, max_length=2000)
-    unit: Optional[Literal["MT", "KG", "PIECE", "BUNDLE", "COIL"]] = None
+    unit: Optional[str] = Field(None, min_length=1, max_length=20)
     price_per_unit_inr: Optional[float] = Field(None, gt=0)
     bulk_pricing_tiers: Optional[list[dict]] = None
     moq: Optional[float] = Field(None, gt=0)
@@ -187,6 +196,13 @@ class CatalogueItemUpdateRequest(BaseModel):
     lead_time_days: Optional[int] = Field(None, ge=1, le=180)
     in_stock_qty: Optional[float] = None
     certifications: Optional[list[str]] = None
+    floor_price_inr: Optional[float] = Field(None, gt=0)
+    max_discount_pct: Optional[float] = Field(None, ge=0, le=50)
+    negotiation_enabled: Optional[bool] = None
+    approval_threshold_inr: Optional[float] = Field(None, gt=0)
+    validity_end_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    payment_terms: Optional[list[str]] = None
+    region_restrictions: Optional[list[str]] = None
 
 
 class CatalogueItemResponse(BaseModel):
@@ -218,13 +234,19 @@ class CatalogueItemResponse(BaseModel):
 
 
 class SellerCapacityProfileRequest(BaseModel):
-    """PUT /marketplace/capacity-profile — create/update capacity data."""
+    """PUT /marketplace/capacity-profile — create/update capacity data.
+
+    capacity_unit defaults to MT for backward compatibility. Non-steel sellers
+    can set UNITS, PIECES, LITRES, etc. shift_pattern is optional for
+    trading offices and service providers.
+    """
     monthly_production_capacity_mt: float = Field(gt=0)
+    capacity_unit: str = Field(default="MT", min_length=1, max_length=20)
     current_utilization_pct: int = Field(default=0, ge=0, le=100)
     num_production_lines: int = Field(default=1, ge=1)
-    shift_pattern: Literal[
+    shift_pattern: Optional[Literal[
         "SINGLE_SHIFT", "DOUBLE_SHIFT", "TRIPLE_SHIFT", "CONTINUOUS"
-    ] = "SINGLE_SHIFT"
+    ]] = "SINGLE_SHIFT"
     avg_dispatch_days: int = Field(default=3, ge=1, le=90)
     max_delivery_radius_km: Optional[int] = Field(None, ge=50, le=5000)
     has_own_transport: bool = False
@@ -237,10 +259,11 @@ class SellerCapacityProfileResponse(BaseModel):
     id: uuid.UUID
     enterprise_id: uuid.UUID
     monthly_production_capacity_mt: float
+    capacity_unit: str = "MT"
     current_utilization_pct: int = 0
     available_capacity_mt: Optional[float] = None
     num_production_lines: int = 1
-    shift_pattern: str = "SINGLE_SHIFT"
+    shift_pattern: Optional[str] = "SINGLE_SHIFT"
     avg_dispatch_days: int = 3
     max_delivery_radius_km: Optional[int] = None
     has_own_transport: bool = False

@@ -147,15 +147,51 @@ class PgvectorMatchmaker:
         rfq_product = (rfq_parsed.get("product") or rfq_parsed.get("product_name") or "").lower()
         rfq_product_words = [w for w in rfq_product.split() if len(w) > 2]
 
+        # ── N+1 FIX: Batch-prefetch all seller data before the scoring loop ──
+        # Instead of 6 individual queries per seller, fetch all data in 5 batch queries.
+        seller_ids = [sid for sid, _ in raw_matches]
+
+        _cap_result = await self._session.execute(
+            select(CapabilityProfileModel).where(CapabilityProfileModel.enterprise_id.in_(seller_ids))
+        )
+        _prefetched_caps = {row.enterprise_id: row for row in _cap_result.scalars().all()}
+
+        _addr_result = await self._session.execute(
+            select(AddressModel).where(
+                AddressModel.enterprise_id.in_(seller_ids),
+                AddressModel.is_primary == True,  # noqa: E712
+            )
+        )
+        _prefetched_addrs = {row.enterprise_id: row for row in _addr_result.scalars().all()}
+
+        _scap_result = await self._session.execute(
+            select(SellerCapacityProfileModel).where(SellerCapacityProfileModel.enterprise_id.in_(seller_ids))
+        )
+        _prefetched_scaps = {row.enterprise_id: row for row in _scap_result.scalars().all()}
+
+        _cat_result = await self._session.execute(
+            select(CatalogueItemModel).where(
+                CatalogueItemModel.enterprise_id.in_(seller_ids),
+                CatalogueItemModel.is_active == True,  # noqa: E712
+            )
+        )
+        _all_cat_items = _cat_result.scalars().all()
+        _prefetched_catalogues: dict = {}
+        for _ci in _all_cat_items:
+            _prefetched_catalogues.setdefault(_ci.enterprise_id, []).append(_ci)
+
+        from src.identity.infrastructure.models import EnterpriseModel
+        _ent_result = await self._session.execute(
+            select(EnterpriseModel).where(EnterpriseModel.id.in_(seller_ids))
+        )
+        _prefetched_enterprises = {row.id: row for row in _ent_result.scalars().all()}
+
         for seller_id, semantic_score in raw_matches:
             # ── Industry/commodity relevance hard filter ─────────────
             # Reject sellers whose commodities have zero overlap with RFQ product.
+            # (Uses batch-prefetched data instead of per-seller query)
             if rfq_product:
-                cap_stmt = select(CapabilityProfileModel).where(
-                    CapabilityProfileModel.enterprise_id == seller_id
-                )
-                cap_result = await self._session.execute(cap_stmt)
-                seller_cap_profile = cap_result.scalar_one_or_none()
+                seller_cap_profile = _prefetched_caps.get(seller_id)
 
                 if seller_cap_profile:
                     seller_commodities = [c.lower() for c in (seller_cap_profile.commodities or [])]
@@ -194,29 +230,19 @@ class PgvectorMatchmaker:
                         )
                         continue
 
-            # Fetch seller data
-            addr_stmt = select(AddressModel).where(
-                AddressModel.enterprise_id == seller_id,
-                AddressModel.is_primary == True,  # noqa: E712
-            )
-            addr_result = await self._session.execute(addr_stmt)
-            seller_addr = addr_result.scalar_one_or_none()
+            # Use batch-prefetched data (N+1 fix)
+            seller_addr = _prefetched_addrs.get(seller_id)
+            seller_cap = _prefetched_scaps.get(seller_id)
 
-            cap_stmt = select(SellerCapacityProfileModel).where(
-                SellerCapacityProfileModel.enterprise_id == seller_id,
-            )
-            cap_result = await self._session.execute(cap_stmt)
-            seller_cap = cap_result.scalar_one_or_none()
-
-            # Catalogue items for this seller (matching category if specified)
-            cat_stmt = select(CatalogueItemModel).where(
-                CatalogueItemModel.enterprise_id == seller_id,
-                CatalogueItemModel.is_active == True,  # noqa: E712
-            )
+            # Filter catalogue items by category if specified
+            all_seller_items = _prefetched_catalogues.get(seller_id, [])
             if product_category:
-                cat_stmt = cat_stmt.where(CatalogueItemModel.product_category == product_category)
-            cat_result = await self._session.execute(cat_stmt)
-            catalogue_items = cat_result.scalars().all()
+                catalogue_items = [
+                    ci for ci in all_seller_items
+                    if (ci.product_category or "").upper() == product_category.upper()
+                ]
+            else:
+                catalogue_items = all_seller_items
 
             # ── Hard Filters ─────────────────────────────────────────────
             # Skip sellers without catalogue items for the requested product
@@ -294,28 +320,18 @@ class PgvectorMatchmaker:
                 proximity_score = max(0.0, 1.0 - min(distance_km / 2500, 1.0))
 
             # Payment terms compatibility
+            # Use batch-prefetched enterprise data (N+1 fix)
+            seller_ent = _prefetched_enterprises.get(seller_id)
+
             payment_score = 0.5
-            if buyer_payment_terms:
-                from src.identity.infrastructure.models import EnterpriseModel
-                ent_stmt = select(EnterpriseModel).where(EnterpriseModel.id == seller_id)
-                ent_result = await self._session.execute(ent_stmt)
-                seller_ent = ent_result.scalar_one_or_none()
-                if seller_ent and seller_ent.payment_terms_accepted:
-                    overlap = set(buyer_payment_terms) & set(seller_ent.payment_terms_accepted)
-                    payment_score = len(overlap) / len(buyer_payment_terms) if buyer_payment_terms else 0.5
+            if buyer_payment_terms and seller_ent and seller_ent.payment_terms_accepted:
+                overlap = set(buyer_payment_terms) & set(seller_ent.payment_terms_accepted)
+                payment_score = len(overlap) / len(buyer_payment_terms) if buyer_payment_terms else 0.5
 
             # Certification match
             cert_score = 1.0
             if buyer_requires_tc:
-                from src.identity.infrastructure.models import EnterpriseModel
-                if not seller_addr:
-                    ent_stmt = select(EnterpriseModel).where(EnterpriseModel.id == seller_id)
-                    ent_result = await self._session.execute(ent_stmt)
-                    seller_ent = ent_result.scalar_one_or_none()
-                else:
-                    seller_ent = None
                 # Check test_certificate_available on enterprise
-                # This is a simplified check
                 cert_score = 0.5
 
             # Composite score

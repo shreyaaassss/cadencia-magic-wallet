@@ -43,6 +43,9 @@ SAMPLE_ENTERPRISE_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 SAMPLE_USER_ID = uuid.UUID("22222222-2222-2222-2222-222222222222")
 SAMPLE_SESSION_ID = uuid.UUID("33333333-3333-3333-3333-333333333333")
 
+BUYER_ENTERPRISE_ID = uuid.UUID("aaaa0001-0001-0001-0001-000000000001")
+SELLER_ENTERPRISE_ID = uuid.UUID("bbbb0002-0002-0002-0002-000000000002")
+
 
 # ── Marker auto-use ───────────────────────────────────────────────────────────
 
@@ -55,3 +58,42 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.integration)
         elif "e2e" in str(item.fspath):
             item.add_marker(pytest.mark.e2e)
+
+
+# ── Domain-level helpers (no DB needed) ──────────────────────────────────────
+
+
+@pytest.fixture
+def buyer_enterprise_id():
+    return BUYER_ENTERPRISE_ID
+
+
+@pytest.fixture
+def seller_enterprise_id():
+    return SELLER_ENTERPRISE_ID
+
+
+@pytest.fixture
+def sample_session():
+    """A minimal NegotiationSession for unit tests (no DB)."""
+    from src.negotiation.domain.session import NegotiationSession
+    return NegotiationSession(
+        rfq_id=uuid.uuid4(),
+        match_id=uuid.uuid4(),
+        buyer_enterprise_id=BUYER_ENTERPRISE_ID,
+        seller_enterprise_id=SELLER_ENTERPRISE_ID,
+    )
+
+
+@pytest.fixture
+def neutral_engine():
+    """A NeutralEngine with stub driver for unit tests."""
+    from unittest.mock import MagicMock
+    from src.negotiation.infrastructure.neutral_engine import NeutralEngine
+    return NeutralEngine(agent_driver=MagicMock())
+
+
+@pytest.fixture
+def guardrail_engine():
+    from src.negotiation.domain.guardrails import GuardrailEngine
+    return GuardrailEngine()

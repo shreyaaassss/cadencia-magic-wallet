@@ -161,6 +161,7 @@ class IAgentMemoryRepository(Protocol):
         tenant_id: uuid.UUID,
         query_embedding: list[float],
         limit: int,
+        role: str | None = None,
     ) -> list[dict]: ...
 
     async def delete_by_tenant(

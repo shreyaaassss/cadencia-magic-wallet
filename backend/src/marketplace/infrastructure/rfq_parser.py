@@ -137,11 +137,38 @@ def normalize_rfq_parsed_fields(fields: dict) -> dict:
 
 
 def build_parsed_variants(parsed: dict) -> list[dict]:
-    """Primary parsed fields plus one variant per multi-product line item."""
+    """Primary parsed fields plus one variant per multi-product line item.
+
+    Budget inheritance fix (§6.2 FP2): When a variant has no item-level budget,
+    the total RFQ budget is split evenly among variants instead of being copied
+    wholesale. This prevents a ₹5K tripod from being matched against ₹165K sellers.
+    """
     variants: list[dict] = [parsed]
     items = parsed.get("items")
     if not isinstance(items, list):
         return variants
+
+    # Count items that need a share of total budget
+    items_without_budget = sum(
+        1 for item in items
+        if isinstance(item, dict) and item.get("product") and not item.get("budget_total") and not item.get("budget_per_unit")
+    )
+    total_budget = parsed.get("budget_max")
+
+    # Calculate budget share for items without explicit budgets
+    # Subtract known budgets from total, split remainder evenly
+    known_budget_sum = 0.0
+    for item in items:
+        if isinstance(item, dict) and item.get("budget_total"):
+            try:
+                known_budget_sum += float(item["budget_total"])
+            except (TypeError, ValueError):
+                pass
+    remaining_budget = (float(total_budget) - known_budget_sum) if total_budget else 0
+    per_item_budget_share = (
+        remaining_budget / max(items_without_budget, 1)
+    ) if remaining_budget > 0 and items_without_budget > 0 else None
+
     for item in items:
         if not isinstance(item, dict) or not item.get("product"):
             continue
@@ -162,6 +189,10 @@ def build_parsed_variants(parsed: dict) -> list[dict]:
         elif bpu is not None and qty is not None:
             v["budget_per_unit"] = bpu
             v = _normalize_rfq_budget(v)
+        elif per_item_budget_share is not None:
+            # No item-level budget — use even share of remaining total
+            v["budget_max"] = round(per_item_budget_share, 2)
+            v["budget_min"] = round(per_item_budget_share * 0.80, 2)
         if item.get("product_category"):
             v["product_category"] = item["product_category"]
         else:
@@ -351,6 +382,9 @@ class StubDocumentParser:
     # IMPORTANT: keywords are matched as whole words (word-boundary match).
     # Do NOT add short substrings that appear inside other common words
     # (e.g. "rice" inside "price", "oil" inside "coil", "or" inside "color").
+    #
+    # This base dictionary is extended at runtime with product names from
+    # the catalogue_items table via extend_commodities_from_db().
     _COMMODITIES = {
         "steel": ["steel", "hr coil", "cr coil", "tmt", "rebar", "galvanized", "stainless"],
         "copper": ["copper", "copper cathode", "copper wire", "copper rod"],
@@ -372,7 +406,35 @@ class StubDocumentParser:
         "laptop": ["laptop", "notebook", "computer", "desktop", "pc"],
         "television": ["television", "tv", "led tv", "smart tv", "monitor"],
         "electronics": ["electronics", "electronic", "sensor", "component"],
+        # Automotive
+        "automotive": ["car", "vehicle", "auto parts", "brake pad", "engine", "tyre", "tire"],
+        # Machinery
+        "machinery": ["machine", "cnc", "lathe", "drill", "pump", "motor", "compressor"],
+        # Packaging
+        "packaging": ["carton", "corrugated", "box", "packaging", "label", "shrink wrap"],
     }
+    _db_commodities_loaded: bool = False
+
+    @classmethod
+    def extend_commodities_from_db(cls, db_products: list[dict]) -> None:
+        """Extend the commodity dictionary with product names from the DB.
+
+        Called during application startup or periodically to keep the
+        keyword matcher in sync with the actual catalogue.
+
+        Args:
+            db_products: List of {"product_category": str, "product_name": str}
+        """
+        for item in db_products:
+            cat = (item.get("product_category") or "").lower().strip()
+            name = (item.get("product_name") or "").lower().strip()
+            if not cat or not name:
+                continue
+            if cat not in cls._COMMODITIES:
+                cls._COMMODITIES[cat] = []
+            if name not in cls._COMMODITIES[cat]:
+                cls._COMMODITIES[cat].append(name)
+        cls._db_commodities_loaded = True
 
     _INDIAN_LOCATIONS = [
         "mumbai", "delhi", "bangalore", "bengaluru", "chennai", "kolkata",
