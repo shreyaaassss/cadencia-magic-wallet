@@ -628,6 +628,27 @@ async def handle_session_agreed_confirm_rfq(event: object) -> None:
                 rfq_id=str(rfq_id),
                 match_id=str(match_id),
             )
+
+            # Auto-create messaging thread so buyer & seller can communicate
+            session_id = getattr(event, "session_id", None)
+            buyer_enterprise_id = getattr(event, "buyer_enterprise_id", None)
+            seller_enterprise_id = getattr(event, "seller_enterprise_id", None)
+            if session_id and buyer_enterprise_id and seller_enterprise_id:
+                try:
+                    from src.messaging.application.services import MessagingService
+                    msg_svc = MessagingService(db_session)
+                    await msg_svc.create_thread(
+                        buyer_enterprise_id=buyer_enterprise_id,
+                        seller_enterprise_id=seller_enterprise_id,
+                        thread_type="DEAL",
+                        subject="Deal agreed — coordinate delivery & logistics",
+                        rfq_id=rfq_id,
+                        session_id=session_id,
+                    )
+                    log.info("messaging_thread_auto_created", session_id=str(session_id))
+                except Exception:
+                    log.warning("messaging_thread_auto_create_failed", session_id=str(session_id))
+
     except Exception:
         log.exception(
             "handle_session_agreed_confirm_rfq_failed",
