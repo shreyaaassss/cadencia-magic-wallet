@@ -1179,3 +1179,121 @@ async def get_embedding_task_status(
         ),
         "has_embedding": profile.embedding is not None,
     })
+
+
+# ── Platform Statistics (Public) ─────────────────────────────────────────────
+
+
+@router.get(
+    "/stats",
+    summary="Platform statistics (public, no auth)",
+)
+async def get_platform_stats(
+    session: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """
+    GET /v1/marketplace/stats — aggregate platform statistics.
+
+    Public endpoint (no auth) for marketplace credibility and demo impact.
+    """
+    from sqlalchemy import func as sa_func
+
+    from src.identity.infrastructure.models import EnterpriseModel
+    from src.negotiation.infrastructure.models import NegotiationSessionModel
+    from src.settlement.infrastructure.models import EscrowContractModel
+
+    seller_count = await session.execute(
+        select(sa_func.count()).where(EnterpriseModel.trade_role.in_(["SELLER", "BOTH"]))
+    )
+    buyer_count = await session.execute(
+        select(sa_func.count()).where(EnterpriseModel.trade_role.in_(["BUYER", "BOTH"]))
+    )
+    session_count = await session.execute(
+        select(sa_func.count()).where(NegotiationSessionModel.status == "AGREED")
+    )
+    escrow_released = await session.execute(
+        select(sa_func.count()).where(EscrowContractModel.status == "RELEASED")
+    )
+    total_value = await session.execute(
+        select(sa_func.coalesce(sa_func.sum(EscrowContractModel.agreed_price_inr), 0))
+        .where(EscrowContractModel.status == "RELEASED")
+    )
+
+    # Industries represented
+    from src.marketplace.infrastructure.models import CapabilityProfileModel
+    industries_result = await session.execute(
+        select(sa_func.array_agg(sa_func.distinct(CapabilityProfileModel.industry_vertical)))
+        .where(CapabilityProfileModel.industry_vertical != None)  # noqa: E711
+    )
+    industries = industries_result.scalar() or []
+
+    return success_response(data={
+        "total_sellers": seller_count.scalar() or 0,
+        "total_buyers": buyer_count.scalar() or 0,
+        "negotiations_completed": session_count.scalar() or 0,
+        "escrows_released": escrow_released.scalar() or 0,
+        "total_value_settled_inr": float(total_value.scalar() or 0),
+        "industries_represented": [i for i in industries if i],
+    })
+
+
+# ── Anonymized Supplier Directory (Public) ───────────────────────────────────
+
+
+@router.get(
+    "/suppliers",
+    summary="Anonymized supplier directory (public, no auth)",
+)
+async def list_suppliers(
+    industry: str | None = Query(None, description="Filter by industry vertical"),
+    state: str | None = Query(None, description="Filter by geography/state"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """
+    GET /v1/marketplace/suppliers — anonymized seller profiles.
+
+    Returns seller capability profiles without revealing enterprise identity.
+    Sellers are identified by opaque tokens (not enterprise_id).
+    """
+    import hashlib
+
+    from src.identity.infrastructure.models import EnterpriseModel
+    from src.marketplace.infrastructure.models import CapabilityProfileModel
+
+    stmt = (
+        select(CapabilityProfileModel, EnterpriseModel)
+        .join(EnterpriseModel, CapabilityProfileModel.enterprise_id == EnterpriseModel.id)
+        .where(EnterpriseModel.trade_role.in_(["SELLER", "BOTH"]))
+    )
+    if industry:
+        stmt = stmt.where(CapabilityProfileModel.industry_vertical.ilike(f"%{industry}%"))
+    if state:
+        stmt = stmt.where(CapabilityProfileModel.geographies_served.any(state))
+
+    stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+    result = await session.execute(stmt)
+    rows = result.all()
+
+    suppliers = []
+    for profile, enterprise in rows:
+        # Opaque token — not reversible to enterprise_id
+        opaque_id = hashlib.sha256(str(profile.enterprise_id).encode()).hexdigest()[:16]
+        suppliers.append({
+            "supplier_id": opaque_id,
+            "industry": profile.industry_vertical,
+            "categories": profile.commodities or [],
+            "geographies": profile.geographies_served or [],
+            "certifications": enterprise.quality_certifications or [],
+            "years_in_operation_bucket": (
+                "< 1" if (enterprise.years_in_operation or 0) < 1
+                else "1-3" if (enterprise.years_in_operation or 0) < 4
+                else "3-5" if (enterprise.years_in_operation or 0) < 6
+                else "5-10" if (enterprise.years_in_operation or 0) < 11
+                else "10+"
+            ),
+            "min_order_value_inr": profile.min_order_value,
+        })
+
+    return success_response(data=suppliers)

@@ -1206,3 +1206,95 @@ def register_phase_six_handlers(publisher: EventPublisher) -> None:
         ],
     )
 
+
+# ── Phase 7: Wallet Ledger Event Handlers ────────────────────────────────────
+
+
+async def handle_escrow_funded_ledger(event: object) -> None:
+    """Write DEBIT entry to wallet_ledger when buyer funds escrow."""
+    try:
+        from src.shared.infrastructure.db.session import get_session_factory
+        from src.wallet.application.services import WalletLedgerService
+
+        async with get_session_factory()() as session:
+            svc = WalletLedgerService(session)
+            await svc.record_event(
+                enterprise_id=event.buyer_enterprise_id,
+                algorand_address=getattr(event, "buyer_algorand_address", ""),
+                event_type="ESCROW_FUNDED",
+                direction="DEBIT",
+                amount_microalgo=getattr(event, "amount_microalgo", 0),
+                tx_id=getattr(event, "fund_tx_id", None),
+                reference_id=getattr(event, "escrow_id", None),
+                reference_type="ESCROW",
+            )
+            await session.commit()
+    except Exception:
+        log.exception("wallet_ledger_escrow_funded_failed")
+
+
+async def handle_escrow_released_ledger(event: object) -> None:
+    """Write CREDIT entry to wallet_ledger when seller receives funds."""
+    try:
+        from src.shared.infrastructure.db.session import get_session_factory
+        from src.wallet.application.services import WalletLedgerService
+
+        async with get_session_factory()() as session:
+            svc = WalletLedgerService(session)
+            await svc.record_event(
+                enterprise_id=getattr(event, "seller_enterprise_id", None),
+                algorand_address=getattr(event, "seller_algorand_address", ""),
+                event_type="ESCROW_RELEASED",
+                direction="CREDIT",
+                amount_microalgo=getattr(event, "amount_microalgo", 0),
+                tx_id=getattr(event, "release_tx_id", None),
+                reference_id=getattr(event, "escrow_id", None),
+                reference_type="ESCROW",
+            )
+            await session.commit()
+    except Exception:
+        log.exception("wallet_ledger_escrow_released_failed")
+
+
+async def handle_escrow_refunded_ledger(event: object) -> None:
+    """Write CREDIT entry to wallet_ledger when buyer gets refund."""
+    try:
+        from src.shared.infrastructure.db.session import get_session_factory
+        from src.wallet.application.services import WalletLedgerService
+
+        async with get_session_factory()() as session:
+            svc = WalletLedgerService(session)
+            await svc.record_event(
+                enterprise_id=getattr(event, "buyer_enterprise_id", None),
+                algorand_address=getattr(event, "buyer_algorand_address", ""),
+                event_type="ESCROW_REFUNDED",
+                direction="CREDIT",
+                amount_microalgo=getattr(event, "amount_microalgo", 0),
+                tx_id=getattr(event, "refund_tx_id", None),
+                reference_id=getattr(event, "escrow_id", None),
+                reference_type="ESCROW",
+            )
+            await session.commit()
+    except Exception:
+        log.exception("wallet_ledger_escrow_refunded_failed")
+
+
+def register_phase_seven_handlers(publisher: EventPublisher) -> None:
+    """Register wallet ledger event handlers.
+
+    Called in main.py lifespan AFTER register_phase_six_handlers().
+    Writes wallet_ledger entries on escrow state transitions.
+    """
+    publisher.subscribe("EscrowFunded", handle_escrow_funded_ledger)
+    publisher.subscribe("EscrowReleased", handle_escrow_released_ledger)
+    publisher.subscribe("EscrowRefunded", handle_escrow_refunded_ledger)
+
+    log.info(
+        "phase_seven_event_handlers_registered",
+        handlers=[
+            "EscrowFunded->wallet_ledger",
+            "EscrowReleased->wallet_ledger",
+            "EscrowRefunded->wallet_ledger",
+        ],
+    )
+

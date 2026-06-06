@@ -156,7 +156,62 @@ export default function TreasuryPage() {
             <EmptyState icon={Banknote} title="No forecast data" description="Liquidity forecast requires at least 7 days of transaction history" />
           )}
         </div>
+
+        {/* Wallet Transaction History */}
+        <div className="space-y-3">
+          <SectionHeader title="Wallet Transactions" description="All ALGO movements: escrow fund/release/refund, x402 payments" />
+          <WalletTransactionHistory />
+        </div>
       </div>
     </AppShell>
+  );
+}
+
+
+function WalletTransactionHistory() {
+  const { data: transactions = [], isLoading } = useQuery<any[]>({
+    queryKey: ['wallet-transactions'],
+    queryFn: () => api.get('/v1/wallet/transactions?limit=20').then(r => r.data?.data || []),
+  });
+
+  if (isLoading) return <div className="text-sm text-muted-foreground py-4 text-center">Loading transactions...</div>;
+  if (transactions.length === 0) return <EmptyState icon={Banknote} title="No wallet transactions" description="Transactions appear here after escrow funding or release" />;
+
+  return (
+    <div className="border border-border rounded-lg overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50">
+          <tr>
+            <th className="text-left px-4 py-2 font-medium text-muted-foreground">Event</th>
+            <th className="text-left px-4 py-2 font-medium text-muted-foreground">Direction</th>
+            <th className="text-right px-4 py-2 font-medium text-muted-foreground">Amount (ALGO)</th>
+            <th className="text-left px-4 py-2 font-medium text-muted-foreground">TX ID</th>
+            <th className="text-left px-4 py-2 font-medium text-muted-foreground">Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {transactions.map((tx: any) => (
+            <tr key={tx.id} className="border-t border-border hover:bg-muted/30">
+              <td className="px-4 py-2 text-foreground font-medium">{tx.event_type?.replace(/_/g, ' ')}</td>
+              <td className="px-4 py-2">
+                <span className={tx.direction === 'CREDIT' ? 'text-green-600' : 'text-red-600'}>
+                  {tx.direction === 'CREDIT' ? <ArrowDownRight className="inline h-3.5 w-3.5 mr-1" /> : <ArrowUpRight className="inline h-3.5 w-3.5 mr-1" />}
+                  {tx.direction}
+                </span>
+              </td>
+              <td className="px-4 py-2 text-right text-foreground font-mono">{tx.amount_algo}</td>
+              <td className="px-4 py-2 text-muted-foreground font-mono text-xs">
+                {tx.tx_id ? (
+                  <a href={`https://testnet.explorer.perawallet.app/tx/${tx.tx_id}`} target="_blank" rel="noopener noreferrer" className="hover:text-foreground underline">
+                    {tx.tx_id.slice(0, 12)}...
+                  </a>
+                ) : '—'}
+              </td>
+              <td className="px-4 py-2 text-muted-foreground">{tx.created_at ? formatDate(tx.created_at) : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

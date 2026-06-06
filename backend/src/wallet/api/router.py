@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,6 +57,36 @@ def _require_enterprise(user: User) -> uuid.UUID:
             detail="No enterprise associated with this account",
         )
     return user.enterprise_id
+
+
+# ── 0. GET /v1/wallet/transactions ────────────────────────────────────────────
+
+
+@router.get(
+    "/transactions",
+    summary="Wallet transaction history",
+)
+async def get_wallet_transactions(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """
+    GET /v1/wallet/transactions — unified transaction history.
+
+    Aggregates from wallet_ledger, escrow_contracts, and x402_payments
+    to provide a complete view of all ALGO movements for the enterprise.
+    """
+    from src.wallet.application.services import WalletLedgerService
+
+    svc = WalletLedgerService(session)
+    transactions = await svc.get_history(
+        enterprise_id=current_user.enterprise_id,
+        limit=limit,
+        offset=offset,
+    )
+    return success_response(data=transactions)
 
 
 # ── 1. GET /v1/wallet/challenge ───────────────────────────────────────────────

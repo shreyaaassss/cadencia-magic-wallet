@@ -58,6 +58,41 @@ from src.shared.infrastructure.metrics import (
 log = structlog.get_logger(__name__)
 
 
+async def _inr_to_microalgo(agreed_price_inr: float) -> int:
+    """Convert INR deal value to microALGO with configurable mode.
+
+    Environment variable ESCROW_PRICING_MODE controls behavior:
+      TESTNET_DEMO  — Symbolic escrow: cap at 0.999 ALGO (default, safe for demos)
+      TESTNET_REAL  — Use real FX rate, no cap (integration testing with funded wallets)
+      MAINNET       — Use real FX rate, no cap (production)
+    """
+    import os
+    from decimal import Decimal
+
+    mode = os.environ.get("ESCROW_PRICING_MODE", "TESTNET_DEMO")
+
+    if mode == "TESTNET_DEMO":
+        # Symbolic: 1 µALGO per ₹1, capped at 0.999 ALGO
+        symbolic = int(agreed_price_inr)
+        return max(1000, min(symbolic, 999_000))
+
+    # Real conversion for TESTNET_REAL and MAINNET
+    try:
+        from src.treasury.infrastructure.frankfurter_fx_adapter import FrankfurterFXAdapter
+        fx_adapter = FrankfurterFXAdapter()
+        fx_rate = await fx_adapter.get_rate("INR", "USD")
+        # INR → USD → ALGO (approximate: 1 ALGO ≈ $0.20)
+        algo_usd_rate = Decimal("0.20")  # TODO: replace with live ALGO/USD feed
+        price_usd = Decimal(str(agreed_price_inr)) * Decimal(str(fx_rate.rate))
+        price_algo = price_usd / algo_usd_rate
+        microalgo = int(price_algo * Decimal("1_000_000"))
+        return max(100_000, microalgo)  # min 0.1 ALGO for MBR
+    except Exception as exc:
+        log.warning("fx_conversion_fallback_to_demo", error=str(exc), mode=mode)
+        # Fallback to demo mode on FX failure
+        return max(1000, min(int(agreed_price_inr), 999_000))
+
+
 class SettlementService:
     """
     Orchestrates the full escrow lifecycle.
@@ -127,23 +162,8 @@ class SettlementService:
             if cmd.buyer_enterprise_id == cmd.seller_enterprise_id:
                 raise PolicyViolation("Self-dealing is not permitted: buyer and seller are the same enterprise")
 
-        # INR → microALGO conversion (testnet-safe: keep all amounts under 1 ALGO)
-        # Uses a tiny multiplier so even large INR values map to < 1_000_000 µALGO
-        from decimal import Decimal
-        TESTNET_INR_TO_MICROALGO_RATE = Decimal("0.000001")  # 1 INR = 0.000001 ALGO
-        try:
-            from src.treasury.infrastructure.frankfurter_fx_adapter import FrankfurterFXAdapter
-            fx_adapter = FrankfurterFXAdapter()
-            fx_rate = await fx_adapter.get_rate("INR", "USD")
-            # Even with real FX, cap at testnet-safe amounts
-            price_algo = Decimal(str(cmd.agreed_price_inr)) * fx_rate.rate * Decimal("0.001")
-            price_microalgo = max(1000, min(int(price_algo * Decimal("1000000")), 999_000))
-        except Exception as fx_exc:
-            log.warning("fx_conversion_fallback", error=str(fx_exc))
-            price_microalgo = max(1000, min(
-                int(Decimal(str(cmd.agreed_price_inr)) * TESTNET_INR_TO_MICROALGO_RATE * Decimal("1000000")),
-                999_000,  # cap at 0.999 ALGO
-            ))
+        # INR → microALGO conversion with configurable mode
+        price_microalgo = await _inr_to_microalgo(cmd.agreed_price_inr)
 
         escrow = Escrow(
             session_id=cmd.session_id,
@@ -656,23 +676,21 @@ class SettlementService:
         if escrow is None:
             raise NotFoundError("Escrow", escrow_id)
 
-        # ── ESC-02 FIX: patch null tx_ids on domain object before state transition ──
-        # The DB check constraint requires fund_tx_id IS NOT NULL for DISPATCHED.
-        # If record_pera_deploy / record_pera_fund had UoW session isolation issues,
-        # fund_tx_id / deploy_tx_id may be null on the loaded domain object.
-        # Patch the domain object directly — when update() merges it, the DB is fixed too.
-        patched = []
+        # ── ESC-02 FIX: warn on null tx_ids instead of patching with fake values ──
+        # Fake tx_ids ("platform-funded") break auditability. If tx_ids are null,
+        # log a warning but allow the transition — the Pera signing flow may have
+        # recorded the tx_id asynchronously.
+        missing_tx = []
         if escrow.fund_tx_id is None:
-            escrow.fund_tx_id = TxId(value="platform-funded")
-            patched.append("fund_tx_id")
+            missing_tx.append("fund_tx_id")
         if escrow.deploy_tx_id is None:
-            escrow.deploy_tx_id = TxId(value="platform-deployed")
-            patched.append("deploy_tx_id")
-        if patched:
+            missing_tx.append("deploy_tx_id")
+        if missing_tx:
             log.warning(
-                "mark_dispatched_patched_null_tx_ids",
+                "mark_dispatched_missing_tx_ids",
                 escrow_id=str(escrow_id),
-                patched=patched,
+                missing=missing_tx,
+                hint="Pera wallet signing may not have called record_pera_fund/deploy correctly",
             )
 
         dispatch_event = escrow.mark_dispatched()

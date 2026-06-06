@@ -52,6 +52,7 @@ from src.shared.infrastructure.events.handlers import (
     register_handlers,
     register_phase_five_handlers,
     register_phase_four_handlers,
+    register_phase_seven_handlers,
     register_phase_six_handlers,
     register_phase_three_handlers,
     register_phase_two_handlers,
@@ -245,7 +246,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     register_phase_four_handlers(publisher)   # replaces SessionAgreedStub with real SessionAgreed handlers
     register_phase_five_handlers(publisher)    # marketplace → negotiation event wiring
     register_phase_six_handlers(publisher)     # negotiation memory normalization + insights
+    register_phase_seven_handlers(publisher)   # wallet ledger event sourcing
     log.info("startup_event_handlers_registered")
+
+    # 4b. Start background scheduler
+    from src.settlement.application.background_jobs import (
+        check_approval_deadlines,
+        check_dispatch_timeouts,
+    )
+    from src.shared.infrastructure.scheduler import BackgroundScheduler
+
+    _scheduler = BackgroundScheduler()
+    _scheduler.register_periodic("approval_deadlines", check_approval_deadlines, 3600)
+    _scheduler.register_periodic("dispatch_timeouts", check_dispatch_timeouts, 3600)
+    await _scheduler.start()
 
     # 5. Enforce X402_SIMULATION_MODE — PROHIBITED in production
     enforce_no_simulation_mode_at_startup()
@@ -265,8 +279,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Phase Five: graceful shutdown with 30s drain (set via uvicorn --timeout-graceful-shutdown=30)
     log.info("cadencia_shutdown_started")
 
-    # 1. Stop accepting new work (task queue worker)
-    # task_queue.stop() if initialized — future enhancement
+    # 1. Stop background scheduler
+    try:
+        await _scheduler.stop()
+    except Exception:
+        pass
 
     # 2. Close DB connection pool
     try:
