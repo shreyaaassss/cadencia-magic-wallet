@@ -475,7 +475,7 @@ async def handle_session_agreed_deploy(event: object) -> None:
                 await msg_svc.create_thread(
                     buyer_enterprise_id=buyer_enterprise_id,
                     seller_enterprise_id=seller_enterprise_id,
-                    thread_type="DEAL",
+                    thread_type="GENERAL",
                     subject="Deal agreed — coordinate delivery & logistics",
                     session_id=session_id,
                     escrow_id=_uuid.UUID(str(result["escrow_id"])),
