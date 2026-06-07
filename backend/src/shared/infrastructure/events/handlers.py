@@ -685,7 +685,7 @@ async def handle_session_agreed_create_thread(event: object) -> None:
             await msg_svc.create_thread(
                 buyer_enterprise_id=buyer_enterprise_id,
                 seller_enterprise_id=seller_enterprise_id,
-                thread_type="DEAL",
+                thread_type="GENERAL",
                 subject=_subject,
                 rfq_id=rfq_id,
                 session_id=session_id,
