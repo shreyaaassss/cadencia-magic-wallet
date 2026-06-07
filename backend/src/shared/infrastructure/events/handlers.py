@@ -629,54 +629,76 @@ async def handle_session_agreed_confirm_rfq(event: object) -> None:
                 match_id=str(match_id),
             )
 
-            # Auto-create messaging thread so buyer & seller can communicate
-            session_id = getattr(event, "session_id", None)
-            buyer_enterprise_id = getattr(event, "buyer_enterprise_id", None)
-            seller_enterprise_id = getattr(event, "seller_enterprise_id", None)
-            if session_id and buyer_enterprise_id and seller_enterprise_id:
-                try:
-                    from sqlalchemy import select as _sa_select
-
-                    from src.identity.infrastructure.models import EnterpriseModel
-                    from src.messaging.application.services import MessagingService
-
-                    # Resolve enterprise names for thread subject
-                    _ent_result = await db_session.execute(
-                        _sa_select(EnterpriseModel.id, EnterpriseModel.name)
-                        .where(EnterpriseModel.id.in_([buyer_enterprise_id, seller_enterprise_id]))
-                    )
-                    _name_map = {row.id: row.name for row in _ent_result.fetchall()}
-                    _buyer_name = _name_map.get(buyer_enterprise_id, "Buyer")
-                    _seller_name = _name_map.get(seller_enterprise_id, "Seller")
-
-                    # Get product from RFQ parsed_fields
-                    _product = "Deal"
-                    if rfq and hasattr(rfq, "parsed_fields") and rfq.parsed_fields:
-                        _product = rfq.parsed_fields.get("product", "Deal")
-
-                    from datetime import datetime, timezone
-                    _now = datetime.now(tz=timezone.utc).strftime("%d %b %Y, %I:%M %p")
-                    _sid_short = str(session_id)[:8]
-                    _subject = f"{_buyer_name} ↔ {_seller_name} | {_product} | {_now} | {_sid_short}"
-
-                    msg_svc = MessagingService(db_session)
-                    await msg_svc.create_thread(
-                        buyer_enterprise_id=buyer_enterprise_id,
-                        seller_enterprise_id=seller_enterprise_id,
-                        thread_type="DEAL",
-                        subject=_subject,
-                        rfq_id=rfq_id,
-                        session_id=session_id,
-                    )
-                    log.info("messaging_thread_auto_created", session_id=str(session_id), subject=_subject)
-                except Exception:
-                    log.warning("messaging_thread_auto_create_failed", session_id=str(session_id))
-
     except Exception:
         log.exception(
             "handle_session_agreed_confirm_rfq_failed",
             rfq_id=str(rfq_id),
         )
+
+
+async def handle_session_agreed_create_thread(event: object) -> None:
+    """SessionAgreed → auto-create messaging thread for buyer-seller communication.
+
+    Fires on EVERY SessionAgreed event, independent of RFQ status.
+    Creates one OPEN thread per session (deduped by session_id).
+    """
+    session_id = getattr(event, "session_id", None)
+    buyer_enterprise_id = getattr(event, "buyer_enterprise_id", None)
+    seller_enterprise_id = getattr(event, "seller_enterprise_id", None)
+    rfq_id = getattr(event, "rfq_id", None)
+
+    if not all([session_id, buyer_enterprise_id, seller_enterprise_id]):
+        return
+
+    try:
+        from datetime import datetime, timezone
+
+        from sqlalchemy import select as _sa_select
+
+        from src.identity.infrastructure.models import EnterpriseModel
+        from src.messaging.application.services import MessagingService
+        from src.shared.infrastructure.db.session import get_session_factory
+
+        async with get_session_factory()() as db_session:
+            # Resolve enterprise names
+            _ent_result = await db_session.execute(
+                _sa_select(EnterpriseModel.id, EnterpriseModel.name)
+                .where(EnterpriseModel.id.in_([buyer_enterprise_id, seller_enterprise_id]))
+            )
+            _name_map = {row.id: row.name for row in _ent_result.fetchall()}
+            _buyer_name = _name_map.get(buyer_enterprise_id, "Buyer")
+            _seller_name = _name_map.get(seller_enterprise_id, "Seller")
+
+            # Get product from RFQ parsed_fields
+            _product = "Deal"
+            if rfq_id:
+                from src.marketplace.infrastructure.repositories import PostgresRFQRepository
+                rfq = await PostgresRFQRepository(db_session).get_by_id(rfq_id)
+                if rfq and hasattr(rfq, "parsed_fields") and rfq.parsed_fields:
+                    _product = rfq.parsed_fields.get("product", "Deal")
+
+            _now = datetime.now(tz=timezone.utc).strftime("%d %b %Y, %I:%M %p")
+            _sid_short = str(session_id)[:8]
+            _subject = f"{_buyer_name} \u2194 {_seller_name} | {_product} | {_now} | {_sid_short}"
+
+            msg_svc = MessagingService(db_session)
+            await msg_svc.create_thread(
+                buyer_enterprise_id=buyer_enterprise_id,
+                seller_enterprise_id=seller_enterprise_id,
+                thread_type="DEAL",
+                subject=_subject,
+                rfq_id=rfq_id,
+                session_id=session_id,
+            )
+            log.info("messaging_thread_auto_created", session_id=str(session_id), subject=_subject)
+    except ValueError as ve:
+        # "An open thread already exists" is expected for duplicate events
+        if "already exists" in str(ve):
+            log.info("messaging_thread_already_exists", session_id=str(session_id))
+        else:
+            log.warning("messaging_thread_create_validation_error", session_id=str(session_id), error=str(ve))
+    except Exception:
+        log.exception("messaging_thread_auto_create_failed", session_id=str(session_id))
 
 
 async def handle_escrow_released_settle_rfq(event: object) -> None:
@@ -760,6 +782,7 @@ def register_phase_four_handlers(publisher: EventPublisher) -> None:
     publisher.unsubscribe("SessionAgreedStub", handle_session_agreed_stub)
     publisher.subscribe("SessionAgreed", handle_session_agreed_audit)
     publisher.subscribe("SessionAgreed", handle_session_agreed_confirm_rfq)
+    publisher.subscribe("SessionAgreed", handle_session_agreed_create_thread)
 
     # EscrowReleased → settle RFQ
     publisher.subscribe("EscrowReleased", handle_escrow_released_settle_rfq)
