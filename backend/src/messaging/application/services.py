@@ -137,36 +137,10 @@ class MessagingService:
         return {"id": str(msg.id), "body": msg.body, "created_at": str(msg.created_at)}
 
     async def close_threads_for_escrow(self, escrow_id: uuid.UUID) -> int:
-        """Auto-close all threads linked to an escrow (called on RELEASED/REFUNDED).
-
-        Adds a system message noting the closure reason before closing.
-        """
-        from src.messaging.infrastructure.models import ConversationThreadModel, MessageModel
+        """Auto-close all OPEN threads linked to an escrow."""
+        from src.messaging.infrastructure.models import ConversationThreadModel
 
         result = await self._session.execute(
-            select(ConversationThreadModel).where(
-                ConversationThreadModel.escrow_id == escrow_id,
-                ConversationThreadModel.status == "OPEN",
-            )
-        )
-        threads = result.scalars().all()
-        if not threads:
-            # Also check by session_id if escrow_id not directly linked
-            return 0
-
-        for thread in threads:
-            # Add system closure message
-            self._session.add(MessageModel(
-                id=uuid.uuid4(),
-                thread_id=thread.id,
-                sender_enterprise_id=thread.buyer_enterprise_id,
-                sender_user_id=thread.buyer_enterprise_id,  # system-generated
-                body="This conversation has been closed — the deal has been completed. Chat history remains available for reference.",
-                is_system_generated=True,
-            ))
-
-        # Close all threads
-        await self._session.execute(
             update(ConversationThreadModel)
             .where(
                 ConversationThreadModel.escrow_id == escrow_id,
@@ -175,32 +149,16 @@ class MessagingService:
             .values(status="CLOSED")
         )
         await self._session.commit()
-        count = len(threads)
-        log.info("threads_closed_for_escrow", escrow_id=str(escrow_id), count=count)
+        count = result.rowcount
+        if count:
+            log.info("threads_closed_for_escrow", escrow_id=str(escrow_id), count=count)
         return count
 
     async def close_threads_for_session(self, session_id: uuid.UUID) -> int:
-        """Close all threads linked to a session (called on deal completion)."""
-        from src.messaging.infrastructure.models import ConversationThreadModel, MessageModel
+        """Close all OPEN threads linked to a session."""
+        from src.messaging.infrastructure.models import ConversationThreadModel
 
         result = await self._session.execute(
-            select(ConversationThreadModel).where(
-                ConversationThreadModel.session_id == session_id,
-                ConversationThreadModel.status == "OPEN",
-            )
-        )
-        threads = result.scalars().all()
-        for thread in threads:
-            self._session.add(MessageModel(
-                id=uuid.uuid4(),
-                thread_id=thread.id,
-                sender_enterprise_id=thread.buyer_enterprise_id,
-                sender_user_id=thread.buyer_enterprise_id,
-                body="Deal completed — this conversation is now read-only.",
-                is_system_generated=True,
-            ))
-
-        await self._session.execute(
             update(ConversationThreadModel)
             .where(
                 ConversationThreadModel.session_id == session_id,
@@ -209,7 +167,7 @@ class MessagingService:
             .values(status="CLOSED")
         )
         await self._session.commit()
-        count = len(threads)
+        count = result.rowcount
         if count:
             log.info("threads_closed_for_session", session_id=str(session_id), count=count)
         return count

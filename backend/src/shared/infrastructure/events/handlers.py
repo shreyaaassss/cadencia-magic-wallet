@@ -677,7 +677,9 @@ async def handle_session_agreed_create_thread(event: object) -> None:
                 if rfq and hasattr(rfq, "parsed_fields") and rfq.parsed_fields:
                     _product = rfq.parsed_fields.get("product", "Deal")
 
-            _now = datetime.now(tz=timezone.utc).strftime("%d %b %Y, %I:%M %p")
+            from datetime import timedelta
+            _ist = timezone(timedelta(hours=5, minutes=30))
+            _now = datetime.now(tz=_ist).strftime("%d %b %Y, %I:%M %p")
             _sid_short = str(session_id)[:8]
             _subject = f"{_buyer_name} \u2194 {_seller_name} | {_product} | {_now} | {_sid_short}"
 

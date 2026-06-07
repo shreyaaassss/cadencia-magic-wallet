@@ -208,7 +208,9 @@ async def select_deal(
         _nm = {row.id: row.name for row in _ent_r.fetchall()}
         _bn = _nm.get(nego_session.buyer_enterprise_id, "Buyer")
         _sn = _nm.get(nego_session.seller_enterprise_id, "Seller")
-        _now = datetime.now(tz=timezone.utc).strftime("%d %b %Y, %I:%M %p")
+        from datetime import timedelta
+        _ist = timezone(timedelta(hours=5, minutes=30))
+        _now = datetime.now(tz=_ist).strftime("%d %b %Y, %I:%M %p")
         _subject = f"{_bn} \u2194 {_sn} | {_now} | {str(session_id)[:8]}"
 
         msg_svc = MessagingService(db_session)
