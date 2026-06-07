@@ -1391,21 +1391,30 @@ def register_phase_seven_handlers(publisher: EventPublisher) -> None:
 
 async def _handle_escrow_terminal_close_threads(event: object) -> None:
     """Close all messaging threads when escrow is released or refunded."""
+    escrow_id = getattr(event, "escrow_id", None)
+    session_id = getattr(event, "session_id", None)
+    if not escrow_id and not session_id:
+        return
+
     try:
         from src.messaging.application.services import MessagingService
         from src.shared.infrastructure.db.session import get_session_factory
 
-        escrow_id = getattr(event, "escrow_id", None)
-        session_id = getattr(event, "session_id", None)
-        if not escrow_id and not session_id:
-            return
-
         async with get_session_factory()() as db_session:
             svc = MessagingService(db_session)
+            closed = 0
             if escrow_id:
-                await svc.close_threads_for_escrow(escrow_id)
+                try:
+                    closed += await svc.close_threads_for_escrow(escrow_id)
+                except Exception:
+                    log.warning("close_threads_for_escrow_failed", escrow_id=str(escrow_id))
             if session_id:
-                await svc.close_threads_for_session(session_id)
+                try:
+                    closed += await svc.close_threads_for_session(session_id)
+                except Exception:
+                    log.warning("close_threads_for_session_failed", session_id=str(session_id))
+            if closed:
+                log.info("messaging_threads_auto_closed", count=closed, escrow_id=str(escrow_id))
     except Exception:
         log.exception("messaging_auto_close_failed")
 
