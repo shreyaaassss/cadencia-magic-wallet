@@ -25,7 +25,18 @@ interface Thread {
   id: string;
   subject: string | null;
   status: string;
+  session_id: string | null;
   is_read_only: boolean;
+}
+
+function relativeTime(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diff = Math.floor((now - then) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return formatDate(dateStr);
 }
 
 export default function ThreadPage() {
@@ -36,10 +47,11 @@ export default function ThreadPage() {
   const [newMessage, setNewMessage] = React.useState('');
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
+  // Fetch messages — polling as fallback
   const { data: messages = [], isLoading } = useQuery<Message[]>({
     queryKey: ['thread-messages', threadId],
     queryFn: () => api.get(`/v1/threads/${threadId}/messages`).then(r => r.data?.data || []),
-    refetchInterval: 5000,  // poll every 5s
+    refetchInterval: 5000,
   });
 
   const { data: threads = [] } = useQuery<Thread[]>({
@@ -48,6 +60,39 @@ export default function ThreadPage() {
   });
   const thread = threads.find(t => t.id === threadId);
   const isReadOnly = thread?.status === 'CLOSED';
+
+  // SSE real-time: listen for new messages via EventSource
+  React.useEffect(() => {
+    if (!threadId || isReadOnly) return;
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
+    // EventSource doesn't support custom headers, so use query param for auth
+    const url = `${baseUrl}/v1/threads/${threadId}/stream${token ? `?token=${token}` : ''}`;
+
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(url);
+      es.addEventListener('message', (event) => {
+        try {
+          const msg: Message = JSON.parse(event.data);
+          queryClient.setQueryData<Message[]>(['thread-messages', threadId], (old = []) => {
+            // Deduplicate by id
+            if (old.some(m => m.id === msg.id)) return old;
+            return [...old, msg];
+          });
+        } catch { /* ignore parse errors */ }
+      });
+      es.onerror = () => {
+        // SSE failed — polling fallback handles it
+        es?.close();
+      };
+    } catch {
+      // EventSource not supported — polling handles it
+    }
+
+    return () => { es?.close(); };
+  }, [threadId, isReadOnly, queryClient]);
 
   const sendMutation = useMutation({
     mutationFn: (body: string) =>
@@ -79,16 +124,23 @@ export default function ThreadPage() {
           <Link href="/messages" className="p-1.5 rounded hover:bg-accent">
             <ArrowLeft className="h-4 w-4" />
           </Link>
-          <div className="flex-1">
-            <h2 className="text-sm font-semibold text-foreground">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-sm font-semibold text-foreground truncate">
               {thread?.subject || 'Conversation'}
             </h2>
-            {isReadOnly && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Lock className="h-3 w-3" /> Deal completed — read-only
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              {isReadOnly ? (
+                <><Lock className="h-3 w-3" /> Deal completed — read-only</>
+              ) : (
+                <>Active deal conversation{thread?.session_id ? ` | ${thread.session_id.slice(0, 8)}...` : ''}</>
+              )}
+            </p>
           </div>
+          <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0',
+            isReadOnly ? 'bg-muted text-muted-foreground' : 'bg-green-500/10 text-green-500'
+          )}>
+            {isReadOnly ? 'Closed' : 'Active'}
+          </span>
         </div>
 
         {/* Messages */}
@@ -96,23 +148,28 @@ export default function ThreadPage() {
           {isLoading ? (
             <p className="text-sm text-muted-foreground text-center py-8">Loading messages...</p>
           ) : messages.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No messages yet. Start the conversation.</p>
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No messages yet. Start the conversation below.
+            </p>
           ) : (
             messages.map(msg => {
               const isOwn = msg.sender_enterprise_id === myEnterpriseId;
               return (
-                <div key={msg.id} className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}>
+                <div key={msg.id} className={cn('flex', msg.is_system_generated ? 'justify-center' : isOwn ? 'justify-end' : 'justify-start')}>
                   <div className={cn(
                     'max-w-[70%] rounded-lg px-3 py-2 text-sm',
                     msg.is_system_generated
-                      ? 'bg-muted/50 text-muted-foreground text-center max-w-full italic text-xs'
+                      ? 'bg-muted/50 text-muted-foreground text-center max-w-full italic text-xs border border-border/50'
                       : isOwn
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted text-foreground'
                   )}>
                     <p className="whitespace-pre-wrap">{msg.body}</p>
-                    <p className={cn('text-xs mt-1', isOwn ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
-                      {formatDate(msg.created_at)}
+                    <p className={cn('text-[10px] mt-1',
+                      msg.is_system_generated ? 'text-muted-foreground/70' :
+                      isOwn ? 'text-primary-foreground/60' : 'text-muted-foreground'
+                    )}>
+                      {relativeTime(msg.created_at)}
                     </p>
                   </div>
                 </div>
@@ -122,11 +179,11 @@ export default function ThreadPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input */}
+        {/* Input or closed banner */}
         {isReadOnly ? (
-          <div className="py-3 text-center border-t border-border">
+          <div className="py-3 text-center border-t border-border bg-muted/30 rounded-b-lg">
             <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
-              <Lock className="h-3 w-3" /> This conversation is closed. Chat history is preserved for reference.
+              <Lock className="h-3 w-3" /> Deal completed — this conversation is closed. Chat history is preserved.
             </p>
           </div>
         ) : (
@@ -137,6 +194,7 @@ export default function ThreadPage() {
               placeholder="Type a message..."
               className="flex-1"
               maxLength={5000}
+              autoFocus
             />
             <Button type="submit" disabled={!newMessage.trim() || sendMutation.isPending} size="sm">
               <Send className="h-4 w-4" />

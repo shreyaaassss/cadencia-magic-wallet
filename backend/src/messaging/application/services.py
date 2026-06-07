@@ -117,6 +117,23 @@ class MessagingService:
         )
         self._session.add(msg)
         await self._session.commit()
+
+        # Publish to Redis for real-time SSE delivery
+        try:
+            import json
+
+            from src.shared.infrastructure.cache.redis_client import get_redis_client
+            redis = get_redis_client()
+            await redis.publish(f"messaging:{thread_id}", json.dumps({
+                "id": str(msg.id),
+                "body": msg.body,
+                "sender_enterprise_id": str(sender_enterprise_id),
+                "is_system_generated": False,
+                "created_at": str(msg.created_at),
+            }))
+        except Exception:
+            pass  # Redis publish is best-effort
+
         return {"id": str(msg.id), "body": msg.body, "created_at": str(msg.created_at)}
 
     async def close_threads_for_escrow(self, escrow_id: uuid.UUID) -> int:

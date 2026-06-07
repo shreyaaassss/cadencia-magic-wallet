@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.identity.api.dependencies import get_current_user
@@ -85,3 +88,47 @@ async def send_message(
         return success_response(data=result)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{thread_id}/stream", summary="SSE stream for real-time messages")
+async def stream_messages(
+    thread_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """GET /v1/threads/{id}/stream — SSE stream for real-time message delivery."""
+    from src.shared.infrastructure.cache.redis_client import get_redis_client
+
+    async def event_generator():
+        redis = get_redis_client()
+        pubsub = redis.pubsub()
+        channel = f"messaging:{thread_id}"
+        await pubsub.subscribe(channel)
+        try:
+            # Send initial keepalive
+            yield f"event: connected\ndata: {json.dumps({'thread_id': str(thread_id)})}\n\n"
+            while True:
+                msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if msg and msg["type"] == "message":
+                    data = msg["data"]
+                    if isinstance(data, bytes):
+                        data = data.decode("utf-8")
+                    yield f"event: message\ndata: {data}\n\n"
+                else:
+                    # Keepalive every 15s to prevent proxy timeout
+                    yield ": keepalive\n\n"
+                    await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await pubsub.unsubscribe(channel)
+            await pubsub.close()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
