@@ -782,7 +782,7 @@ def register_phase_four_handlers(publisher: EventPublisher) -> None:
     publisher.unsubscribe("SessionAgreedStub", handle_session_agreed_stub)
     publisher.subscribe("SessionAgreed", handle_session_agreed_audit)
     publisher.subscribe("SessionAgreed", handle_session_agreed_confirm_rfq)
-    publisher.subscribe("SessionAgreed", handle_session_agreed_create_thread)
+    # Thread creation moved to select_deal endpoint — only for the SELECTED deal
 
     # EscrowReleased → settle RFQ
     publisher.subscribe("EscrowReleased", handle_escrow_released_settle_rfq)

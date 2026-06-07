@@ -190,6 +190,59 @@ async def select_deal(
         # Non-fatal: escrow was already created; rejection of siblings is best-effort
         log.warning("select_deal_sibling_rejection_failed", error=str(exc))
 
+    # Auto-create messaging thread for the selected deal only
+    try:
+        from datetime import datetime, timezone
+
+        from sqlalchemy import select as _ssa_select
+
+        from src.identity.infrastructure.models import EnterpriseModel
+        from src.messaging.application.services import MessagingService
+
+        _ent_r = await db_session.execute(
+            _ssa_select(EnterpriseModel.id, EnterpriseModel.name)
+            .where(EnterpriseModel.id.in_([
+                nego_session.buyer_enterprise_id, nego_session.seller_enterprise_id
+            ]))
+        )
+        _nm = {row.id: row.name for row in _ent_r.fetchall()}
+        _bn = _nm.get(nego_session.buyer_enterprise_id, "Buyer")
+        _sn = _nm.get(nego_session.seller_enterprise_id, "Seller")
+        _now = datetime.now(tz=timezone.utc).strftime("%d %b %Y, %I:%M %p")
+        _subject = f"{_bn} \u2194 {_sn} | {_now} | {str(session_id)[:8]}"
+
+        msg_svc = MessagingService(db_session)
+        await msg_svc.create_thread(
+            buyer_enterprise_id=nego_session.buyer_enterprise_id,
+            seller_enterprise_id=nego_session.seller_enterprise_id,
+            thread_type="GENERAL",
+            subject=_subject,
+            rfq_id=nego_session.rfq_id,
+            session_id=session_id,
+            escrow_id=uuid.UUID(str(result["escrow_id"])),
+        )
+        log.info("messaging_thread_created_for_selected_deal", session_id=str(session_id))
+    except Exception:
+        log.warning("messaging_thread_create_failed_on_select_deal", session_id=str(session_id))
+
+    # Close threads for rejected sibling sessions (they lost the deal)
+    try:
+        from src.messaging.application.services import MessagingService as _MS
+        _ms = _MS(db_session)
+        from sqlalchemy import select as _s2
+
+        from src.negotiation.infrastructure.models import NegotiationSessionModel as _NSM
+        _siblings = await db_session.execute(
+            _s2(_NSM.id).where(
+                _NSM.rfq_id == nego_session.rfq_id,
+                _NSM.id != session_id,
+            )
+        )
+        for row in _siblings.fetchall():
+            await _ms.close_threads_for_session(row[0])
+    except Exception:
+        pass  # Best-effort
+
     return success_response(SelectDealResponse(
         escrow_id=str(result["escrow_id"]),
         session_id=body.session_id,
