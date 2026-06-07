@@ -1400,21 +1400,26 @@ async def _handle_escrow_terminal_close_threads(event: object) -> None:
         from src.messaging.application.services import MessagingService
         from src.shared.infrastructure.db.session import get_session_factory
 
-        async with get_session_factory()() as db_session:
-            svc = MessagingService(db_session)
-            closed = 0
-            if escrow_id:
-                try:
-                    closed += await svc.close_threads_for_escrow(escrow_id)
-                except Exception:
-                    log.warning("close_threads_for_escrow_failed", escrow_id=str(escrow_id))
-            if session_id:
-                try:
-                    closed += await svc.close_threads_for_session(session_id)
-                except Exception:
-                    log.warning("close_threads_for_session_failed", session_id=str(session_id))
-            if closed:
-                log.info("messaging_threads_auto_closed", count=closed, escrow_id=str(escrow_id))
+        # Use separate DB sessions for each close attempt — prevents
+        # one failure from poisoning the session for the other.
+        if escrow_id:
+            try:
+                async with get_session_factory()() as db1:
+                    svc1 = MessagingService(db1)
+                    n = await svc1.close_threads_for_escrow(escrow_id)
+                    if n:
+                        log.info("threads_closed_by_escrow", count=n, escrow_id=str(escrow_id))
+            except Exception:
+                log.exception("close_threads_for_escrow_failed", escrow_id=str(escrow_id))
+        if session_id:
+            try:
+                async with get_session_factory()() as db2:
+                    svc2 = MessagingService(db2)
+                    n = await svc2.close_threads_for_session(session_id)
+                    if n:
+                        log.info("threads_closed_by_session", count=n, session_id=str(session_id))
+            except Exception:
+                log.exception("close_threads_for_session_failed", session_id=str(session_id))
     except Exception:
         log.exception("messaging_auto_close_failed")
 
