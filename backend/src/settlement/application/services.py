@@ -62,9 +62,14 @@ async def _inr_to_microalgo(agreed_price_inr: float) -> int:
     """Convert INR deal value to microALGO with configurable mode.
 
     Environment variable ESCROW_PRICING_MODE controls behavior:
-      TESTNET_DEMO  — Symbolic escrow: cap at 0.999 ALGO (default, safe for demos)
-      TESTNET_REAL  — Use real FX rate, no cap (integration testing with funded wallets)
-      MAINNET       — Use real FX rate, no cap (production)
+      TESTNET_DEMO  — Proportional demo scaling: ₹0–₹1Cr → 0–10 ALGO (default)
+      TESTNET_REAL  — Live FX rate via Frankfurter API (no cap)
+      MAINNET       — Live FX rate via Frankfurter API (no cap)
+
+    Demo scaling:
+      DEMO_MAX_ALGO = 10          → ceiling ALGO amount in demo
+      DEMO_MAX_INR  = 10_000_000  → ₹1 Cr as the "full scale" reference
+      MBR_FLOOR     = 200_000     → 0.2 ALGO min (covers AVM MBR + buffer)
     """
     import os
     from decimal import Decimal
@@ -72,25 +77,31 @@ async def _inr_to_microalgo(agreed_price_inr: float) -> int:
     mode = os.environ.get("ESCROW_PRICING_MODE", "TESTNET_DEMO")
 
     if mode == "TESTNET_DEMO":
-        # Symbolic: 1 µALGO per ₹1, capped at 0.999 ALGO
-        symbolic = int(agreed_price_inr)
-        return max(1000, min(symbolic, 999_000))
+        DEMO_MAX_ALGO = int(os.environ.get("DEMO_MAX_ALGO", "10"))
+        DEMO_MAX_INR = float(os.environ.get("DEMO_MAX_INR", "10000000"))
+        MBR_FLOOR = 200_000  # 0.2 ALGO — covers AVM minimum balance requirement
+
+        capped_inr = min(agreed_price_inr, DEMO_MAX_INR)
+        scaled_algo = (capped_inr / DEMO_MAX_INR) * DEMO_MAX_ALGO
+        microalgo = int(scaled_algo * 1_000_000)
+        return max(MBR_FLOOR, microalgo)
 
     # Real conversion for TESTNET_REAL and MAINNET
     try:
         from src.treasury.infrastructure.frankfurter_fx_adapter import FrankfurterFXAdapter
         fx_adapter = FrankfurterFXAdapter()
         fx_rate = await fx_adapter.get_rate("INR", "USD")
-        # INR → USD → ALGO (approximate: 1 ALGO ≈ $0.20)
         algo_usd_rate = Decimal("0.20")  # TODO: replace with live ALGO/USD feed
         price_usd = Decimal(str(agreed_price_inr)) * Decimal(str(fx_rate.rate))
         price_algo = price_usd / algo_usd_rate
         microalgo = int(price_algo * Decimal("1_000_000"))
-        return max(100_000, microalgo)  # min 0.1 ALGO for MBR
+        return max(200_000, microalgo)  # min 0.2 ALGO for MBR
     except Exception as exc:
         log.warning("fx_conversion_fallback_to_demo", error=str(exc), mode=mode)
-        # Fallback to demo mode on FX failure
-        return max(1000, min(int(agreed_price_inr), 999_000))
+        DEMO_MAX_INR = float(os.environ.get("DEMO_MAX_INR", "10000000"))
+        capped_inr = min(agreed_price_inr, DEMO_MAX_INR)
+        scaled_algo = (capped_inr / DEMO_MAX_INR) * 10
+        return max(200_000, int(scaled_algo * 1_000_000))
 
 
 class SettlementService:

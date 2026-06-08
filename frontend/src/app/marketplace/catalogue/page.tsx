@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Plus, Pencil, Trash2, Package, AlertTriangle } from 'lucide-react';
+import { Loader2, Plus, Pencil, Trash2, Package, AlertTriangle, Upload, FileDown } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { AppShell } from '@/components/layout/AppShell';
@@ -68,6 +68,13 @@ export default function CataloguePage() {
   const [filterActive, setFilterActive] = React.useState<'all' | 'active' | 'inactive'>('all');
   const [sortBy, setSortBy] = React.useState<'name' | 'price' | 'stock'>('name');
 
+  // ─── Bulk Import state ──────────────────────────────────────────────────
+  const [showBulkImport, setShowBulkImport] = React.useState(false);
+  const [bulkStep, setBulkStep] = React.useState<'upload' | 'validate' | 'import'>('upload');
+  const [bulkRows, setBulkRows] = React.useState<any[]>([]);
+  const [bulkErrors, setBulkErrors] = React.useState<Record<number, string>>({});
+  const [bulkSelected, setBulkSelected] = React.useState<Set<number>>(new Set());
+
   const { data: items = [], isLoading } = useQuery<CatalogueItem[]>({
     queryKey: ['catalogue'],
     queryFn: () => api.get('/v1/marketplace/catalogue?active_only=false').then(r => r.data.data || []),
@@ -129,9 +136,14 @@ export default function CataloguePage() {
               title="Product Catalogue"
               description="Manage your product listings, pricing tiers, and lead times."
             />
-            <Button onClick={() => { setEditingId(null); setShowForm(true); }} className="bg-primary text-primary-foreground">
-              <Plus className="h-4 w-4 mr-1.5" /> Add Product
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowBulkImport(true)} className="border-border">
+                <Upload className="h-4 w-4 mr-1.5" /> Bulk Import
+              </Button>
+              <Button onClick={() => { setEditingId(null); setShowForm(true); }} className="bg-primary text-primary-foreground">
+                <Plus className="h-4 w-4 mr-1.5" /> Add Product
+              </Button>
+            </div>
           </div>
 
           {/* Embedding status banner */}
@@ -287,6 +299,158 @@ export default function CataloguePage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* ── Bulk Import Modal ──────────────────────────────────────────── */}
+          {showBulkImport && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+              <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-3xl max-h-[85vh] overflow-y-auto p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-foreground">Bulk Import Products</h2>
+                  <Button variant="ghost" size="sm" onClick={() => { setShowBulkImport(false); setBulkStep('upload'); setBulkRows([]); }}>✕</Button>
+                </div>
+
+                {/* Step 1: Upload */}
+                {bulkStep === 'upload' && (
+                  <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground">Upload a CSV file with your product catalogue. Max 200 items per import.</p>
+                    <div className="flex gap-3">
+                      <Button variant="outline" size="sm" onClick={() => {
+                        const hdr = ['product_name','hsn_code','product_category','unit','price_per_unit_inr','moq','max_order_qty','lead_time_days','in_stock_qty','grade','specification_text','certifications','floor_price_inr','max_discount_pct'];
+                        const example = ['HR Coil IS2062','7209','HR_COIL','MT','45000','50','500','14','200','E250','IS 2062 Grade E250','BIS,ISO 9001','40000','10'];
+                        const csv = [hdr.join(','), example.join(',')].join('\n');
+                        const blob = new Blob([csv], { type: 'text/csv' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a'); a.href = url; a.download = 'cadencia_catalogue_template.csv'; a.click();
+                        URL.revokeObjectURL(url);
+                      }}>
+                        <FileDown className="h-3.5 w-3.5 mr-1" /> Download Template
+                      </Button>
+                    </div>
+                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 transition-colors">
+                      <Upload className="h-8 w-8 text-muted-foreground mb-2" />
+                      <span className="text-sm text-muted-foreground">Click to upload CSV</span>
+                      <input type="file" accept=".csv" className="hidden" onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          const text = ev.target?.result as string;
+                          const lines = text.split('\n').filter(l => l.trim());
+                          if (lines.length < 2) { toast.error('CSV must have a header row and at least one data row'); return; }
+                          const headers = lines[0].split(',').map(h => h.trim());
+                          const rows = lines.slice(1).map((line, idx) => {
+                            const vals = line.split(',').map(v => v.trim());
+                            const row: Record<string, string> = {};
+                            headers.forEach((h, i) => { row[h] = vals[i] || ''; });
+                            row._idx = String(idx);
+                            return row;
+                          });
+                          if (rows.length > 200) { toast.error('Maximum 200 items per import'); return; }
+                          // Validate
+                          const errors: Record<number, string> = {};
+                          const selected = new Set<number>();
+                          rows.forEach((r, i) => {
+                            const errs: string[] = [];
+                            if (!r.product_name) errs.push('product_name required');
+                            if (r.hsn_code && !/^\d{4,8}$/.test(r.hsn_code)) errs.push('hsn_code must be 4-8 digits');
+                            if (!r.price_per_unit_inr || Number(r.price_per_unit_inr) <= 0) errs.push('price must be positive');
+                            if (r.lead_time_days && (Number(r.lead_time_days) < 1 || Number(r.lead_time_days) > 180)) errs.push('lead_time 1-180');
+                            if (r.moq && r.max_order_qty && Number(r.max_order_qty) < Number(r.moq)) errs.push('max_qty >= moq');
+                            if (errs.length) errors[i] = errs.join('; ');
+                            else selected.add(i);
+                          });
+                          setBulkRows(rows);
+                          setBulkErrors(errors);
+                          setBulkSelected(selected);
+                          setBulkStep('validate');
+                        };
+                        reader.readAsText(file);
+                      }} />
+                    </label>
+                  </div>
+                )}
+
+                {/* Step 2: Validate */}
+                {bulkStep === 'validate' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm">
+                        <span className="text-green-600 font-medium">{bulkSelected.size} valid</span>
+                        {Object.keys(bulkErrors).length > 0 && <span className="text-amber-600 font-medium"> · {Object.keys(bulkErrors).length} invalid</span>}
+                      </p>
+                      <Button variant="outline" size="sm" onClick={() => setBulkStep('upload')}>Back</Button>
+                    </div>
+                    <div className="overflow-x-auto max-h-80 border border-border rounded-lg">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted sticky top-0">
+                          <tr>
+                            <th className="px-2 py-1.5 text-left w-8"></th>
+                            <th className="px-2 py-1.5 text-left">Product</th>
+                            <th className="px-2 py-1.5 text-left">HSN</th>
+                            <th className="px-2 py-1.5 text-left">Unit</th>
+                            <th className="px-2 py-1.5 text-right">Price</th>
+                            <th className="px-2 py-1.5 text-right">MOQ</th>
+                            <th className="px-2 py-1.5 text-left">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bulkRows.map((r, i) => (
+                            <tr key={i} className={cn(bulkErrors[i] ? 'bg-amber-50 dark:bg-amber-900/10' : 'bg-green-50/50 dark:bg-green-900/5')}>
+                              <td className="px-2 py-1">
+                                <input type="checkbox" checked={bulkSelected.has(i)} onChange={() => {
+                                  const s = new Set(bulkSelected);
+                                  if (s.has(i)) s.delete(i); else if (!bulkErrors[i]) s.add(i);
+                                  setBulkSelected(s);
+                                }} disabled={!!bulkErrors[i]} />
+                              </td>
+                              <td className="px-2 py-1 font-medium">{r.product_name}</td>
+                              <td className="px-2 py-1 font-mono">{r.hsn_code}</td>
+                              <td className="px-2 py-1">{r.unit}</td>
+                              <td className="px-2 py-1 text-right">₹{Number(r.price_per_unit_inr || 0).toLocaleString('en-IN')}</td>
+                              <td className="px-2 py-1 text-right">{r.moq || '—'}</td>
+                              <td className="px-2 py-1">{bulkErrors[i] ? <span className="text-amber-600">{bulkErrors[i]}</span> : <span className="text-green-600">✓</span>}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <Button
+                      onClick={async () => {
+                        const items = bulkRows.filter((_, i) => bulkSelected.has(i)).map(r => ({
+                          product_name: r.product_name,
+                          hsn_code: r.hsn_code || null,
+                          product_category: r.product_category || r.product_name,
+                          unit: r.unit || 'PIECE',
+                          price_per_unit_inr: Number(r.price_per_unit_inr),
+                          moq: Number(r.moq) || 1,
+                          max_order_qty: Number(r.max_order_qty) || 10000,
+                          lead_time_days: Number(r.lead_time_days) || 14,
+                          in_stock_qty: Number(r.in_stock_qty) || 0,
+                          grade: r.grade || null,
+                          specification_text: r.specification_text || null,
+                          certifications: r.certifications ? r.certifications.split(',').map((c: string) => c.trim()).filter(Boolean) : [],
+                          floor_price_inr: r.floor_price_inr ? Number(r.floor_price_inr) : null,
+                          max_discount_pct: r.max_discount_pct ? Number(r.max_discount_pct) : null,
+                        }));
+                        try {
+                          await api.post('/v1/marketplace/catalogue/bulk', { items });
+                          toast.success(`${items.length} products imported`);
+                          queryClient.invalidateQueries({ queryKey: ['catalogue'] });
+                          setShowBulkImport(false); setBulkStep('upload'); setBulkRows([]);
+                        } catch (err: any) {
+                          toast.error(err.response?.data?.detail || 'Bulk import failed');
+                        }
+                      }}
+                      disabled={bulkSelected.size === 0}
+                      className="w-full bg-primary text-primary-foreground"
+                    >
+                      Import {bulkSelected.size} item{bulkSelected.size !== 1 ? 's' : ''}
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

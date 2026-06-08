@@ -97,6 +97,15 @@ class RFQ(BaseEntity):
         if geo:
             self.geography_pref = str(geo)
 
+        # Write newly extracted fields to dedicated DB columns
+        self.quantity_unit = parsed_fields.get("quantity_unit")
+        self.delivery_pincode = parsed_fields.get("delivery_pincode")
+        self.delivery_city = parsed_fields.get("delivery_city")
+        self.delivery_state = parsed_fields.get("delivery_state")
+        self.max_acceptable_lead_time_days = parsed_fields.get("max_acceptable_lead_time_days")
+        self.requires_test_certificate = parsed_fields.get("requires_test_certificate", False)
+        self.preferred_payment_terms = parsed_fields.get("preferred_payment_terms") or []
+
         self.touch()
 
         return {

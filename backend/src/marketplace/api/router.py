@@ -130,6 +130,84 @@ async def upload_rfq(
     )
 
 
+# ── POST /v1/marketplace/rfq/ai-preview ────────────────────────────────────
+
+
+@router.post(
+    "/rfq/ai-preview",
+    response_model=ApiResponse[dict],
+    summary="AI-preview: synchronously extract structured RFQ fields (read-only, no DB write)",
+)
+async def ai_preview_rfq(
+    body: UploadRFQRequest,
+    current_user: User = Depends(get_current_buyer),
+):
+    """Uses gpt-4.1-nano to extract structured fields from raw text synchronously.
+    Returns the parsed preview WITHOUT creating an RFQ record."""
+    import json as _json
+    import os
+
+    from src.marketplace.infrastructure.rfq_parser import (
+        RFQ_SYSTEM_PROMPT,
+        normalize_rfq_parsed_fields,
+    )
+
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="AI preview unavailable — OPENAI_API_KEY not configured",
+        )
+
+    import openai
+
+    client = openai.AsyncOpenAI(api_key=api_key)
+
+    try:
+        resp = await client.chat.completions.create(
+            model="gpt-4.1-nano",
+            messages=[
+                {"role": "system", "content": RFQ_SYSTEM_PROMPT},
+                {"role": "user", "content": body.raw_text},
+            ],
+            temperature=0.1,
+            max_tokens=800,
+            response_format={"type": "json_object"},
+        )
+        raw = resp.choices[0].message.content or "{}"
+        parsed = _json.loads(raw)
+        parsed = normalize_rfq_parsed_fields(parsed)
+    except _json.JSONDecodeError as e:
+        raise HTTPException(status_code=422, detail=f"AI returned invalid JSON: {e}")
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"AI extraction failed: {exc}")
+
+    # Field completeness analysis
+    TIER1 = ["product", "quantity", "quantity_unit"]
+    TIER2 = ["budget_max", "delivery_window_days"]
+    TIER3 = ["delivery_pincode", "hsn_code", "preferred_payment_terms"]
+
+    def _missing(key: str) -> bool:
+        v = parsed.get(key)
+        return v is None or v == [] or v == ""
+
+    missing_tier1 = [k for k in TIER1 if _missing(k)]
+    missing_tier2 = [k for k in TIER2 if _missing(k)]
+    missing_tier3 = [k for k in TIER3 if _missing(k)]
+
+    return success_response({
+        "parsed_fields": parsed,
+        "model": "gpt-4.1-nano",
+        "preview_only": True,
+        "completeness": {
+            "missing_tier1": missing_tier1,
+            "missing_tier2": missing_tier2,
+            "missing_tier3": missing_tier3,
+            "is_submittable": len(missing_tier1) == 0,
+        },
+    })
+
+
 # ── GET /v1/marketplace/rfqs ────────────────────────────────────────────────
 
 

@@ -35,6 +35,11 @@ export default function MarketplacePage() {
   const [filter, setFilter] = React.useState<string>('All');
   const [mobileSheetOpen, setMobileSheetOpen] = React.useState(false);
 
+  // ─── AI Preview wizard state ──────────────────────────────────────────────
+  const [wizardStep, setWizardStep] = React.useState<'draft' | 'preview' | 'confirm'>('draft');
+  const [previewData, setPreviewData] = React.useState<any>(null);
+  const [userOverrides, setUserOverrides] = React.useState<Record<string, any>>({});
+
   // ─── x402 auto-negotiation state ────────────────────────────────────────────
   const [autoNegSessionIds, setAutoNegSessionIds] = React.useState<string[]>([]);
   const [x402TotalSpent, setX402TotalSpent] = React.useState(0);
@@ -146,6 +151,43 @@ export default function MarketplacePage() {
       toast.error('Failed to submit RFQ');
     },
   });
+
+  // ─── AI Preview mutation ────────────────────────────────────────────────────
+  const previewMutation = useMutation({
+    mutationFn: async (rawText: string) => {
+      const res = await api.post('/v1/marketplace/rfq/ai-preview', { raw_text: rawText });
+      return res.data.data;
+    },
+    onSuccess: (data) => {
+      setPreviewData(data);
+      setUserOverrides({});
+      setWizardStep('preview');
+    },
+    onError: (err: any) => {
+      if (err.response?.status === 503) {
+        toast.info('AI preview unavailable — submitting directly');
+        submitMutation.mutate(rfqText);
+      } else {
+        toast.error('AI preview failed');
+      }
+    },
+  });
+
+  const handleConfirmSubmit = React.useCallback(() => {
+    // Append user overrides to raw text as natural-language additions
+    const overrideLines: string[] = [];
+    if (userOverrides.product) overrideLines.push(`Product: ${userOverrides.product}`);
+    if (userOverrides.quantity) overrideLines.push(`Quantity: ${userOverrides.quantity} ${userOverrides.quantity_unit || ''}`);
+    if (userOverrides.quantity_unit && !userOverrides.quantity) overrideLines.push(`Unit: ${userOverrides.quantity_unit}`);
+    if (userOverrides.budget_max) overrideLines.push(`Total budget: INR ${userOverrides.budget_max}`);
+    if (userOverrides.delivery_window_days) overrideLines.push(`Delivery within ${userOverrides.delivery_window_days} days`);
+    const finalText = overrideLines.length > 0
+      ? `${rfqText}\n\nAdditional details: ${overrideLines.join('. ')}.`
+      : rfqText;
+    submitMutation.mutate(finalText);
+    setWizardStep('draft');
+    setPreviewData(null);
+  }, [rfqText, userOverrides, submitMutation]);
 
   // ─── Start all negotiations (x402 per-turn payments via client-side loop) ───
   const startNegotiationsMutation = useMutation({
@@ -340,17 +382,123 @@ export default function MarketplacePage() {
           />
           {formExpanded && (
             <div className="animate-in fade-in slide-in-from-top-2 duration-200">
-              <p className="text-sm text-muted-foreground mb-3">
-                Describe your requirement in natural language. AI will parse and match sellers.
-              </p>
-              <TextareaWithButton
-                placeholder="Need 500 metric tons of HR Coil, IS 2062 grade, delivery to Mumbai port within 45 days. Budget: ₹38,000-42,000 per MT."
-                buttonText="Submit RFQ"
-                value={rfqText}
-                onChange={setRfqText}
-                onSubmit={() => submitMutation.mutate(rfqText)}
-                isLoading={submitMutation.isPending}
-              />
+              {/* Step 1: Draft */}
+              {wizardStep === 'draft' && (
+                <>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Describe your requirement in natural language. AI will extract structured fields for your review.
+                  </p>
+                  <TextareaWithButton
+                    placeholder="Need 500 metric tons of HR Coil, IS 2062 grade, delivery to Mumbai 400001 within 45 days. Budget: ₹38,000-42,000 per MT. 30% advance, 70% on delivery."
+                    buttonText="Preview with AI"
+                    value={rfqText}
+                    onChange={setRfqText}
+                    onSubmit={() => previewMutation.mutate(rfqText)}
+                    isLoading={previewMutation.isPending}
+                  />
+                </>
+              )}
+
+              {/* Step 2: Preview + Completeness */}
+              {wizardStep === 'preview' && previewData && (() => {
+                const p = { ...previewData.parsed_fields, ...userOverrides };
+                const c = previewData.completeness;
+                const isMissingT1 = (c.missing_tier1 as string[]).filter(k => !userOverrides[k] && !p[k]);
+                const isMissingT2 = (c.missing_tier2 as string[]).filter(k => !userOverrides[k] && !p[k]);
+                const canSubmit = isMissingT1.length === 0;
+                return (
+                  <div className="space-y-4">
+                    {/* Zone A: Extracted preview */}
+                    <div className="bg-muted/50 border border-border rounded-lg p-4 space-y-2">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">AI Extracted Fields</p>
+                      {p.product && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold text-foreground">{p.product}</span>
+                          {p.product_category && <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">{p.product_category}</span>}
+                          {p.hsn_code && <span className="text-xs font-mono text-muted-foreground">HSN {p.hsn_code}</span>}
+                        </div>
+                      )}
+                      {p.grade && <p className="text-xs text-muted-foreground">{p.grade}</p>}
+                      {(p.quantity || p.budget_max) && (
+                        <div className="flex items-center gap-3 text-sm">
+                          {p.quantity && <span>{p.quantity} {p.quantity_unit || ''}</span>}
+                          {p.budget_per_unit && <span>· ₹{Number(p.budget_per_unit).toLocaleString('en-IN')}/unit</span>}
+                          {p.budget_max && <span>· Total ₹{Number(p.budget_max).toLocaleString('en-IN')}</span>}
+                          {p.incoterms && <span className="text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">{p.incoterms}</span>}
+                        </div>
+                      )}
+                      {(p.delivery_pincode || p.delivery_city || p.delivery_window_days) && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          {p.delivery_pincode && <span>{p.delivery_pincode}</span>}
+                          {p.delivery_city && <span>· {p.delivery_city}{p.delivery_state ? `, ${p.delivery_state}` : ''}</span>}
+                          {p.delivery_window_days && <span>· within {p.delivery_window_days} days</span>}
+                        </div>
+                      )}
+                      {p.preferred_payment_terms?.length > 0 && (
+                        <div className="flex gap-1 flex-wrap">
+                          {p.preferred_payment_terms.map((t: string) => (
+                            <span key={t} className="text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">{t}</span>
+                          ))}
+                        </div>
+                      )}
+                      {p.required_certifications?.length > 0 && (
+                        <div className="flex gap-1 flex-wrap">
+                          {p.required_certifications.map((c: string) => (
+                            <span key={c} className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 px-1.5 py-0.5 rounded">{c}</span>
+                          ))}
+                          {p.requires_test_certificate && <span className="text-xs text-green-600">✓ Test cert</span>}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Zone B: Missing Tier 1 (blocks submission) */}
+                    {isMissingT1.length > 0 && (
+                      <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/30 rounded-lg p-4">
+                        <p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-3">Required — please add:</p>
+                        <div className="grid gap-2">
+                          {isMissingT1.includes('product') && (
+                            <input type="text" placeholder="Product name" className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background" value={userOverrides.product || ''} onChange={e => setUserOverrides(o => ({ ...o, product: e.target.value }))} />
+                          )}
+                          {(isMissingT1.includes('quantity') || isMissingT1.includes('quantity_unit')) && (
+                            <div className="flex gap-2">
+                              <input type="number" placeholder="Quantity" className="flex-1 px-3 py-1.5 text-sm border border-border rounded-md bg-background" value={userOverrides.quantity || ''} onChange={e => setUserOverrides(o => ({ ...o, quantity: e.target.value }))} />
+                              <select className="px-3 py-1.5 text-sm border border-border rounded-md bg-background" value={userOverrides.quantity_unit || ''} onChange={e => setUserOverrides(o => ({ ...o, quantity_unit: e.target.value }))}>
+                                <option value="">Unit</option>
+                                {['MT', 'KG', 'PIECE', 'LITRE', 'METRE', 'BUNDLE', 'BOX'].map(u => <option key={u} value={u}>{u}</option>)}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Zone C: Missing Tier 2 (warning, optional) */}
+                    {isMissingT2.length > 0 && (
+                      <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-lg p-4">
+                        <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-3">Add for better matches (optional):</p>
+                        <div className="grid gap-2">
+                          {isMissingT2.includes('budget_max') && (
+                            <input type="number" placeholder="Total budget (₹)" className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background" value={userOverrides.budget_max || ''} onChange={e => setUserOverrides(o => ({ ...o, budget_max: e.target.value }))} />
+                          )}
+                          {isMissingT2.includes('delivery_window_days') && (
+                            <input type="number" placeholder="Delivery window (days)" className="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background" value={userOverrides.delivery_window_days || ''} onChange={e => setUserOverrides(o => ({ ...o, delivery_window_days: e.target.value }))} />
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="flex gap-3">
+                      <Button variant="outline" onClick={() => { setWizardStep('draft'); setPreviewData(null); }} className="border-border">
+                        Back to edit
+                      </Button>
+                      <Button onClick={handleConfirmSubmit} disabled={!canSubmit || submitMutation.isPending} className="bg-primary text-primary-foreground hover:bg-primary/90 flex-1">
+                        {submitMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Submitting...</> : 'Confirm & Submit RFQ'}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

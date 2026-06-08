@@ -54,6 +54,9 @@ dependencies = [
     "openai>=1.30",
     "groq>=0.9",
     "google-genai>=1.0",              # text-embedding-004 (384-dim semantic embeddings)
+
+    # ── PDF generation ──────────────────────────────────────────────────────
+    "fpdf2>=2.7",
 ]
 
 [project.optional-dependencies]
