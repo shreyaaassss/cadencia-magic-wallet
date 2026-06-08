@@ -58,10 +58,36 @@ export async function signAlgoTxn(encodedTxnB64: string): Promise<string> {
   const binary = atob(encodedTxnB64);
   const txnBytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) txnBytes[i] = binary.charCodeAt(i);
-  const signedBytes: Uint8Array = await algExt.signTransaction(txnBytes);
-  let signedBinary = '';
-  for (let i = 0; i < signedBytes.length; i++) signedBinary += String.fromCharCode(signedBytes[i]);
-  return btoa(signedBinary);
+  const signedResult: any = await algExt.signTransaction(txnBytes);
+
+  // Magic SDK may return Uint8Array, string, or { txID, blob } — handle all
+  function uint8ToB64(bytes: Uint8Array): string {
+    let bin = '';
+    for (let j = 0; j < bytes.length; j++) bin += String.fromCharCode(bytes[j]);
+    return btoa(bin);
+  }
+
+  console.log('[magic] signAlgoTxn result type:', typeof signedResult, signedResult?.constructor?.name);
+
+  if (typeof signedResult === 'string') return signedResult;
+  if (signedResult instanceof Uint8Array) return uint8ToB64(signedResult);
+  if (signedResult?.buffer instanceof ArrayBuffer) return uint8ToB64(new Uint8Array(signedResult.buffer));
+  if (signedResult && typeof signedResult === 'object') {
+    if ('blob' in signedResult) {
+      const blob = signedResult.blob;
+      if (typeof blob === 'string') return blob;
+      if (blob instanceof Uint8Array || blob?.buffer instanceof ArrayBuffer) return uint8ToB64(blob instanceof Uint8Array ? blob : new Uint8Array(blob.buffer));
+      return uint8ToB64(new Uint8Array(Object.values(blob) as number[]));
+    }
+    if ('signedTransaction' in signedResult) return signedResult.signedTransaction;
+    if ('txn' in signedResult) return signedResult.txn;
+    // Uint8Array-like object {0: byte, 1: byte, ...}
+    const vals = Object.values(signedResult) as number[];
+    if (vals.length > 0 && typeof vals[0] === 'number') return uint8ToB64(new Uint8Array(vals));
+  }
+
+  console.error('[magic] signAlgoTxn: unexpected result format:', JSON.stringify(signedResult));
+  throw new Error('Magic signTransaction returned unexpected format');
 }
 
 /**
