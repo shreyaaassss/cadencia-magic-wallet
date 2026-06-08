@@ -69,28 +69,12 @@ api.interceptors.response.use(
       const encodedB64 = Buffer.from(algosdk.encodeUnsignedTransaction(txn)).toString('base64');
       const signedB64 = await signAlgoTxn(encodedB64);
 
-      // Retry original request with payment headers.
-      // AxiosHeaders objects don't spread with {...}, so convert to
-      // a plain object via toJSON() before merging payment headers.
-      const existingHeaders =
-        typeof original.headers?.toJSON === 'function'
-          ? (original.headers.toJSON() as Record<string, string>)
-          : (original.headers || {});
-      const retryConfig = {
-        method: original.method,
-        url: original.url,
-        baseURL: original.baseURL,
-        data: original.data,
-        params: original.params,
-        withCredentials: original.withCredentials,
-        headers: {
-          ...existingHeaders,
-          'X-PAYMENT': signedB64,
-          'X-PAYMENT-NONCE': nonce,
-        },
-      } as any;          // eslint-disable-line @typescript-eslint/no-explicit-any
-      retryConfig._x402Retry = true;
-      return api.request(retryConfig);
+      // Retry with payment headers — same pattern as the 401 interceptor:
+      // mutate original.headers directly, pass original config back.
+      original.headers['X-PAYMENT'] = signedB64;
+      original.headers['X-PAYMENT-NONCE'] = nonce;
+      original._x402Retry = true;
+      return api(original);
     } catch (payErr: any) {
       return Promise.reject(
         new Error(`[x402] Payment failed: ${payErr.message ?? payErr}`),
