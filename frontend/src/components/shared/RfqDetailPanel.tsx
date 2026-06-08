@@ -284,13 +284,13 @@ export function RfqDetailPanel({
         <AsyncPollingStatus status="CONFIRMED" />
       )}
 
-      {/* Confirm Start All Negotiations Dialog */}
+      {/* Confirm Start All Negotiations Dialog — x402 cost warning */}
       <ConfirmDialog
         open={confirmStartOpen}
         onOpenChange={setConfirmStartOpen}
         title="Start AI Negotiations"
-        description={`Start AI negotiations with all ${matches.length} matched sellers simultaneously? The AI agent will negotiate the best deal for you.`}
-        confirmLabel="Start All Negotiations"
+        description={`Each AI negotiation offer requires a micropayment of 0.01 ALGO from your connected wallet. With ${matches.length} matched seller${matches.length > 1 ? 's' : ''} and up to 15 rounds each, estimated max cost is ${(matches.length * 15 * 0.01).toFixed(2)} ALGO. Proceed?`}
+        confirmLabel="Start Negotiations"
         onConfirm={() => {
           onStartNegotiations();
           setConfirmStartOpen(false);

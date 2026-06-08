@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, RotateCcw, FileText, ChevronDown, Zap, Loader2, AlertCircle, Pencil, AlertTriangle } from 'lucide-react';
+import { Plus, RotateCcw, FileText, ChevronDown, Loader2, Pencil, AlertTriangle } from 'lucide-react';
 
 import { AppShell } from '@/components/layout/AppShell';
 import { SectionHeader } from '@/components/shared/SectionHeader';
@@ -20,8 +20,6 @@ import {
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { ROUTES } from '@/lib/constants';
-import { useFetchWithAlgorandPayment } from '@/lib/x402-algorand-client';
-import { useWalletContext } from '@/context/WalletContext';
 import type { RFQ, SellerMatch } from '@/types';
 
 const STATUS_OPTIONS = ['All', 'DRAFT', 'PARSE_FAILED', 'PARSED', 'MATCHED', 'NEGOTIATING', 'CONFIRMED'] as const;
@@ -37,36 +35,37 @@ export default function MarketplacePage() {
   const [filter, setFilter] = React.useState<string>('All');
   const [mobileSheetOpen, setMobileSheetOpen] = React.useState(false);
 
-  // ─── x402 premium analytics ───────────────────────────────────────────────
-  const fetchWithPayment = useFetchWithAlgorandPayment();
-  const { isWalletConnected } = useWalletContext();
-  const [analytics, setAnalytics] = React.useState<Record<string, unknown> | null>(null);
-  const [analyticsLoading, setAnalyticsLoading] = React.useState(false);
-  const [analyticsError, setAnalyticsError] = React.useState<string | null>(null);
+  // ─── x402 auto-negotiation state ────────────────────────────────────────────
+  const [autoNegSessionIds, setAutoNegSessionIds] = React.useState<string[]>([]);
+  const [x402TotalSpent, setX402TotalSpent] = React.useState(0);
+  const autoNegAbortRef = React.useRef(false);
 
-  // Reset analytics when RFQ selection changes
-  React.useEffect(() => {
-    setAnalytics(null);
-    setAnalyticsError(null);
-  }, [selectedRfqId]);
+  // Active FSM states the frontend considers "still running"
+  const _ACTIVE_STATES = ['ACTIVE', 'INIT', 'SELLER_ANCHOR', 'BUYER_RESPONSE',
+    'BUYER_ANCHOR', 'SELLER_RESPONSE', 'ROUND_LOOP'];
 
-  const handleFetchAnalytics = React.useCallback(async () => {
-    if (!selectedRfqId) return;
-    setAnalyticsLoading(true);
-    setAnalyticsError(null);
-    setAnalytics(null);
-    try {
-      const res = await fetchWithPayment(`/v1/marketplace/loans/${selectedRfqId}/analytics`);
-      const json = await res.json();
-      setAnalytics(json.data ?? json);
-      toast.success('Paid 0.1 ALGO · Analytics unlocked');
-    } catch (err: any) {
-      setAnalyticsError(err.message ?? 'Payment or request failed');
-      toast.error(err.message ?? 'x402 payment failed');
-    } finally {
-      setAnalyticsLoading(false);
+  const runAutoNegotiateForSession = React.useCallback(async (sid: string) => {
+    const maxTurns = 30;
+    for (let i = 0; i < maxTurns; i++) {
+      if (autoNegAbortRef.current) break;
+      try {
+        const sesRes = await api.get(`/v1/sessions/${sid}`);
+        const st = sesRes.data.data?.status;
+        if (!_ACTIVE_STATES.includes(st)) break;
+        // Execute turn — axios interceptor handles x402 payment silently
+        await api.post(`/v1/sessions/${sid}/turn`);
+        setX402TotalSpent(prev => +(prev + 0.01).toFixed(4));
+      } catch (err: any) {
+        if (err.message?.includes('[x402]')) {
+          toast.error(`Wallet error: ${err.message}`);
+          break;
+        }
+        if (err.response?.status === 409) break;
+        break;
+      }
+      await new Promise(r => setTimeout(r, 2000));
     }
-  }, [selectedRfqId, fetchWithPayment]);
+  }, []);
 
   // ─── Market Overview ────────────────────────────────────────────────────────
   const { data: marketOverview } = useQuery<any>({
@@ -148,16 +147,37 @@ export default function MarketplacePage() {
     },
   });
 
-  // ─── Start all negotiations (auto-negotiates in background) ────────────────
+  // ─── Start all negotiations (x402 per-turn payments via client-side loop) ───
   const startNegotiationsMutation = useMutation({
     mutationFn: async () => {
       const res = await api.post(`/v1/marketplace/rfq/${selectedRfqId}/start-negotiations`);
       return res.data.data as { session_ids: string[]; message: string };
     },
-    onSuccess: (data) => {
-      toast.success(`${data.message}. AI agents are negotiating — check the Negotiations page for live results.`);
+    onSuccess: async (data) => {
+      const sids = data.session_ids;
+      setAutoNegSessionIds(sids);
+      setX402TotalSpent(0);
+      autoNegAbortRef.current = false;
+      toast.success(`${sids.length} sessions created — AI negotiation starting...`);
       queryClient.invalidateQueries({ queryKey: ['rfqs'] });
       queryClient.invalidateQueries({ queryKey: ['rfq', selectedRfqId, 'negotiations'] });
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+
+      // Run client-side auto-negotiate for each session (staggered by 3s)
+      const promises = sids.map((sid, i) =>
+        new Promise<void>(resolve => {
+          setTimeout(async () => {
+            await runAutoNegotiateForSession(sid);
+            resolve();
+          }, i * 3000);
+        })
+      );
+      await Promise.all(promises);
+
+      // All sessions done
+      setAutoNegSessionIds([]);
+      toast.success('All negotiations complete');
+      queryClient.invalidateQueries({ queryKey: ['rfqs'] });
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
     },
     onError: () => {
@@ -465,74 +485,19 @@ export default function MarketplacePage() {
               {detailContent}
             </div>
 
-            {/* x402 Premium Analytics Panel */}
-            {selectedRfq && (
+            {/* x402 auto-negotiation progress indicator */}
+            {autoNegSessionIds.length > 0 && (
               <div className="bg-card border border-border rounded-lg p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <Zap className="h-4 w-4 text-primary" />
-                  <h3 className="text-sm font-semibold text-foreground">Premium Analytics</h3>
-                  <span className="ml-auto text-xs text-muted-foreground border border-border rounded px-1.5 py-0.5">
-                    0.1 ALGO
-                  </span>
+                <div className="flex items-center gap-2 mb-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <h3 className="text-sm font-semibold text-foreground">AI Negotiating...</h3>
                 </div>
-                <p className="text-xs text-muted-foreground mb-4">
-                  Detailed deal analytics unlocked via x402 micropayment.
-                  Your connected wallet will sign a 0.1 ALGO transaction.
+                <p className="text-xs text-muted-foreground mb-2">
+                  {autoNegSessionIds.length} session{autoNegSessionIds.length > 1 ? 's' : ''} in progress
                 </p>
-
-                {!isWalletConnected ? (
-                  <p className="text-xs text-amber-600 flex items-center gap-1.5">
-                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                    Connect your Algorand wallet first (Settings → Wallet)
-                  </p>
-                ) : analytics ? (
-                  <div className="space-y-2">
-                    <p className="text-xs text-green-600 font-medium mb-2">✓ Payment confirmed</p>
-                    <pre className="text-xs text-muted-foreground bg-muted rounded p-3 overflow-x-auto whitespace-pre-wrap break-all">
-                      {JSON.stringify(analytics, null, 2)}
-                    </pre>
-                    <button
-                      type="button"
-                      onClick={() => setAnalytics(null)}
-                      className="text-xs text-muted-foreground hover:text-foreground underline"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                ) : analyticsError ? (
-                  <div className="space-y-3">
-                    <p className="text-xs text-destructive flex items-start gap-1.5">
-                      <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                      {analyticsError}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={handleFetchAnalytics}
-                      className="text-xs text-primary underline"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleFetchAnalytics}
-                    disabled={analyticsLoading}
-                    className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-xs font-medium border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {analyticsLoading ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Paying & fetching…
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="h-3.5 w-3.5" />
-                        Unlock Analytics (0.1 ALGO)
-                      </>
-                    )}
-                  </button>
-                )}
+                <p className="text-xs font-mono text-primary">
+                  {x402TotalSpent.toFixed(2)} ALGO spent
+                </p>
               </div>
             )}
           </div>

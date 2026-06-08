@@ -796,18 +796,10 @@ class MarketplaceService:
             match_count=len(pending_matches),
         )
 
-        # Auto-run negotiations in the background for each session.
-        # Stagger starts by 8s to avoid exhausting Groq free-tier rate limits
-        # (30 RPM per key) when multiple sessions fire LLM calls concurrently.
-        for i, sid in enumerate(session_ids):
-            async def _delayed_start(s_id: uuid.UUID, delay: float) -> None:
-                if delay > 0:
-                    await asyncio.sleep(delay)
-                await self._run_auto_negotiation_standalone(s_id)
-            asyncio.create_task(_delayed_start(uuid.UUID(sid), i * 8.0))
-
+        # Auto-negotiation is now driven by the frontend via x402-gated
+        # /turn calls. Each turn triggers a 0.01 ALGO micropayment on Algorand.
         return {
-            "message": f"Started {len(session_ids)} negotiation sessions — auto-negotiating",
+            "message": f"Started {len(session_ids)} negotiation sessions",
             "session_ids": session_ids,
             "rfq_status": "NEGOTIATING",
         }

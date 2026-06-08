@@ -29,6 +29,7 @@ from src.negotiation.application.commands import (
 )
 from src.negotiation.application.services import NegotiationService
 from src.shared.api.responses import success_response
+from src.shared.middleware.x402_payment import require_x402_payment
 
 router = APIRouter(prefix="/v1/sessions", tags=["negotiation"])
 
@@ -215,7 +216,7 @@ async def get_session(
     return success_response(data=_session_to_response(session, viewer_enterprise_id=user.enterprise_id).model_dump(mode="json"))
 
 
-@router.post("/{session_id}/turn")
+@router.post("/{session_id}/turn", dependencies=[Depends(require_x402_payment)])
 async def run_turn(
     session_id: uuid.UUID,
     preview: bool = False,

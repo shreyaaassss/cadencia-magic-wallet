@@ -1,5 +1,7 @@
 import axios from 'axios';
+import algosdk from 'algosdk';
 import { API_BASE_URL } from './constants';
+import { getMagicAddress, signAlgoTxn } from '@/lib/magic';
 
 let _accessToken: string | null = null;
 
@@ -22,6 +24,66 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// ── x402 Algorand payment interceptor ──────────────────────────────────────
+// Intercepts HTTP 402 with x402 payment requirements, builds + signs an
+// Algorand payment via Magic wallet, and retries the request automatically.
+api.interceptors.response.use(
+  (res) => res,
+  async (err) => {
+    const original = err.config;
+    if (err.response?.status !== 402 || original._x402Retry) {
+      return Promise.reject(err);
+    }
+
+    // Only handle x402 Algorand payment challenges
+    const detail = err.response.data?.detail;
+    if (!detail || detail.scheme !== 'algorand-payment') {
+      return Promise.reject(err);
+    }
+
+    const { amount, recipient, nonce, expires_at } = detail as {
+      amount: number; recipient: string; nonce: string; expires_at: number;
+    };
+
+    if (Date.now() / 1000 > expires_at) {
+      return Promise.reject(new Error('[x402] Payment requirements expired — retry the request'));
+    }
+
+    try {
+      const senderAddress = await getMagicAddress();
+      const nodeUrl =
+        process.env.NEXT_PUBLIC_ALGORAND_NODE_URL ?? 'https://testnet-api.algonode.cloud';
+      const algodClient = new algosdk.Algodv2('', nodeUrl, '');
+      const suggestedParams = await algodClient.getTransactionParams().do();
+
+      const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+        sender: senderAddress,
+        receiver: recipient,
+        amount,
+        note: new TextEncoder().encode(
+          JSON.stringify({ nonce, expires_at }),
+        ),
+        suggestedParams,
+      });
+
+      const encodedB64 = Buffer.from(algosdk.encodeUnsignedTransaction(txn)).toString('base64');
+      const signedB64 = await signAlgoTxn(encodedB64);
+
+      // Retry original request with payment headers
+      original._x402Retry = true;
+      original.headers = original.headers || {};
+      original.headers['X-PAYMENT'] = signedB64;
+      original.headers['X-PAYMENT-NONCE'] = nonce;
+      return api(original);
+    } catch (payErr: any) {
+      return Promise.reject(
+        new Error(`[x402] Payment failed: ${payErr.message ?? payErr}`),
+      );
+    }
+  },
+);
+
+// ── 401 token refresh interceptor ─────────────────────────────────────────
 api.interceptors.response.use(
   (res) => res,
   async (err) => {
