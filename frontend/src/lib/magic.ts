@@ -67,26 +67,43 @@ export async function signAlgoTxn(encodedTxnB64: string): Promise<string> {
     return btoa(bin);
   }
 
-  console.log('[magic] signAlgoTxn result type:', typeof signedResult, signedResult?.constructor?.name);
+  // Magic SDK runs in an iframe — cross-realm objects fail instanceof checks.
+  // Use Array.from() and duck typing instead.
+  console.log('[magic] signAlgoTxn result keys:', signedResult ? Object.keys(signedResult) : 'null');
+
+  // Helper: convert any array-like (including cross-realm Uint8Array) to base64
+  function anyBytesToB64(src: any): string {
+    // Array.from works on cross-realm typed arrays via Symbol.iterator
+    const arr = Array.from(src) as number[];
+    if (arr.length === 0) return '';
+    return uint8ToB64(new Uint8Array(arr));
+  }
 
   if (typeof signedResult === 'string') return signedResult;
+
+  // Direct typed array (same realm)
   if (signedResult instanceof Uint8Array) return uint8ToB64(signedResult);
-  if (signedResult?.buffer instanceof ArrayBuffer) return uint8ToB64(new Uint8Array(signedResult.buffer));
+
+  // Cross-realm typed array: has .length and numeric [0]
+  if (signedResult?.length > 0 && typeof signedResult[0] === 'number') {
+    return anyBytesToB64(signedResult);
+  }
+
   if (signedResult && typeof signedResult === 'object') {
+    // { txID, blob } format from Magic relay
     if ('blob' in signedResult) {
       const blob = signedResult.blob;
       if (typeof blob === 'string') return blob;
-      if (blob instanceof Uint8Array || blob?.buffer instanceof ArrayBuffer) return uint8ToB64(blob instanceof Uint8Array ? blob : new Uint8Array(blob.buffer));
-      return uint8ToB64(new Uint8Array(Object.values(blob) as number[]));
+      if (blob?.length > 0) return anyBytesToB64(blob);
+      // blob as plain object { 0: n, 1: n, ... }
+      const vals = Object.values(blob) as number[];
+      if (vals.length > 0) return uint8ToB64(new Uint8Array(vals));
     }
     if ('signedTransaction' in signedResult) return signedResult.signedTransaction;
     if ('txn' in signedResult) return signedResult.txn;
-    // Uint8Array-like object {0: byte, 1: byte, ...}
-    const vals = Object.values(signedResult) as number[];
-    if (vals.length > 0 && typeof vals[0] === 'number') return uint8ToB64(new Uint8Array(vals));
   }
 
-  console.error('[magic] signAlgoTxn: unexpected result format:', JSON.stringify(signedResult));
+  console.error('[magic] signAlgoTxn: unexpected result:', JSON.stringify(signedResult));
   throw new Error('Magic signTransaction returned unexpected format');
 }
 
