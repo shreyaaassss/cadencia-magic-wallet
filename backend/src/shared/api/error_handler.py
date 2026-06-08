@@ -72,7 +72,16 @@ async def domain_error_handler(request: Request, exc: DomainError) -> JSONRespon
 
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-    """Handle FastAPI HTTPException → { "status": "error", "detail": "..." }."""
+    """Handle FastAPI HTTPException → { "status": "error", "detail": "..." }.
+
+    For HTTP 402 (x402 payment required), detail is a dict with payment
+    requirements — preserve it as-is so clients can parse the JSON fields.
+    """
+    if exc.status_code == 402 and isinstance(exc.detail, dict):
+        return JSONResponse(
+            status_code=402,
+            content={"status": "error", "detail": exc.detail},
+        )
     return JSONResponse(
         status_code=exc.status_code,
         content=error_dict(exc.detail if isinstance(exc.detail, str) else str(exc.detail)),
