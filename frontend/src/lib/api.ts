@@ -76,20 +76,21 @@ api.interceptors.response.use(
         typeof original.headers?.toJSON === 'function'
           ? (original.headers.toJSON() as Record<string, string>)
           : (original.headers || {});
-      return api.request({
+      const retryConfig = {
         method: original.method,
         url: original.url,
         baseURL: original.baseURL,
         data: original.data,
         params: original.params,
         withCredentials: original.withCredentials,
-        _x402Retry: true,
         headers: {
           ...existingHeaders,
           'X-PAYMENT': signedB64,
           'X-PAYMENT-NONCE': nonce,
         },
-      });
+      } as any;          // eslint-disable-line @typescript-eslint/no-explicit-any
+      retryConfig._x402Retry = true;
+      return api.request(retryConfig);
     } catch (payErr: any) {
       return Promise.reject(
         new Error(`[x402] Payment failed: ${payErr.message ?? payErr}`),
