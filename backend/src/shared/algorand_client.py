@@ -69,19 +69,20 @@ async def broadcast_and_confirm(signed_txn_b64: str) -> dict[str, Any]:
     """
     from algosdk import transaction as algo_transaction  # type: ignore[import-untyped]
 
-    # Decode base64 → raw signed transaction bytes
+    # Validate base64 encoding upfront
     try:
-        raw_bytes = base64.b64decode(signed_txn_b64)
+        base64.b64decode(signed_txn_b64)
     except Exception as exc:
         raise RuntimeError(f"Failed to base64-decode signed transaction: {exc}") from exc
 
     client = _build_algod_client()
     loop = asyncio.get_event_loop()
 
-    # Submit transaction (synchronous algod call run in executor)
+    # Submit transaction — send_raw_transaction expects a base64 string
+    # (it calls base64.b64decode internally), so pass the original string.
     try:
         tx_id: str = await loop.run_in_executor(
-            None, client.send_raw_transaction, raw_bytes  # type: ignore[arg-type]
+            None, client.send_raw_transaction, signed_txn_b64
         )
     except Exception as exc:
         log.warning("algorand_broadcast_failed", error=str(exc))
