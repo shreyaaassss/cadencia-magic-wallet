@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.identity.api.dependencies import get_current_user
@@ -86,11 +87,10 @@ async def download_po_pdf(
     document_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
-) -> "StreamingResponse":
+) -> StreamingResponse:
     """GET /v1/procurement/{id}/download — stream a branded PDF of the PO."""
     import io
 
-    from fastapi.responses import StreamingResponse
     from fpdf import FPDF
     from sqlalchemy import select
 
