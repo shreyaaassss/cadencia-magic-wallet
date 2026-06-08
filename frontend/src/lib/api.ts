@@ -69,12 +69,18 @@ api.interceptors.response.use(
       const encodedB64 = Buffer.from(algosdk.encodeUnsignedTransaction(txn)).toString('base64');
       const signedB64 = await signAlgoTxn(encodedB64);
 
-      // Retry original request with payment headers
-      original._x402Retry = true;
-      original.headers = original.headers || {};
-      original.headers['X-PAYMENT'] = signedB64;
-      original.headers['X-PAYMENT-NONCE'] = nonce;
-      return api(original);
+      // Retry original request with payment headers.
+      // Use api.request() with a fresh config to ensure AxiosHeaders
+      // properly includes the x402 payment headers on the retry.
+      return api.request({
+        ...original,
+        _x402Retry: true,
+        headers: {
+          ...original.headers,
+          'X-PAYMENT': signedB64,
+          'X-PAYMENT-NONCE': nonce,
+        },
+      });
     } catch (payErr: any) {
       return Promise.reject(
         new Error(`[x402] Payment failed: ${payErr.message ?? payErr}`),
