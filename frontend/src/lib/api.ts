@@ -70,13 +70,22 @@ api.interceptors.response.use(
       const signedB64 = await signAlgoTxn(encodedB64);
 
       // Retry original request with payment headers.
-      // Use api.request() with a fresh config to ensure AxiosHeaders
-      // properly includes the x402 payment headers on the retry.
+      // AxiosHeaders objects don't spread with {...}, so convert to
+      // a plain object via toJSON() before merging payment headers.
+      const existingHeaders =
+        typeof original.headers?.toJSON === 'function'
+          ? (original.headers.toJSON() as Record<string, string>)
+          : (original.headers || {});
       return api.request({
-        ...original,
+        method: original.method,
+        url: original.url,
+        baseURL: original.baseURL,
+        data: original.data,
+        params: original.params,
+        withCredentials: original.withCredentials,
         _x402Retry: true,
         headers: {
-          ...original.headers,
+          ...existingHeaders,
           'X-PAYMENT': signedB64,
           'X-PAYMENT-NONCE': nonce,
         },
