@@ -60,6 +60,7 @@ export default function NegotiationRoomPage() {
 
   const [offers, setOffers] = React.useState<NegotiationOffer[]>([]);
   const [sessionStatus, setSessionStatus] = React.useState<SessionStatus>('ACTIVE');
+  const [sseEnabled, setSseEnabled] = React.useState(true);
   const [stallWarning, setStallWarning] = React.useState(false);
   const [agreedPrice, setAgreedPrice] = React.useState<number | null>(null);
   const [showOverride, setShowOverride] = React.useState(false);
@@ -79,12 +80,14 @@ export default function NegotiationRoomPage() {
       setSessionStatus(session.status);
       if (session.agreed_price) setAgreedPrice(session.agreed_price);
       if (session.offers?.length) setOffers(session.offers);
+      // Disable SSE for sessions already in terminal state on load
+      if (session.status !== 'ACTIVE') setSseEnabled(false);
     }
   }, [session]);
 
   const { isConnected } = useSSE({
     sessionId,
-    enabled: sessionStatus === 'ACTIVE',
+    enabled: sseEnabled,
     onEvent: (event, data: any) => {
       switch (event) {
         case 'new_offer':
@@ -96,10 +99,12 @@ export default function NegotiationRoomPage() {
         case 'session_agreed':
           setSessionStatus('AGREED'); setAgreedPrice(data.agreed_price);
           toast.success(`Deal agreed at ${formatCurrency(data.agreed_price)}!`);
+          setTimeout(() => setSseEnabled(false), 5000); // Drain remaining events before disconnect
           break;
         case 'session_failed':
           setSessionStatus('FAILED');
           toast.error(`Negotiation ended: ${data.reason ?? 'Max rounds reached'}`);
+          setTimeout(() => setSseEnabled(false), 5000);
           break;
         case 'stall_detected':
           setStallWarning(true);
@@ -146,8 +151,15 @@ export default function NegotiationRoomPage() {
         setSessionStatus(data.final_status as SessionStatus);
         toast.info(`Negotiation ended: ${data.final_status}`);
       }
-      if (data.offers_this_run?.length && offers.length === 0) {
-        setOffers(data.session?.offers ?? []);
+      // Always reconcile offers from HTTP response as ground truth
+      if (data.session?.offers?.length) {
+        setOffers(current => {
+          const byKey = new Map(current.map(o => [`${o.round_number}-${o.proposer_role}`, o]));
+          for (const o of data.session.offers) {
+            byKey.set(`${o.round_number}-${o.proposer_role}`, o);
+          }
+          return Array.from(byKey.values()).sort((a, b) => a.round_number - b.round_number);
+        });
       }
     },
     onError: () => toast.error('Auto-negotiation encountered an error'),
@@ -377,8 +389,15 @@ export default function NegotiationRoomPage() {
 
         /* ── Chat card ──────────────────────────────────────────────────────── */
         .nego-chat-card {
-          background: hsl(var(--card)); border: 1px solid hsl(var(--border));
-          border-radius: 1.25rem; overflow: hidden; margin-bottom: 0.875rem;
+          background: hsl(var(--card));
+          border: 1.5px solid hsl(var(--border));
+          border-radius: 1.25rem;
+          overflow: hidden;
+          margin-bottom: 0.875rem;
+          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+        }
+        .dark .nego-chat-card {
+          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.2), 0 1px 2px -1px rgba(0, 0, 0, 0.15);
         }
         .nego-chat-head {
           display: flex; align-items: center; justify-content: space-between;

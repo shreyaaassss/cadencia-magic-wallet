@@ -10,7 +10,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { SectionHeader } from '@/components/shared/SectionHeader';
 import { DataTable } from '@/components/shared/DataTable';
 import { StatusBadge } from '@/components/shared/StatusBadge';
-import { TextareaWithButton } from '@/components/shared/TextareaWithButton';
+// TextareaWithButton removed — draft step now uses inline textarea + two buttons
 import { RfqDetailPanel } from '@/components/shared/RfqDetailPanel';
 import { Button } from '@/components/ui/button';
 import {
@@ -386,16 +386,52 @@ export default function MarketplacePage() {
               {wizardStep === 'draft' && (
                 <>
                   <p className="text-sm text-muted-foreground mb-3">
-                    Describe your requirement in natural language. AI will extract structured fields for your review.
+                    Describe your requirement in natural language.
                   </p>
-                  <TextareaWithButton
-                    placeholder="Need 500 metric tons of HR Coil, IS 2062 grade, delivery to Mumbai 400001 within 45 days. Budget: ₹38,000-42,000 per MT. 30% advance, 70% on delivery."
-                    buttonText="Preview with AI"
-                    value={rfqText}
-                    onChange={setRfqText}
-                    onSubmit={() => previewMutation.mutate(rfqText)}
-                    isLoading={previewMutation.isPending}
-                  />
+                  <div className="space-y-3">
+                    <textarea
+                      rows={6}
+                      value={rfqText}
+                      onChange={(e) => setRfqText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && rfqText.trim().length > 0) {
+                          e.preventDefault();
+                          submitMutation.mutate(rfqText);
+                        }
+                      }}
+                      placeholder="Need 500 metric tons of HR Coil, IS 2062 grade, delivery to Mumbai 400001 within 45 days. Budget: ₹38,000-42,000 per MT. 30% advance, 70% on delivery."
+                      disabled={submitMutation.isPending || previewMutation.isPending}
+                      className="flex w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-vertical"
+                    />
+                    <div className="flex justify-between items-center">
+                      <p className="text-xs text-muted-foreground">Press Ctrl+Enter to submit</p>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => previewMutation.mutate(rfqText)}
+                          disabled={rfqText.trim().length === 0 || previewMutation.isPending || submitMutation.isPending}
+                          className="border-border"
+                        >
+                          {previewMutation.isPending ? (
+                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Enhancing...</>
+                          ) : (
+                            'Enhance with AI'
+                          )}
+                        </Button>
+                        <Button
+                          onClick={() => submitMutation.mutate(rfqText)}
+                          disabled={rfqText.trim().length === 0 || submitMutation.isPending || previewMutation.isPending}
+                          className="bg-primary text-primary-foreground hover:bg-primary/90"
+                        >
+                          {submitMutation.isPending ? (
+                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Submitting...</>
+                          ) : (
+                            'Submit RFQ'
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </>
               )}
 

@@ -15,6 +15,8 @@ export function useSSE({ sessionId, onEvent, enabled = true }: UseSSEProps) {
   const abortRef = useRef<AbortController | null>(null);
   const onEventRef = useRef(onEvent);
   const lastEventIdRef = useRef<string | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectDelayRef = useRef(1000);
   onEventRef.current = onEvent;
 
   const connect = useCallback(async () => {
@@ -47,6 +49,7 @@ export function useSSE({ sessionId, onEvent, enabled = true }: UseSSEProps) {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       setIsConnected(true);
+      reconnectDelayRef.current = 1000; // Reset backoff on successful connection
 
       let buffer = '';
       let currentEvent = '';
@@ -84,6 +87,12 @@ export function useSSE({ sessionId, onEvent, enabled = true }: UseSSEProps) {
       console.error('SSE connection error:', err);
     } finally {
       setIsConnected(false);
+      // Auto-reconnect with exponential backoff if still enabled
+      if (enabled) {
+        const delay = Math.min(reconnectDelayRef.current, 30000);
+        reconnectDelayRef.current = Math.min(delay * 2, 30000);
+        reconnectTimerRef.current = setTimeout(() => connect(), delay);
+      }
     }
   }, [sessionId, enabled]);
 
@@ -91,11 +100,20 @@ export function useSSE({ sessionId, onEvent, enabled = true }: UseSSEProps) {
     connect();
     return () => {
       abortRef.current?.abort();
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
     };
   }, [connect]);
 
   const reconnect = useCallback(() => {
     abortRef.current?.abort();
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    reconnectDelayRef.current = 1000;
     setTimeout(() => connect(), 1000);
   }, [connect]);
 
