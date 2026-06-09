@@ -581,6 +581,10 @@ class NegotiationService:
                 pass  # Background ingestion is non-fatal
 
         await self.session_repo.update(session)  # type: ignore[union-attr]
+        # Commit BEFORE publishing event so that handlers opening a new DB session
+        # can see the AGREED status.  Without this, the PO auto-generation handler
+        # reads a stale status and skips with "Can only generate PO for AGREED sessions".
+        await self.uow.commit()  # type: ignore[union-attr]
         await self.event_publisher.publish(event)  # type: ignore[union-attr]
 
         # Prometheus: session completed — decrement active, observe duration, record round outcome
