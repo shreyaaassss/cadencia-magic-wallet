@@ -145,7 +145,7 @@ jobs:
             set -e
             echo "=== Generating seller embeddings ==="
             cd ~/cadencia/backend
-            export $(grep -v '^#' .env | grep GEMINI_API_KEY | head -1 | xargs)
+            set -a && source .env && set +a
             python3.12 scripts/reembed_sellers.py
 
       # ── Step 6: Rebuild + redeploy frontend with new Magic key ──────
