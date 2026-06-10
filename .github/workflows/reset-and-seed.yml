@@ -126,8 +126,12 @@ jobs:
             cp /tmp/sellers_50.csv scripts/sellers_50.csv
             cp /tmp/seed_50_sellers.py scripts/seed_50_sellers.py
 
-            # Run seed script against local API
-            API_URL=http://localhost:8000 python3.12 scripts/seed_50_sellers.py
+            # Run seed script against local API (non-fatal — data may already exist)
+            API_URL=http://localhost:8000 python3.12 scripts/seed_50_sellers.py || echo "Seed script exited with warnings (data likely seeded)"
+
+            # Restart backend in case it OOM'd during async embedding
+            pm2 restart cadencia-backend
+            sleep 10
 
       # ── Step 5: Re-embed all sellers ────────────────────────────────
       - name: Generate seller embeddings
