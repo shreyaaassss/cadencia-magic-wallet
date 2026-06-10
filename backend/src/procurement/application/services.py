@@ -21,7 +21,7 @@ class ProcurementDocumentService:
         self._session = session
 
     async def generate_po(self, session_id: uuid.UUID) -> dict:
-        """Generate a PO from an agreed negotiation session."""
+        """Generate a PO from a settled negotiation session (post-escrow release)."""
         from src.identity.infrastructure.models import EnterpriseModel
         from src.negotiation.infrastructure.models import NegotiationSessionModel, OfferModel
         from src.settlement.infrastructure.models import EscrowContractModel
@@ -33,8 +33,8 @@ class ProcurementDocumentService:
         session_row = sess_result.scalar_one_or_none()
         if not session_row:
             raise ValueError("Session not found")
-        if session_row.status != "AGREED":
-            raise ValueError("Can only generate PO for AGREED sessions")
+        if session_row.status not in ("AGREED", "CLOSED_BY_BUYER"):
+            raise ValueError("Can only generate PO for AGREED/settled sessions")
 
         # Check for existing PO
         existing = await self._session.execute(
@@ -149,7 +149,7 @@ class ProcurementDocumentService:
             escrow_id=escrow.id if escrow else None,
             buyer_enterprise_id=session_row.buyer_enterprise_id,
             seller_enterprise_id=session_row.seller_enterprise_id,
-            status="PENDING_SELLER_ACCEPTANCE",
+            status="ACTIVE",
             document_snapshot=snapshot,
             buyer_accepted_at=datetime.now(timezone.utc),
         )
