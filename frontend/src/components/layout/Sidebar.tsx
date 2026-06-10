@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, ShoppingCart, Handshake, Landmark, Banknote,
   ClipboardList, Settings, ShieldCheck, LogOut, Building2, Store,
-  PackageSearch, MessageSquare, FileText,
+  PackageSearch, MessageSquare, Search, FileText,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -26,7 +26,7 @@ const navItems: NavItem[] = [
   { label: 'Marketplace',     href: ROUTES.MARKETPLACE,     icon: ShoppingCart,    roles: ['BUYER'] },
   { label: 'Seller Profile',  href: ROUTES.SELLER_PROFILE,  icon: Store,           roles: ['SELLER'] },
   { label: 'Catalogue',       href: '/marketplace/catalogue', icon: PackageSearch,  roles: ['SELLER'] },
-
+  { label: 'Discover',         href: '/marketplace/discover', icon: Search,      roles: ['BUYER'] },
   { label: 'Negotiations',    href: ROUTES.NEGOTIATIONS,    icon: Handshake },
   { label: 'Messages',        href: '/messages',            icon: MessageSquare },
   { label: 'Escrow',          href: ROUTES.ESCROW,          icon: Landmark },
@@ -76,7 +76,7 @@ export function Sidebar({ onNavClick }: { onNavClick?: () => void } = {}) {
   const allItems = isAdmin ? [...visibleItems, adminItem] : visibleItems;
 
   return (
-    <aside className="w-60 h-full bg-background border-r border-hairline flex flex-col shrink-0 overflow-y-auto">
+    <aside className="w-60 min-h-screen bg-background border-r border-hairline flex flex-col shrink-0">
 
       {/* Enterprise header */}
       <div className="p-4 border-b border-hairline">

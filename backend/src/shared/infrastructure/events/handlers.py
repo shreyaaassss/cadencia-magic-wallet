@@ -771,21 +771,18 @@ async def handle_escrow_released_settle_rfq(event: object) -> None:
         )
 
 
-async def handle_escrow_released_generate_po(event: object) -> None:
-    """EscrowReleased → auto-generate Procurement Document (PO).
-
-    This is the correct lifecycle point: settlement is complete, so the PO
-    is a finalized record with full escrow/settlement data.
+async def handle_session_agreed_generate_po(event: object) -> None:
+    """SessionAgreed → auto-generate Procurement Document (PO).
 
     Idempotent: ProcurementDocumentService.generate_po() raises ValueError
     if a PO already exists for this session — caught and logged, not re-raised.
     """
     session_id = getattr(event, "session_id", None)
     if not session_id:
-        log.warning("handle_escrow_released_generate_po_missing_session_id")
+        log.warning("handle_session_agreed_generate_po_missing_session_id")
         return
 
-    log.info("escrow_released_generating_po", session_id=str(session_id))
+    log.info("session_agreed_generating_po", session_id=str(session_id))
     try:
         from src.procurement.application.services import ProcurementDocumentService
         from src.shared.infrastructure.db.session import get_session_factory
@@ -794,7 +791,7 @@ async def handle_escrow_released_generate_po(event: object) -> None:
             svc = ProcurementDocumentService(db_session)
             result = await svc.generate_po(session_id)
             log.info(
-                "po_auto_generated_post_settlement",
+                "po_auto_generated",
                 session_id=str(session_id),
                 po_number=result.get("po_number"),
             )
@@ -817,12 +814,11 @@ def register_phase_four_handlers(publisher: EventPublisher) -> None:
     publisher.unsubscribe("SessionAgreedStub", handle_session_agreed_stub)
     publisher.subscribe("SessionAgreed", handle_session_agreed_audit)
     publisher.subscribe("SessionAgreed", handle_session_agreed_confirm_rfq)
-    # PO generation moved to EscrowReleased — PO is a post-settlement record
+    publisher.subscribe("SessionAgreed", handle_session_agreed_generate_po)
     # Thread creation moved to select_deal endpoint — only for the SELECTED deal
 
-    # EscrowReleased → settle RFQ + generate PO
+    # EscrowReleased → settle RFQ
     publisher.subscribe("EscrowReleased", handle_escrow_released_settle_rfq)
-    publisher.subscribe("EscrowReleased", handle_escrow_released_generate_po)
 
     # Wire negotiation audit events
     publisher.subscribe("OfferSubmitted", handle_offer_submitted_audit)

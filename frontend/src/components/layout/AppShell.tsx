@@ -13,17 +13,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthGuard>
-      <div className="flex h-screen overflow-hidden bg-background">
+      <div className="flex min-h-screen bg-background">
         {/* Desktop sidebar */}
-        <div className="hidden md:flex md:shrink-0">
+        <div className="hidden md:block">
           <Sidebar />
         </div>
 
-        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        <div className="flex flex-col flex-1 min-w-0">
           <TopBar
             onMenuClick={() => setMobileOpen(true)}
           />
-          <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+          <main className="flex-1 overflow-auto p-4 sm:p-6">
             {children}
           </main>
         </div>

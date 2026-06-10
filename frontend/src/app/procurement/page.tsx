@@ -1,14 +1,16 @@
 'use client';
 
 import * as React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FileText, Download, CheckCircle2, Clock, XCircle } from 'lucide-react';
 
 import { AppShell } from '@/components/layout/AppShell';
 import { SectionHeader } from '@/components/shared/SectionHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { useAuth } from '@/hooks/useAuth';
 import { api, getAccessToken } from '@/lib/api';
 import { cn, formatDate, formatCurrency } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { API_BASE_URL } from '@/lib/constants';
 
@@ -25,9 +27,6 @@ interface ProcurementDoc {
     agreed_price_inr?: number;
     session_id?: string;
     round_count?: number;
-    escrow?: { contract_id?: string; release_tx_id?: string };
-    settlement?: { settled_at?: string; release_tx_id?: string; amount_algo?: number };
-    commercial?: { agreed_price_inr?: number };
   };
   seller_accepted_at?: string | null;
   buyer_accepted_at?: string | null;
@@ -42,14 +41,39 @@ const STATUS_STYLES: Record<string, { icon: React.ElementType; color: string; bg
 };
 
 export default function ProcurementPage() {
+  const { enterprise } = useAuth();
+  const queryClient = useQueryClient();
+
   const { data: documents = [], isLoading } = useQuery<ProcurementDoc[]>({
     queryKey: ['procurement-documents'],
     queryFn: () => api.get('/v1/procurement').then(r => r.data?.data || []),
     refetchInterval: 10_000,
   });
 
-  const title = 'Purchase Orders';
-  const description = 'Purchase orders are generated automatically after escrow settlement is complete.';
+  const acceptMutation = useMutation({
+    mutationFn: (docId: string) => api.patch(`/v1/procurement/${docId}/seller-accept`),
+    onSuccess: () => {
+      toast.success('Purchase Order accepted');
+      queryClient.invalidateQueries({ queryKey: ['procurement-documents'] });
+    },
+    onError: (err: any) => {
+      const detail = err.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : 'Failed to accept PO');
+    },
+  });
+
+  const isSeller = enterprise?.trade_role === 'SELLER' || enterprise?.trade_role === 'BOTH';
+  const isBuyer = enterprise?.trade_role === 'BUYER' || enterprise?.trade_role === 'BOTH';
+  const pendingCount = documents.filter(
+    d => d.status === 'PENDING_SELLER_ACCEPTANCE' && d.seller_enterprise_id === enterprise?.id,
+  ).length;
+
+  const title = isSeller && !isBuyer
+    ? 'Purchase Orders'
+    : 'Your Purchase Orders';
+  const description = isSeller && pendingCount > 0
+    ? `${pendingCount} PO${pendingCount > 1 ? 's' : ''} awaiting your acceptance`
+    : 'Purchase orders are generated automatically once a negotiation reaches agreement.';
 
   return (
     <AppShell>
@@ -69,9 +93,11 @@ export default function ProcurementPage() {
             {documents.map(doc => {
               const style = STATUS_STYLES[doc.status] || STATUS_STYLES.DRAFT;
               const StatusIcon = style.icon;
+              const canAccept = isSeller
+                && doc.status === 'PENDING_SELLER_ACCEPTANCE'
+                && doc.seller_enterprise_id === enterprise?.id;
+              const isSellerOwned = doc.seller_enterprise_id === enterprise?.id;
               const sessionId = doc.document_snapshot?.session_id;
-              const agreedPrice = doc.document_snapshot?.commercial?.agreed_price_inr
-                || doc.document_snapshot?.agreed_price_inr;
 
               return (
                 <div key={doc.id} className="border border-border rounded-lg p-4 bg-card">
@@ -84,22 +110,39 @@ export default function ProcurementPage() {
                         </span>
                         <span className={cn('inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium', style.bg, style.color)}>
                           <StatusIcon className="h-3 w-3" />
-                          {doc.status.replace(/_/g, ' ')}
+                          {doc.status === 'PENDING_SELLER_ACCEPTANCE'
+                            ? (isSellerOwned ? 'Awaiting your acceptance' : 'Awaiting seller acceptance')
+                            : doc.status.replace(/_/g, ' ')}
                         </span>
+                        {doc.status === 'ACTIVE' && isSellerOwned && (
+                          <span className="text-xs text-green-600 dark:text-green-400 font-medium">✓ Accepted</span>
+                        )}
                       </div>
                       <p className="text-xs text-muted-foreground">
                         Created {formatDate(doc.created_at)}
-                        {doc.document_snapshot?.settlement?.settled_at && ` · Settled ${formatDate(doc.document_snapshot.settlement.settled_at)}`}
+                        {doc.seller_accepted_at && ` · Accepted ${formatDate(doc.seller_accepted_at)}`}
                       </p>
                     </div>
 
                     <div className="flex gap-2 items-center">
+                      {canAccept && (
+                        <Button
+                          size="sm"
+                          onClick={() => acceptMutation.mutate(doc.id)}
+                          disabled={acceptMutation.isPending}
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                          Accept PO
+                        </Button>
+                      )}
                       <a
                         href={`${API_BASE_URL}/v1/procurement/${doc.id}/download`}
                         download={`${doc.po_number}.pdf`}
                         target="_blank"
                         rel="noreferrer"
                         onClick={(e) => {
+                          // Add auth header via fetch for the download
                           e.preventDefault();
                           const token = getAccessToken();
                           fetch(`${API_BASE_URL}/v1/procurement/${doc.id}/download`, {
@@ -132,14 +175,6 @@ export default function ProcurementPage() {
                           View negotiation
                         </a>
                       )}
-                      {doc.document_snapshot?.escrow?.contract_id && (
-                        <a
-                          href={`/escrow?highlight=${doc.document_snapshot.escrow.contract_id}`}
-                          className="text-xs text-primary hover:underline"
-                        >
-                          View settlement
-                        </a>
-                      )}
                     </div>
                   </div>
 
@@ -153,11 +188,11 @@ export default function ProcurementPage() {
                         <p className="text-muted-foreground">Seller</p>
                         <p className="text-foreground font-medium">{doc.document_snapshot.seller?.legal_name || '—'}</p>
                       </div>
-                      {agreedPrice && (
+                      {doc.document_snapshot.agreed_price_inr && (
                         <div>
                           <p className="text-muted-foreground">Agreed Price</p>
                           <p className="text-foreground font-medium">
-                            {formatCurrency(agreedPrice)}
+                            {formatCurrency(doc.document_snapshot.agreed_price_inr)}
                           </p>
                         </div>
                       )}

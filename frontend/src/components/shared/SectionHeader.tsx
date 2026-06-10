@@ -20,11 +20,12 @@ export function SectionHeader({ title, description, action }: SectionHeaderProps
       </div>
       {action && (
         <Button
+          variant="ghost"
           size="sm"
           onClick={action.onClick}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5"
+          className="text-primary hover:bg-secondary"
         >
-          {action.icon && (() => { const AIcon = action.icon; return <AIcon className="h-3.5 w-3.5" />; })()}
+          {action.icon && (() => { const AIcon = action.icon; return <AIcon className="h-3.5 w-3.5 mr-1.5" />; })()}
           {action.label}
         </Button>
       )}
