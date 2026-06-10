@@ -1,0 +1,221 @@
+name: Reset DB & Seed 50 Sellers
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: reset-seed
+  cancel-in-progress: false
+
+jobs:
+  reset-and-seed:
+    name: Reset DB, Update Keys, Seed Sellers, Generate Embeddings
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      # ── Step 1: Update Magic secret key on EC2 ──────────────────────
+      - name: Update MAGIC_SECRET_KEY on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -e
+            echo "=== Updating MAGIC_SECRET_KEY ==="
+            cd ~/cadencia/backend
+            # Replace the magic secret key in .env
+            if grep -q "^MAGIC_SECRET_KEY=" .env; then
+              sed -i 's|^MAGIC_SECRET_KEY=.*|MAGIC_SECRET_KEY=${{ secrets.MAGIC_SECRET_KEY }}|' .env
+              echo "Updated existing MAGIC_SECRET_KEY"
+            else
+              echo "MAGIC_SECRET_KEY=${{ secrets.MAGIC_SECRET_KEY }}" >> .env
+              echo "Added MAGIC_SECRET_KEY"
+            fi
+
+      # ── Step 2: Stop backend, clear DB, restart ─────────────────────
+      - name: Clear database and restart backend
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -e
+            echo "=== Stopping backend ==="
+            pm2 stop cadencia-backend || true
+            sleep 2
+
+            echo "=== Clearing database ==="
+            cd ~/cadencia/backend
+
+            # Source .env for DATABASE_URL
+            export $(grep -v '^#' .env | grep DATABASE_URL | xargs)
+
+            # Extract sync DB URL for psql (replace asyncpg with empty for psql)
+            DB_URL=$(echo "$DATABASE_URL" | sed 's|postgresql+asyncpg://|postgresql://|')
+
+            # Drop all tables and recreate schema
+            psql "$DB_URL" -c "
+              DROP SCHEMA public CASCADE;
+              CREATE SCHEMA public;
+              GRANT ALL ON SCHEMA public TO CURRENT_USER;
+              CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";
+              CREATE EXTENSION IF NOT EXISTS pgcrypto;
+              CREATE EXTENSION IF NOT EXISTS vector;
+            "
+            echo "Schema cleared, extensions restored"
+
+            # Run alembic migrations to recreate tables
+            echo "=== Running migrations ==="
+            ALEMBIC_BIN="$HOME/.local/bin/alembic"
+            if [ ! -f "$ALEMBIC_BIN" ]; then ALEMBIC_BIN="alembic"; fi
+            $ALEMBIC_BIN upgrade head
+            echo "Migrations complete"
+
+            echo "=== Restarting backend ==="
+            pm2 restart cadencia-backend
+            sleep 8
+
+            # Health check
+            for i in $(seq 1 12); do
+              HEALTH=$(curl -s http://localhost:8000/health 2>/dev/null | python3.12 -c 'import sys,json; print(json.load(sys.stdin)["data"]["overall"])' 2>/dev/null || echo "unknown")
+              echo "  health attempt $i/12: $HEALTH"
+              if [ "$HEALTH" = "healthy" ]; then
+                echo "Backend healthy after DB reset"
+                break
+              fi
+              sleep 5
+            done
+
+      # ── Step 3: Upload seed script and CSV ──────────────────────────
+      - name: Upload seed files
+        run: |
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key \
+            backend/scripts/sellers_50.csv \
+            backend/scripts/seed_50_sellers.py \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
+
+      # ── Step 4: Run seed script ─────────────────────────────────────
+      - name: Seed 50 sellers
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            set -e
+            echo "=== Seeding 50 sellers ==="
+            cd ~/cadencia/backend
+
+            # Copy seed files
+            cp /tmp/sellers_50.csv scripts/sellers_50.csv
+            cp /tmp/seed_50_sellers.py scripts/seed_50_sellers.py
+
+            # Run seed script against local API
+            API_URL=http://localhost:8000 python3.12 scripts/seed_50_sellers.py
+
+      # ── Step 5: Re-embed all sellers ────────────────────────────────
+      - name: Generate seller embeddings
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            set -e
+            echo "=== Generating seller embeddings ==="
+            cd ~/cadencia/backend
+            export $(grep -v '^#' .env | grep GEMINI_API_KEY | head -1 | xargs)
+            python3.12 scripts/reembed_sellers.py
+
+      # ── Step 6: Rebuild + redeploy frontend with new Magic key ──────
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend with new Magic key
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_API_URL: ""
+          NEXT_PUBLIC_ENABLE_MOCKS: "false"
+          NEXT_PUBLIC_ALGORAND_NETWORK: testnet
+          NEXT_PUBLIC_ALGOD_SERVER: https://testnet-api.4160.nodely.dev
+          NEXT_PUBLIC_ALGORAND_NODE_URL: https://testnet-api.algonode.cloud
+          NEXT_PUBLIC_X402_ENABLED: "true"
+          NEXT_INTERNAL_BACKEND_URL: http://localhost:8000
+        run: |
+          npm ci --legacy-peer-deps
+          npx next build --webpack
+
+      - name: Package and deploy frontend
+        run: |
+          cd frontend
+          tar czf /tmp/frontend-deploy.tar.gz .next/standalone .next/static public
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key \
+            /tmp/frontend-deploy.tar.gz \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/frontend-deploy.tar.gz
+
+      - name: Deploy frontend on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 3m
+          script: |
+            set -e
+            cd ~/cadencia/frontend
+            rm -rf .next
+            tar xzf /tmp/frontend-deploy.tar.gz
+            cp -r .next/static .next/standalone/.next/static
+            cp -r public .next/standalone/public 2>/dev/null || true
+            pm2 restart cadencia-frontend
+            echo "Frontend deployed with new Magic key"
+
+      # ── Step 7: Final health check ──────────────────────────────────
+      - name: Final health check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 3m
+          script: |
+            sleep 8
+            echo "=== Final Health Check ==="
+
+            FRONTEND_STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/ || echo "000")
+            echo "Frontend: HTTP $FRONTEND_STATUS"
+
+            HEALTH=$(curl -s http://localhost:8000/health 2>/dev/null | python3.12 -c 'import sys,json; d=json.load(sys.stdin)["data"]; print(f"overall={d[\"overall\"]} db={d.get(\"database\",\"?\")}")' 2>/dev/null || echo "unknown")
+            echo "Backend: $HEALTH"
+
+            # Count seeded sellers
+            SELLER_COUNT=$(curl -s http://localhost:8000/v1/marketplace/market-overview 2>/dev/null | python3.12 -c 'import sys,json; print(json.load(sys.stdin)["data"]["total_sellers"])' 2>/dev/null || echo "?")
+            echo "Sellers in DB: $SELLER_COUNT"
+
+            rm -f /tmp/frontend-deploy.tar.gz /tmp/sellers_50.csv /tmp/seed_50_sellers.py
+            echo "=== RESET & SEED COMPLETE ==="
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
