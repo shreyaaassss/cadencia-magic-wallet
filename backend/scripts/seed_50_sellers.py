@@ -115,30 +115,28 @@ async def _register_seller(client: httpx.AsyncClient, seller: dict) -> dict | No
 async def _create_capability_profile(
     client: httpx.AsyncClient, token: str, seller: dict
 ) -> bool:
-    """Create seller capability profile via /v1/marketplace/profiles."""
+    """Create seller capability profile via PUT /v1/marketplace/capability-profile."""
     commodities = [c.strip() for c in seller["commodities"].split(",")]
-    hsn_codes = [h.strip() for h in seller["hsn_codes"].split(",")]
-    certifications = [c.strip() for c in seller["certifications"].split(",")]
 
     payload = {
-        "product_categories": commodities,
-        "certifications": certifications,
-        "production_capacity_mt_month": float(seller["production_capacity"]),
-        "min_order_qty_mt": float(seller["moq"]),
-        "delivery_regions": ["PAN_INDIA"],
-        "payment_terms": ["LC_AT_SIGHT", "ADVANCE", "NET_30"],
-        "typical_lead_time_days": int(seller["lead_time_days"]),
-        "quality_standards": seller["profile_text"],
-        "hsn_codes": hsn_codes,
-        "industry_vertical": seller["industry"],
+        "industry": seller["industry"],
+        "products": commodities,
+        "geographies": ["PAN_INDIA"],
+        "min_order_value": float(seller["min_order_value"]),
+        "max_order_value": float(seller["max_order_value"]),
+        "description": seller["profile_text"],
     }
 
-    r = await client.post(
-        f"{API_URL}/v1/marketplace/profiles",
-        json=payload,
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    return r.status_code in (200, 201)
+    try:
+        r = await client.put(
+            f"{API_URL}/v1/marketplace/capability-profile",
+            json=payload,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=60.0,
+        )
+        return r.status_code in (200, 201)
+    except Exception:
+        return False
 
 
 async def _create_catalogue_item(
@@ -164,12 +162,16 @@ async def _create_catalogue_item(
         "certifications": [c.strip() for c in seller["certifications"].split(",")],
     }
 
-    r = await client.post(
-        f"{API_URL}/v1/marketplace/catalogue",
-        json=payload,
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    return r.status_code in (200, 201)
+    try:
+        r = await client.post(
+            f"{API_URL}/v1/marketplace/catalogue",
+            json=payload,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=60.0,
+        )
+        return r.status_code in (200, 201)
+    except Exception:
+        return False
 
 
 async def main() -> None:
@@ -179,7 +181,7 @@ async def main() -> None:
     print(f"API: {API_URL}")
     print("=" * 70)
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         # Health check
         if not await _check_health(client):
             print(f"[FAIL] API not reachable at {API_URL}")
