@@ -165,10 +165,11 @@ async def select_deal(
         )
     )
 
-    # Auto-reject all other AGREED sessions for the same RFQ.
+    # Close all other AGREED sessions for the same RFQ.
     # Once the buyer picks one deal, the competing sessions are no longer valid.
     try:
         from sqlalchemy import update as sa_update
+        from sqlalchemy.sql import func as sa_func
 
         from src.negotiation.infrastructure.models import NegotiationSessionModel
         await db_session.execute(
@@ -176,13 +177,15 @@ async def select_deal(
             .where(
                 NegotiationSessionModel.rfq_id == nego_session.rfq_id,
                 NegotiationSessionModel.id != session_id,
-                NegotiationSessionModel.status == "AGREED",
+                NegotiationSessionModel.status.in_(["AGREED", "ACTIVE", "ROUND_LOOP",
+                    "INIT", "SELLER_ANCHOR", "BUYER_RESPONSE",
+                    "BUYER_ANCHOR", "SELLER_RESPONSE"]),
             )
-            .values(status="FAILED")
+            .values(status="CLOSED_BY_BUYER", completed_at=sa_func.now())
         )
         await db_session.commit()
         log.info(
-            "select_deal_competing_sessions_rejected",
+            "select_deal_competing_sessions_closed",
             selected_session=str(session_id),
             rfq_id=str(nego_session.rfq_id),
         )

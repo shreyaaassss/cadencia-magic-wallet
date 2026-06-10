@@ -7,7 +7,7 @@ import {
   FileText, Search, MessageSquare, Lock, PieChart,
   Activity, BarChart3, CheckCircle2, Globe,
   ArrowRight, CircleDot, CreditCard,
-  ShieldCheck, Menu, X,
+  ShieldCheck, Menu, X, Zap,
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/shared/ThemeToggle';
 import { LandingFooter } from '@/components/shared/LandingFooter';
@@ -127,7 +127,7 @@ export default function LandingPage() {
         <div className="hero-content">
           <div className="hero-brand-name reveal">Cadencia</div>
           <h1 className="hero-title reveal">
-            Trade at the speed of intelligence
+            Trade at the speed of Intelligence
           </h1>
 
           <p className="hero-subtitle reveal reveal-delay-1">
@@ -383,20 +383,24 @@ export default function LandingPage() {
               <span className="fc-tag">Server-Sent Events</span>
             </div>
             <div className="fc reveal reveal-delay-3">
-              <div className="fc-icon"><BarChart3 className="h-5 w-5" /></div>
-              <div className="fc-title">Treasury &amp; FX Dashboard</div>
+              <div className="fc-icon"><Zap className="h-5 w-5" /></div>
+              <div className="fc-title">X402 Micropayment Protocol</div>
               <p className="fc-desc">
-                Multi-currency pool balances across INR, USDC, and ALGO. Live FX exposure, unrealized P&amp;L, and a 30-day liquidity runway forecast.
+                Every AI negotiation turn is metered and paid on-chain via the X402 Algorand
+                protocol. Agents operate autonomously, with each action cryptographically
+                verified and settled in real time.
               </p>
-              <span className="fc-tag">Multi-currency</span>
+              <span className="fc-tag">Algorand &middot; ALGO</span>
             </div>
             <div className="fc reveal reveal-delay-4">
-              <div className="fc-icon"><CheckCircle2 className="h-5 w-5" /></div>
-              <div className="fc-title">Compliance Auto-filing</div>
+              <div className="fc-icon"><Lock className="h-5 w-5" /></div>
+              <div className="fc-title">Smart Contract Escrow</div>
               <p className="fc-desc">
-                Every trade generates FEMA and GST reports automatically. Export as PDF or CSV. Audit trails are immutable, timestamped, and verifiable on-chain.
+                Algorand AVM smart contracts hold buyer funds in atomic escrow. The buyer
+                controls final release after delivery confirmation — no intermediaries,
+                no admin intervention required.
               </p>
-              <span className="fc-tag">FEMA &middot; GST &middot; RBI</span>
+              <span className="fc-tag">AVM &middot; Pera Wallet</span>
             </div>
           </div>
         </div>
@@ -416,27 +420,33 @@ export default function LandingPage() {
                 <li className="bc-item">
                   <div className="bc-icon"><Lock className="h-4 w-4" /></div>
                   <div>
-                    <div className="bc-title">Atomic group transactions</div>
+                    <div className="bc-title">Atomic escrow creation</div>
                     <div className="bc-desc">
-                      Fund via Pera Wallet with a single tap. The escrow app call and payment are grouped atomically — either both succeed or neither does.
+                      After negotiation, the buyer deploys an Algorand smart contract
+                      via Pera Wallet. Funds are locked atomically — the payment and
+                      the contract call succeed together or not at all.
                     </div>
                   </div>
                 </li>
                 <li className="bc-item">
                   <div className="bc-icon"><ShieldCheck className="h-4 w-4" /></div>
                   <div>
-                    <div className="bc-title">Release, refund, or freeze</div>
+                    <div className="bc-title">Buyer-controlled settlement</div>
                     <div className="bc-desc">
-                      Admins can release funds to the seller, refund to buyer, or freeze the escrow pending dispute resolution.
+                      Once the seller marks goods dispatched, the buyer confirms delivery
+                      and triggers the final on-chain release — no admin approval required.
+                      Funds transfer directly to the seller&apos;s Algorand wallet.
                     </div>
                   </div>
                 </li>
                 <li className="bc-item">
                   <div className="bc-icon"><Globe className="h-4 w-4" /></div>
                   <div>
-                    <div className="bc-title">Cross-border FEMA compliance</div>
+                    <div className="bc-title">X402 per-turn settlement</div>
                     <div className="bc-desc">
-                      Automatic FEMA filings for cross-border trades. Every transaction is linked to a GST-compliant invoice trail.
+                      Each AI negotiation turn is individually metered via X402 micropayments,
+                      ensuring agents only operate when payment is cryptographically verified
+                      on the Algorand ledger.
                     </div>
                   </div>
                 </li>

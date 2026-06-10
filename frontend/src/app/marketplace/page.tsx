@@ -72,13 +72,6 @@ export default function MarketplacePage() {
     }
   }, []);
 
-  // ─── Market Overview ────────────────────────────────────────────────────────
-  const { data: marketOverview } = useQuery<any>({
-    queryKey: ['market-overview'],
-    queryFn: () => api.get('/v1/marketplace/market-overview').then(r => r.data.data),
-    staleTime: 60_000,
-  });
-
   // ─── Fetch all RFQs from API ───────────────────────────────────────────────
   const { data: allRfqs = [], isLoading: rfqsLoading } = useQuery<RFQ[]>({
     queryKey: ['rfqs'],
@@ -338,37 +331,6 @@ export default function MarketplacePage() {
   return (
     <AppShell>
       <div className="p-6">
-
-        {/* Market Overview */}
-        {marketOverview && (
-          <div className="bg-card border border-border rounded-lg p-6 mb-6">
-            <h3 className="text-base font-semibold text-foreground mb-4">Market Overview</h3>
-            <div className="grid grid-cols-3 gap-4 mb-4">
-              <div className="text-center">
-                <p className="text-2xl font-bold text-primary">{marketOverview.total_sellers}</p>
-                <p className="text-xs text-muted-foreground">Active Sellers</p>
-              </div>
-              <div className="text-center">
-                <p className="text-2xl font-bold text-emerald-600">{marketOverview.total_products}</p>
-                <p className="text-xs text-muted-foreground">Products Listed</p>
-              </div>
-              <div className="text-center">
-                <p className="text-2xl font-bold text-violet-600">{marketOverview.industries?.length ?? 0}</p>
-                <p className="text-xs text-muted-foreground">Industries</p>
-              </div>
-            </div>
-            {marketOverview.industries?.length > 0 && (
-              <div className="space-y-1.5 border-t border-border pt-3">
-                {marketOverview.industries.slice(0, 5).map((ind: any) => (
-                  <div key={ind.name} className="flex justify-between text-sm">
-                    <span className="text-foreground">{ind.name}</span>
-                    <span className="text-muted-foreground">{ind.seller_count} seller{ind.seller_count !== 1 ? 's' : ''}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Section 1: New RFQ Form */}
         <div className="bg-card border border-border rounded-lg p-6 mb-8">
