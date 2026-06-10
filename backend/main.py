@@ -308,6 +308,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _scheduler = BackgroundScheduler()
     _scheduler.register_periodic("approval_deadlines", check_approval_deadlines, 3600)
     _scheduler.register_periodic("dispatch_timeouts", check_dispatch_timeouts, 3600)
+    _scheduler.register_periodic("resume_stalled_negotiations", _resume_stalled_negotiations, 120)
     await _scheduler.start()
 
     # 5. Enforce X402_SIMULATION_MODE — PROHIBITED in production
