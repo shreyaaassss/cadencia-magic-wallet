@@ -67,8 +67,9 @@ jobs:
             # Extract sync DB URL for psql (replace asyncpg with empty for psql)
             DB_URL=$(echo "$DATABASE_URL" | sed 's|postgresql+asyncpg://|postgresql://|')
 
-            # Drop all tables and recreate schema
+            # Drop all schemas and recreate
             psql "$DB_URL" -c "
+              DROP SCHEMA IF EXISTS admin_private CASCADE;
               DROP SCHEMA public CASCADE;
               CREATE SCHEMA public;
               GRANT ALL ON SCHEMA public TO CURRENT_USER;
@@ -76,7 +77,7 @@ jobs:
               CREATE EXTENSION IF NOT EXISTS pgcrypto;
               CREATE EXTENSION IF NOT EXISTS vector;
             "
-            echo "Schema cleared, extensions restored"
+            echo "All schemas cleared, extensions restored"
 
             # Run alembic migrations to recreate tables
             echo "=== Running migrations ==="
