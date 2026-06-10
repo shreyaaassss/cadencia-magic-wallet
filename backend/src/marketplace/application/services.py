@@ -693,17 +693,32 @@ class MarketplaceService:
                         NegotiationSessionModel.rfq_id == rfq.id,
                         NegotiationSessionModel.match_id != match.id,
                         NegotiationSessionModel.status.notin_([
-                            'AGREED', 'WALK_AWAY', 'TIMEOUT', 'POLICY_BREACH',
+                            'WALK_AWAY', 'TIMEOUT', 'POLICY_BREACH',
                             'FAILED', 'EXPIRED', 'CLOSED_BY_BUYER',
                         ]),
                     )
                 )
                 result = await db_session.execute(other_sessions_stmt)
                 other_sessions = result.scalars().all()
+                closed_session_ids = []
                 for s in other_sessions:
                     s.status = "CLOSED_BY_BUYER"
                     s.completed_at = sql_func.now()
+                    closed_session_ids.append(s.id)
                     log.info("session_closed_by_buyer", session_id=str(s.id), rfq_id=str(rfq.id))
+
+                # Cancel POs for closed sessions
+                if closed_session_ids:
+                    from src.procurement.infrastructure.models import ProcurementDocumentModel
+                    po_stmt = select(ProcurementDocumentModel).where(
+                        ProcurementDocumentModel.session_id.in_(closed_session_ids)
+                    )
+                    po_result = await db_session.execute(po_stmt)
+                    for po_doc in po_result.scalars().all():
+                        po_doc.status = "CANCELLED"
+                        log.info("po_cancelled_buyer_selected_other",
+                                 po_number=po_doc.po_number, session_id=str(po_doc.session_id))
+
                 await db_session.commit()
 
         # Create negotiation session SYNCHRONOUSLY to avoid session_id mismatch

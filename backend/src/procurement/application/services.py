@@ -93,13 +93,11 @@ class ProcurementDocumentService:
             "rfq_reference": str(session_row.rfq_id) if session_row.rfq_id else None,
             "buyer": {
                 "legal_name": buyer_ent.name,
-                "pan": buyer_ent.pan,
                 "gstin": buyer_ent.gstin,
                 "enterprise_id": str(session_row.buyer_enterprise_id),
             },
             "seller": {
                 "legal_name": seller_ent.name,
-                "pan": seller_ent.pan,
                 "gstin": seller_ent.gstin,
                 "enterprise_id": str(session_row.seller_enterprise_id),
             },
@@ -133,7 +131,9 @@ class ProcurementDocumentService:
                 "buyer_address": escrow.buyer_algorand_address,
                 "seller_address": escrow.seller_algorand_address,
                 "amount_microalgo": escrow.amount_microalgo,
+                "deploy_tx_id": escrow.deploy_tx_id,
                 "fund_tx_id": escrow.fund_tx_id,
+                "release_tx_id": escrow.release_tx_id,
             } if escrow else None,
             "audit": {
                 "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -185,14 +185,17 @@ class ProcurementDocumentService:
         return {"id": str(doc.id), "status": "ACTIVE"}
 
     async def list_documents(self, enterprise_id: uuid.UUID, limit: int = 20) -> list[dict]:
-        """List POs for an enterprise (buyer or seller)."""
-        from sqlalchemy import or_
+        """List POs for an enterprise (buyer or seller). Excludes CANCELLED."""
+        from sqlalchemy import and_, or_
 
         result = await self._session.execute(
             select(ProcurementDocumentModel)
-            .where(or_(
-                ProcurementDocumentModel.buyer_enterprise_id == enterprise_id,
-                ProcurementDocumentModel.seller_enterprise_id == enterprise_id,
+            .where(and_(
+                or_(
+                    ProcurementDocumentModel.buyer_enterprise_id == enterprise_id,
+                    ProcurementDocumentModel.seller_enterprise_id == enterprise_id,
+                ),
+                ProcurementDocumentModel.status != "CANCELLED",
             ))
             .order_by(ProcurementDocumentModel.created_at.desc())
             .limit(limit)

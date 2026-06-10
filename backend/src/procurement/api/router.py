@@ -153,7 +153,7 @@ async def download_po_pdf(
 
     buyer = snap.get("buyer", {})
     seller = snap.get("seller", {})
-    for field in ["legal_name", "pan", "gstin"]:
+    for field in ["legal_name", "gstin"]:
         pdf.cell(95, 6, str(buyer.get(field, "")), ln=False)
         pdf.cell(95, 6, str(seller.get(field, "")), ln=True)
     pdf.ln(2)
@@ -242,7 +242,9 @@ async def download_po_pdf(
         amt = escrow.get("amount_microalgo")
         if amt:
             _row("Amount Locked:", f"{int(amt) / 1_000_000:.6f} ALGO")
+        _row("Deploy Tx ID:", escrow.get("deploy_tx_id"), mono=True)
         _row("Fund Tx ID:", escrow.get("fund_tx_id"), mono=True)
+        _row("Release Tx ID:", escrow.get("release_tx_id"), mono=True)
 
     # ── Dates ────────────────────────────────────────────────────────────
     _section_header("DATES")
