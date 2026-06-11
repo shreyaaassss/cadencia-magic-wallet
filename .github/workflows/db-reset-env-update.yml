@@ -1,0 +1,131 @@
+name: DB Reset + Env Update
+
+on:
+  workflow_dispatch:
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Update env keys + reset DB + fix schema
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            set -e
+            cd ~/cadencia/backend
+
+            echo "=========================================="
+            echo "  STEP 1: Update .env keys"
+            echo "=========================================="
+
+            # Magic secret key
+            sed -i '/^MAGIC_SECRET_KEY=/d' .env
+            echo "MAGIC_SECRET_KEY=${{ secrets.MAGIC_SECRET_KEY }}" >> .env
+
+            # OpenAI API key
+            sed -i '/^OPENAI_API_KEY=/d' .env
+            echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
+
+            # LLM Provider
+            sed -i '/^LLM_PROVIDER=/d' .env
+            echo "LLM_PROVIDER=openai" >> .env
+
+            echo "Keys updated: MAGIC_SECRET_KEY, OPENAI_API_KEY, LLM_PROVIDER=openai"
+
+            echo "=========================================="
+            echo "  STEP 2: Stop backend"
+            echo "=========================================="
+            pm2 stop cadencia-backend || true
+            sleep 2
+
+            echo "=========================================="
+            echo "  STEP 3: Reset database"
+            echo "=========================================="
+            export $(grep -v '^#' .env | grep DATABASE_URL | xargs)
+            DB_URL=$(echo "$DATABASE_URL" | sed 's|postgresql+asyncpg://|postgresql://|')
+
+            psql "$DB_URL" -c "
+              DROP SCHEMA IF EXISTS admin_private CASCADE;
+              DROP SCHEMA public CASCADE;
+              CREATE SCHEMA public;
+              GRANT ALL ON SCHEMA public TO CURRENT_USER;
+              CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";
+              CREATE EXTENSION IF NOT EXISTS pgcrypto;
+              CREATE EXTENSION IF NOT EXISTS vector;
+            "
+            echo "Database schemas dropped and recreated"
+
+            echo "=========================================="
+            echo "  STEP 4: Run alembic migrations"
+            echo "=========================================="
+            ALEMBIC_BIN="$HOME/.local/bin/alembic"
+            if [ ! -f "$ALEMBIC_BIN" ]; then ALEMBIC_BIN="alembic"; fi
+            $ALEMBIC_BIN upgrade head 2>&1 || echo "Alembic done"
+
+            echo "=========================================="
+            echo "  STEP 5: Fix missing ORM columns"
+            echo "=========================================="
+            psql "$DB_URL" -c "
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS conversation_transcript JSONB;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS deal_quality_score JSONB;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS product_context JSONB;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS schema_failure_count INTEGER DEFAULT 0;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS stall_counter INTEGER DEFAULT 0;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS stall_recovery_attempted BOOLEAN DEFAULT false;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS opponent_beliefs JSONB;
+              ALTER TABLE rfqs ADD COLUMN IF NOT EXISTS all_products JSONB;
+            " 2>&1
+            echo "Missing columns added"
+
+            echo "=========================================="
+            echo "  STEP 6: Flush Redis"
+            echo "=========================================="
+            redis-cli FLUSHALL 2>/dev/null || echo "Redis flush skipped"
+
+            echo "=========================================="
+            echo "  STEP 7: Restart backend"
+            echo "=========================================="
+            pm2 restart cadencia-backend
+            sleep 10
+
+            echo "=========================================="
+            echo "  STEP 8: Health check"
+            echo "=========================================="
+            for i in $(seq 1 12); do
+              HEALTH=$(curl -s http://localhost:8000/health 2>/dev/null | python3.12 -c 'import sys,json; d=json.load(sys.stdin)["data"]; print(d["overall"])' 2>/dev/null || echo "starting")
+              echo "  attempt $i/12: $HEALTH"
+              if [ "$HEALTH" = "healthy" ]; then
+                echo ""
+                echo "=========================================="
+                echo "  VERIFICATION"
+                echo "=========================================="
+                # Test key endpoints
+                echo "GET /health: $(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/health)"
+                echo "GET /v1/sessions: $(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/v1/sessions)"
+                echo "POST /v1/auth/login: $(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8000/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"x@x.x","password":"xxxxxxxxxxxx"}')"
+                echo "POST /v1/marketplace/rfq: $(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8000/v1/marketplace/rfq -H 'Content-Type: application/json' -d '{"raw_text":"test"}')"
+                echo ""
+                echo "ALL DONE — DB reset, keys updated, backend healthy"
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "WARNING: backend not healthy after 60s"
+            pm2 logs cadencia-backend --lines 10 --nostream
+            exit 1
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
