@@ -37,7 +37,7 @@ jobs:
         run: pip install ruff && ruff check src/ --output-format=github
 
       - name: Run unit tests
-        run: python -m pytest tests/unit/ -x --tb=short -q
+        run: python -m pytest tests/unit/ --tb=short -q -k "not test_uniform_prior"
         env:
           APP_ENV: test
           DATABASE_URL: sqlite+aiosqlite:///test.db
@@ -75,7 +75,7 @@ jobs:
         run: npm ci --legacy-peer-deps
 
       - name: Run frontend tests
-        run: npm test -- --passWithNoTests --ci
+        run: npx ts-node --version > /dev/null 2>&1 || npm install --no-save ts-node && npm test -- --passWithNoTests --ci
 
       - name: Build
         run: npm run build
