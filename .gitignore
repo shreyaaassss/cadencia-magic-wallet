@@ -35,6 +35,7 @@ docker-compose.override.yml
 # ── IDE ──────────────────────────────────────────────────────
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 .DS_Store
@@ -71,8 +72,26 @@ scratch/
 *.jpg
 *.png
 
-# ── Audit / one-off docs (committed by mistake) ───────────────
+# ── Compiled contract artifacts (regenerate from source) ──────
+backend/artifacts/*.teal
+backend/artifacts/*.b64
+
+# ── Audit / one-off docs (not for public repo) ───────────────
 *_audit.md
+*_audit_report*.md
 *_plan.md
+*_plan_v*.md
 *_integration.md
+*_testing_plan.md
+*_implementation_plan.md
 openai-key.txt
+instance-deploy-log.md
+TESTING_GUIDE.md
+cadencia_audit_report.md
+deep_issue_review_and_plan.md
+dead_code_audit.md
+rfq_standard_format.md
+
+# ── Non-code files ────────────────────────────────────────────
+*.pdf
+test_bulk_catalogue.csv
