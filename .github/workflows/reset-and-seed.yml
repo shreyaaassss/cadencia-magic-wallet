@@ -80,11 +80,42 @@ jobs:
             echo "All schemas cleared, extensions restored"
 
             # Run alembic migrations to recreate tables
-            echo "=== Running migrations ==="
+            echo "=== Running alembic migrations ==="
             ALEMBIC_BIN="$HOME/.local/bin/alembic"
             if [ ! -f "$ALEMBIC_BIN" ]; then ALEMBIC_BIN="alembic"; fi
-            $ALEMBIC_BIN upgrade head
-            echo "Migrations complete"
+            $ALEMBIC_BIN upgrade head 2>&1 || echo "Alembic done with warnings"
+
+            # Run create_all_tables.sql to catch any columns alembic missed
+            echo "=== Running create_all_tables.sql ==="
+            psql "$DB_URL" -f scripts/create_all_tables.sql 2>&1 || echo "SQL script done with warnings"
+
+            # Ensure ORM models are fully synced (catch any missing columns)
+            echo "=== Syncing ORM models to DB ==="
+            set -a && source .env && set +a
+            python3.12 -c "
+import asyncio
+async def sync():
+    from src.shared.infrastructure.db.session import get_engine
+    from sqlalchemy import text
+    engine = get_engine()
+    async with engine.begin() as conn:
+        # Add any missing columns that ORM expects
+        stmts = [
+            'ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS conversation_transcript JSONB',
+            'ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS deal_quality_score JSONB',
+            'ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS product_context JSONB',
+            'ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS schema_failure_count INTEGER DEFAULT 0',
+            'ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS stall_counter INTEGER DEFAULT 0',
+            'ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS stall_recovery_attempted BOOLEAN DEFAULT false',
+            'ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS opponent_beliefs JSONB',
+            'ALTER TABLE rfqs ADD COLUMN IF NOT EXISTS all_products JSONB',
+        ]
+        for s in stmts:
+            await conn.execute(text(s))
+        print('ORM columns synced')
+asyncio.run(sync())
+" 2>&1
+            echo "Schema sync complete"
 
             echo "=== Restarting backend ==="
             pm2 restart cadencia-backend

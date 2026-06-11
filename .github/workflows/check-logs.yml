@@ -27,16 +27,18 @@ jobs:
             set -a && source .env && set +a
             DB_URL=$(echo "$DATABASE_URL" | sed 's|postgresql+asyncpg://|postgresql://|')
 
-            echo "=== Adding missing column ==="
+            echo "=== Adding ALL missing columns ==="
             psql "$DB_URL" -c "
               ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS conversation_transcript JSONB;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS deal_quality_score JSONB;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS product_context JSONB;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS schema_failure_count INTEGER DEFAULT 0;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS stall_counter INTEGER DEFAULT 0;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS stall_recovery_attempted BOOLEAN DEFAULT false;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS opponent_beliefs JSONB;
+              ALTER TABLE rfqs ADD COLUMN IF NOT EXISTS all_products JSONB;
             " 2>&1
-            echo "Column added"
-
-            echo "=== Running alembic upgrade ==="
-            ALEMBIC_BIN="$HOME/.local/bin/alembic"
-            if [ ! -f "$ALEMBIC_BIN" ]; then ALEMBIC_BIN="alembic"; fi
-            $ALEMBIC_BIN upgrade head 2>&1 || echo "Alembic completed with warnings"
+            echo "All missing columns added"
 
             echo "=== Restarting backend ==="
             pm2 restart cadencia-backend
