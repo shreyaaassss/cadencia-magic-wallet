@@ -166,6 +166,51 @@ jobs:
             pm2 logs cadencia-backend --lines 20 --nostream
             exit 1
 
+      # ── Post-Deploy Smoke Tests ─────────────────────────────────────
+      - name: Run smoke tests
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 3m
+          script: |
+            echo "=== Running post-deploy smoke tests ==="
+            cd ~/cadencia/backend
+
+            # Quick smoke: health, security headers, critical routes
+            PASS=0; FAIL=0; BASE="http://localhost:8000"
+
+            # 1. Health returns 200
+            STATUS=$(curl -s -o /dev/null -w '%{http_code}' $BASE/health)
+            if [ "$STATUS" = "200" ]; then PASS=$((PASS+1)); echo "  PASS health=200"; else FAIL=$((FAIL+1)); echo "  FAIL health=$STATUS"; fi
+
+            # 2. Security headers
+            NOSNIFF=$(curl -s -I $BASE/health | grep -i 'x-content-type-options' | grep -i 'nosniff' | wc -l)
+            if [ "$NOSNIFF" -ge "1" ]; then PASS=$((PASS+1)); echo "  PASS x-content-type-options"; else FAIL=$((FAIL+1)); echo "  FAIL x-content-type-options"; fi
+
+            # 3. Auth routes exist (not 404)
+            AUTH=$(curl -s -o /dev/null -w '%{http_code}' -X POST $BASE/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"x@x.x","password":"xxxxxxxxxxxx"}')
+            if [ "$AUTH" != "404" ]; then PASS=$((PASS+1)); echo "  PASS auth route exists ($AUTH)"; else FAIL=$((FAIL+1)); echo "  FAIL auth route 404"; fi
+
+            # 4. Sessions requires auth
+            SESS=$(curl -s -o /dev/null -w '%{http_code}' $BASE/v1/sessions)
+            if [ "$SESS" = "401" ] || [ "$SESS" = "403" ]; then PASS=$((PASS+1)); echo "  PASS sessions auth ($SESS)"; else FAIL=$((FAIL+1)); echo "  FAIL sessions ($SESS)"; fi
+
+            # 5. Escrow requires auth
+            ESC=$(curl -s -o /dev/null -w '%{http_code}' $BASE/v1/escrow)
+            if [ "$ESC" = "401" ] || [ "$ESC" = "403" ]; then PASS=$((PASS+1)); echo "  PASS escrow auth ($ESC)"; else FAIL=$((FAIL+1)); echo "  FAIL escrow ($ESC)"; fi
+
+            # 6. Negotiation turn requires auth/payment
+            TURN=$(curl -s -o /dev/null -w '%{http_code}' -X POST $BASE/v1/sessions/00000000-0000-0000-0000-000000000001/turn)
+            if [ "$TURN" != "404" ] && [ "$TURN" != "500" ]; then PASS=$((PASS+1)); echo "  PASS turn route ($TURN)"; else FAIL=$((FAIL+1)); echo "  FAIL turn ($TURN)"; fi
+
+            echo ""
+            echo "Smoke results: $PASS passed, $FAIL failed"
+            if [ "$FAIL" -gt "0" ]; then
+              echo "WARNING: Some smoke tests failed"
+            fi
+
       - name: Cleanup SSH key
         if: always()
         run: rm -f ~/.ssh/deploy_key

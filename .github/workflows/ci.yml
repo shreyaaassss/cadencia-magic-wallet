@@ -31,19 +31,27 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install -e ".[dev]" || pip install fastapi uvicorn pydantic sqlalchemy asyncpg alembic redis structlog py-algorand-sdk algokit-utils PyNaCl python-jose passlib bcrypt cryptography httpx prometheus-client prometheus-fastapi-instrumentator openai groq magic-admin python-dotenv
+          pip install -e ".[dev]" || pip install fastapi uvicorn pydantic sqlalchemy asyncpg alembic redis structlog py-algorand-sdk algokit-utils PyNaCl python-jose passlib bcrypt cryptography httpx prometheus-client prometheus-fastapi-instrumentator openai groq magic-admin python-dotenv aiosqlite pytest pytest-asyncio pytest-cov
 
       - name: Lint with Ruff
         run: pip install ruff && ruff check src/ --output-format=github
 
       - name: Run unit tests
-        run: python -m pytest tests/unit/ -x --tb=short -q 2>/dev/null || echo "No unit tests found — skipping"
+        run: python -m pytest tests/unit/ -x --tb=short -q
         env:
           APP_ENV: test
           DATABASE_URL: sqlite+aiosqlite:///test.db
           REDIS_URL: redis://localhost:6379/0
           JWT_PRIVATE_KEY: test-key
           JWT_PUBLIC_KEY: test-key
+          LLM_PROVIDER: stub
+
+      - name: Run negotiation engine E2E tests
+        run: python -m pytest tests/e2e/test_negotiation_e2e.py -x --tb=short -q
+        env:
+          APP_ENV: test
+          DATABASE_URL: sqlite+aiosqlite:///test.db
+          REDIS_URL: redis://localhost:6379/0
           LLM_PROVIDER: stub
 
   frontend:
@@ -65,6 +73,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
+
+      - name: Run frontend tests
+        run: npm test -- --passWithNoTests --ci
 
       - name: Build
         run: npm run build
