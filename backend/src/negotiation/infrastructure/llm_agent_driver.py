@@ -303,7 +303,7 @@ def _create_agent_driver() -> object:
             return StubAgentDriver()
         return LLMAgentDriver(
             api_key=api_key,
-            model=os.getenv("LLM_MODEL", "gpt-4o"),
+            model=os.getenv("NEGOTIATION_LLM_MODEL", "gpt-4.1-mini"),
             temperature=temperature,
             max_tokens=max_tokens,
         )

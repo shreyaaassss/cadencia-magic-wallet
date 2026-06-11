@@ -378,7 +378,7 @@ class RFQParser:
             self._api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
             self.client = openai.AsyncOpenAI(api_key=self._api_key)
             self._clients = [self.client]
-            self.extraction_model = extraction_model or "gpt-4o"
+            self.extraction_model = extraction_model or os.environ.get("LLM_MODEL", "gpt-4.1-nano")
         self.embedding_model = embedding_model
         self._provider = provider
 
