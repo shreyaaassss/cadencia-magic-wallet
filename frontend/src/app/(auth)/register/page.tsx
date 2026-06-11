@@ -28,6 +28,8 @@ import { ROUTES as AppRoutes } from '@/lib/constants';
 import { FormField } from '@/components/shared/FormField';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
+// SEED: prefill data for /register?prefill=seller_XX
+import { SEED_PREFILL_DATA } from './_seedData';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -191,6 +193,22 @@ export default function RegisterPage() {
   const [globalError, setGlobalError] = React.useState<string | null>(null);
   const [isSubmittingForm, setIsSubmittingForm] = React.useState(false);
 
+  // SEED: prefill from ?prefill=seller_XX
+  const prefillKey = searchParams.get('prefill');
+  React.useEffect(() => {
+    if (!prefillKey) return;
+    const entry = SEED_PREFILL_DATA[prefillKey];
+    if (!entry) return;
+    setState({
+      step: 1,
+      enterprise: entry.enterprise,
+      sellerFacility: entry.sellerFacility,
+      sellerCapacity: entry.sellerCapacity,
+      buyerLocation: null,
+      user: entry.user,
+    });
+  }, [prefillKey]);
+
   // Track wallet connection for web3 tab
   React.useEffect(() => {
     if (txnLab.activeAddress && web3Status === 'connecting') {
@@ -296,6 +314,44 @@ export default function RegisterPage() {
         await auth.register(payload);
       }
       toast.success('Account created successfully. Welcome to Cadencia.');
+
+      // SEED: auto-upload catalogue + trigger embeddings after registration
+      if (prefillKey) {
+        const entry = SEED_PREFILL_DATA[prefillKey];
+        if (entry?.catalogueItems?.length) {
+          try {
+            // Small delay to let auth token propagate to api interceptors
+            await new Promise(r => setTimeout(r, 1500));
+            const catRes = await api.post('/v1/marketplace/catalogue/bulk', {
+              items: entry.catalogueItems,
+            });
+            const created = catRes.data?.data?.created || entry.catalogueItems.length;
+            toast.success(`Catalogue uploaded: ${created} items. Embeddings computing...`);
+
+            // Also update seller capability profile for better matching
+            try {
+              await api.put('/v1/marketplace/capability-profile', {
+                industry: entry.enterprise.industry_vertical,
+                products: entry.enterprise.commodities,
+                geographies: [entry.enterprise.geography],
+                min_order_value: entry.enterprise.min_order_value,
+                max_order_value: entry.enterprise.max_order_value,
+                description: `${entry.enterprise.legal_name} — ${entry.enterprise.industry_vertical} manufacturer in ${entry.sellerFacility.city}, ${entry.sellerFacility.state}. Products: ${entry.enterprise.commodities.join(', ')}. Certifications: ${entry.sellerCapacity.quality_certifications.join(', ')}.`,
+              });
+              // Trigger embedding recompute
+              await api.post('/v1/marketplace/capability-profile/embeddings');
+              toast.success('Seller profile + embeddings queued!');
+            } catch {
+              // Non-fatal — profile can be updated manually
+            }
+          } catch (catErr: any) {
+            toast.error(`Registration OK but catalogue upload failed: ${catErr?.response?.data?.detail || catErr?.message}`);
+            console.error('Catalogue upload failed:', catErr);
+          }
+        }
+      }
+      // END SEED
+
     } catch (err: any) {
       if (err.response?.status === 409) {
         setGlobalError('An account with this email or PAN already exists.');
@@ -367,6 +423,18 @@ export default function RegisterPage() {
           Back to Cadencia
         </Link>
       </div>
+
+      {/* SEED: dev prefill banner */}
+      {prefillKey && SEED_PREFILL_DATA[prefillKey] && (
+        <div className="w-full max-w-lg mb-3 bg-amber-50 border border-amber-200 rounded-md p-2.5 text-xs text-amber-800 flex items-center gap-2">
+          <span>🌱</span>
+          <span>
+            <strong>Seed Mode</strong> — {SEED_PREFILL_DATA[prefillKey].enterprise.legal_name} ({SEED_PREFILL_DATA[prefillKey].catalogueItems.length} catalogue items).
+            Complete Magic OTP on the last step to register + auto-upload catalogue + generate embeddings.
+          </span>
+        </div>
+      )}
+      {/* END SEED */}
 
       <div className="bg-card border border-hairline rounded-lg w-full max-w-lg shadow-sm flex flex-col">
         <div className="p-5 sm:p-8">
