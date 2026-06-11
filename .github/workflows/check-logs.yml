@@ -15,7 +15,7 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Fix missing column and restart
+      - name: Switch to OpenAI and restart
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -24,32 +24,38 @@ jobs:
           command_timeout: 3m
           script: |
             cd ~/cadencia/backend
-            set -a && source .env && set +a
-            DB_URL=$(echo "$DATABASE_URL" | sed 's|postgresql+asyncpg://|postgresql://|')
 
-            echo "=== Adding ALL missing columns ==="
-            psql "$DB_URL" -c "
-              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS conversation_transcript JSONB;
-              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS deal_quality_score JSONB;
-              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS product_context JSONB;
-              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS schema_failure_count INTEGER DEFAULT 0;
-              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS stall_counter INTEGER DEFAULT 0;
-              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS stall_recovery_attempted BOOLEAN DEFAULT false;
-              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS opponent_beliefs JSONB;
-              ALTER TABLE rfqs ADD COLUMN IF NOT EXISTS all_products JSONB;
-            " 2>&1
-            echo "All missing columns added"
+            echo "=== Updating LLM provider to OpenAI ==="
+            # Set OPENAI_API_KEY
+            if grep -q "^OPENAI_API_KEY=" .env; then
+              sed -i 's|^OPENAI_API_KEY=.*|OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}|' .env
+            else
+              echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
+            fi
+
+            # Set LLM_PROVIDER to openai
+            if grep -q "^LLM_PROVIDER=" .env; then
+              sed -i 's|^LLM_PROVIDER=.*|LLM_PROVIDER=openai|' .env
+            else
+              echo "LLM_PROVIDER=openai" >> .env
+            fi
+
+            # Set LLM_MODEL to gpt-4o-mini (fast + cheap for parsing)
+            if grep -q "^LLM_MODEL=" .env; then
+              sed -i 's|^LLM_MODEL=.*|LLM_MODEL=gpt-4o-mini|' .env
+            else
+              echo "LLM_MODEL=gpt-4o-mini" >> .env
+            fi
+
+            echo "LLM_PROVIDER set to openai, model gpt-4o-mini"
 
             echo "=== Restarting backend ==="
             pm2 restart cadencia-backend
-            sleep 8
+            sleep 10
 
             echo "=== Health check ==="
-            curl -s http://localhost:8000/health | python3.12 -c 'import sys,json; d=json.load(sys.stdin)["data"]; print(f"overall={d[\"overall\"]}")' 2>/dev/null || echo "unknown"
-
-            echo "=== Testing /v1/sessions ==="
-            STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/v1/sessions)
-            echo "GET /v1/sessions: HTTP $STATUS"
+            HEALTH=$(curl -s http://localhost:8000/health 2>/dev/null | python3.12 -c 'import sys,json; d=json.load(sys.stdin)["data"]; print(f"overall={d[\"overall\"]}")' 2>/dev/null || echo "unknown")
+            echo "Backend: $HEALTH"
 
       - name: Cleanup
         if: always()
