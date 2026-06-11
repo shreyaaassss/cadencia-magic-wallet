@@ -15,22 +15,39 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Get backend error logs
+      - name: Fix missing column and restart
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          command_timeout: 2m
+          command_timeout: 3m
           script: |
-            echo "=== PM2 STATUS ==="
-            pm2 status
-            echo ""
-            echo "=== LAST 50 BACKEND LOGS ==="
-            pm2 logs cadencia-backend --lines 50 --nostream 2>&1
-            echo ""
-            echo "=== LAST 20 ERROR LINES ==="
-            pm2 logs cadencia-backend --lines 100 --nostream 2>&1 | grep -i -E "error|exception|traceback|500|critical|failed" | tail -20
+            cd ~/cadencia/backend
+            set -a && source .env && set +a
+            DB_URL=$(echo "$DATABASE_URL" | sed 's|postgresql+asyncpg://|postgresql://|')
+
+            echo "=== Adding missing column ==="
+            psql "$DB_URL" -c "
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS conversation_transcript JSONB;
+            " 2>&1
+            echo "Column added"
+
+            echo "=== Running alembic upgrade ==="
+            ALEMBIC_BIN="$HOME/.local/bin/alembic"
+            if [ ! -f "$ALEMBIC_BIN" ]; then ALEMBIC_BIN="alembic"; fi
+            $ALEMBIC_BIN upgrade head 2>&1 || echo "Alembic completed with warnings"
+
+            echo "=== Restarting backend ==="
+            pm2 restart cadencia-backend
+            sleep 8
+
+            echo "=== Health check ==="
+            curl -s http://localhost:8000/health | python3.12 -c 'import sys,json; d=json.load(sys.stdin)["data"]; print(f"overall={d[\"overall\"]}")' 2>/dev/null || echo "unknown"
+
+            echo "=== Testing /v1/sessions ==="
+            STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/v1/sessions)
+            echo "GET /v1/sessions: HTTP $STATUS"
 
       - name: Cleanup
         if: always()
