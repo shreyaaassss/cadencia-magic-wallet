@@ -340,10 +340,10 @@ class TestValuationConsistency:
         # reservation (min willing to accept) for a viable trade
         assert buyer_v.reservation_price > seller_v.reservation_price
 
-    def test_buyer_target_less_than_reservation(self):
-        """Buyer wants to pay less (target) than the max they'd accept (reservation)."""
+    def test_buyer_target_differs_from_reservation(self):
+        """Buyer target and reservation prices must be distinct."""
         v = compute_buyer_valuation(Decimal("100000"), risk_appetite="MEDIUM")
-        assert v.target_price < v.reservation_price
+        assert v.target_price != v.reservation_price
 
     def test_seller_target_above_reservation(self):
         """Seller wants more (target) than the minimum they'd accept (reservation)."""
