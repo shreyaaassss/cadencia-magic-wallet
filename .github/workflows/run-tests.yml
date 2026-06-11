@@ -1,0 +1,114 @@
+name: Run Tests on EC2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-tests:
+    name: Execute All Test Suites on EC2
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: "1. Unit Tests — Negotiation Engine"
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            cd ~/cadencia/backend
+            set -a && source .env && set +a
+            export APP_ENV=test LLM_PROVIDER=stub
+            echo "=========================================="
+            echo "  1. UNIT TESTS — Negotiation Engine"
+            echo "=========================================="
+            python3.12 -m pytest tests/unit/negotiation/test_negotiation_engine.py -v --tb=short 2>&1
+            echo ""
+            echo "EXIT CODE: $?"
+
+      - name: "2. Unit Tests — X402 Middleware"
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            cd ~/cadencia/backend
+            set -a && source .env && set +a
+            export APP_ENV=test LLM_PROVIDER=stub
+            echo "=========================================="
+            echo "  2. UNIT TESTS — X402 Payment Middleware"
+            echo "=========================================="
+            python3.12 -m pytest tests/unit/shared/test_x402_middleware.py -v --tb=short 2>&1
+            echo ""
+            echo "EXIT CODE: $?"
+
+      - name: "3. Unit Tests — Escrow State Machine"
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            cd ~/cadencia/backend
+            set -a && source .env && set +a
+            export APP_ENV=test LLM_PROVIDER=stub
+            echo "=========================================="
+            echo "  3. UNIT TESTS — Escrow State Machine"
+            echo "=========================================="
+            python3.12 -m pytest tests/unit/settlement/test_escrow.py -v --tb=short 2>&1
+            echo ""
+            echo "EXIT CODE: $?"
+
+      - name: "4. E2E Tests — Negotiation Agent Simulation"
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            cd ~/cadencia/backend
+            set -a && source .env && set +a
+            export APP_ENV=test LLM_PROVIDER=stub
+            echo "=========================================="
+            echo "  4. E2E TESTS — Agent vs Agent Negotiation"
+            echo "=========================================="
+            python3.12 -m pytest tests/e2e/test_negotiation_e2e.py -v --tb=short 2>&1
+            echo ""
+            echo "EXIT CODE: $?"
+
+      - name: "5. Smoke Tests — Live Server"
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            cd ~/cadencia/backend
+            set -a && source .env && set +a
+            export SMOKE_TEST_BASE_URL=http://localhost:8000
+            echo "=========================================="
+            echo "  5. SMOKE TESTS — Live Server Verification"
+            echo "=========================================="
+            python3.12 -m pytest tests/smoke/test_post_deploy_smoke.py -v --tb=short 2>&1
+            echo ""
+            echo "EXIT CODE: $?"
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
