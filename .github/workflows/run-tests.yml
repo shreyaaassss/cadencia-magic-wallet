@@ -33,7 +33,8 @@ jobs:
             echo "=========================================="
             echo "  1. UNIT TESTS — Negotiation Engine"
             echo "=========================================="
-            python3.12 -m pytest tests/unit/negotiation/test_negotiation_engine.py -v --tb=short 2>&1
+            pip3.12 install pytest pytest-asyncio aiosqlite 2>/dev/null || true
+            python3.12 -m pytest tests/unit/negotiation/test_negotiation_engine.py -v --tb=short
             echo ""
             echo "EXIT CODE: $?"
 
@@ -51,7 +52,7 @@ jobs:
             echo "=========================================="
             echo "  2. UNIT TESTS — X402 Payment Middleware"
             echo "=========================================="
-            python3.12 -m pytest tests/unit/shared/test_x402_middleware.py -v --tb=short 2>&1
+            python3.12 -m pytest tests/unit/shared/test_x402_middleware.py -v --tb=short
             echo ""
             echo "EXIT CODE: $?"
 
@@ -69,7 +70,7 @@ jobs:
             echo "=========================================="
             echo "  3. UNIT TESTS — Escrow State Machine"
             echo "=========================================="
-            python3.12 -m pytest tests/unit/settlement/test_escrow.py -v --tb=short 2>&1
+            python3.12 -m pytest tests/unit/settlement/test_escrow.py -v --tb=short
             echo ""
             echo "EXIT CODE: $?"
 
@@ -87,7 +88,7 @@ jobs:
             echo "=========================================="
             echo "  4. E2E TESTS — Agent vs Agent Negotiation"
             echo "=========================================="
-            python3.12 -m pytest tests/e2e/test_negotiation_e2e.py -v --tb=short 2>&1
+            python3.12 -m pytest tests/e2e/test_negotiation_e2e.py -v --tb=short
             echo ""
             echo "EXIT CODE: $?"
 
@@ -105,7 +106,7 @@ jobs:
             echo "=========================================="
             echo "  5. SMOKE TESTS — Live Server Verification"
             echo "=========================================="
-            python3.12 -m pytest tests/smoke/test_post_deploy_smoke.py -v --tb=short 2>&1
+            python3.12 -m pytest tests/smoke/test_post_deploy_smoke.py -v --tb=short
             echo ""
             echo "EXIT CODE: $?"
 
