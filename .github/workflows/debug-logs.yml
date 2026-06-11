@@ -15,7 +15,7 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Get logs and DB state
+      - name: Check embeddings and matching
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -27,29 +27,20 @@ jobs:
             set -a && source .env && set +a
             DB_URL=$(echo "$DATABASE_URL" | sed 's|postgresql+asyncpg://|postgresql://|')
 
-            echo "=== SELLER COUNT ==="
-            psql "$DB_URL" -c "SELECT COUNT(*) as sellers FROM enterprises WHERE trade_role = 'SELLER';" 2>&1
+            echo "=== Seller embedding dimensions ==="
+            psql "$DB_URL" -c "SELECT enterprise_id, vector_dims(embedding) as dims, embedding_status FROM capability_profiles WHERE embedding IS NOT NULL;"
 
-            echo "=== BUYER COUNT ==="
-            psql "$DB_URL" -c "SELECT COUNT(*) as buyers FROM enterprises WHERE trade_role = 'BUYER';" 2>&1
+            echo "=== RFQ embedding status ==="
+            psql "$DB_URL" -c "SELECT id, vector_dims(embedding) as dims, status, embedding IS NULL as no_embed FROM rfqs;"
 
-            echo "=== CAPABILITY PROFILES ==="
-            psql "$DB_URL" -c "SELECT cp.enterprise_id, e.name, cp.industry_vertical, cp.embedding_status, cp.last_embedded_at FROM capability_profiles cp JOIN enterprises e ON e.id = cp.enterprise_id;" 2>&1
+            echo "=== LLM_PROVIDER ==="
+            grep "^LLM_PROVIDER=" .env
 
-            echo "=== CATALOGUE ITEMS ==="
-            psql "$DB_URL" -c "SELECT enterprise_id, COUNT(*) as items FROM catalogue_items GROUP BY enterprise_id;" 2>&1
+            echo "=== GEMINI_API_KEY set? ==="
+            grep -c "^GEMINI_API_KEY=" .env
 
-            echo "=== RFQS ==="
-            psql "$DB_URL" -c "SELECT id, status, product_name, created_at FROM rfqs ORDER BY created_at DESC LIMIT 5;" 2>&1
-
-            echo "=== MATCHES ==="
-            psql "$DB_URL" -c "SELECT m.rfq_id, m.seller_enterprise_id, m.score, m.rank, e.name FROM matches m JOIN enterprises e ON e.id = m.seller_enterprise_id ORDER BY m.created_at DESC LIMIT 10;" 2>&1
-
-            echo "=== EMBEDDING STATUS ==="
-            psql "$DB_URL" -c "SELECT enterprise_id, embedding_status, embedding IS NOT NULL as has_embedding FROM capability_profiles;" 2>&1
-
-            echo "=== LAST 30 BACKEND ERRORS ==="
-            pm2 logs cadencia-backend --lines 50 --nostream 2>&1 | grep -i -E "error|exception|match|embed|rfq" | tail -30
+            echo "=== Backend match/embed logs ==="
+            pm2 logs cadencia-backend --lines 300 --nostream 2>&1 | grep -i -E "match|embed|rfq_no|rfq_parse|vector|cosine|dim|fallback|hash_embed|gemini|openai" | tail -30
 
       - name: Cleanup
         if: always()
