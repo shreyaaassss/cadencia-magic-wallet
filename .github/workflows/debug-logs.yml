@@ -15,7 +15,7 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Check embeddings and matching
+      - name: Fix missing columns and retry matching
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -27,20 +27,39 @@ jobs:
             set -a && source .env && set +a
             DB_URL=$(echo "$DATABASE_URL" | sed 's|postgresql+asyncpg://|postgresql://|')
 
-            echo "=== Seller embedding dimensions ==="
-            psql "$DB_URL" -c "SELECT enterprise_id, vector_dims(embedding) as dims, embedding_status FROM capability_profiles WHERE embedding IS NOT NULL;"
+            echo "=== Adding ALL missing columns ==="
+            psql "$DB_URL" -c "
+              ALTER TABLE matches ADD COLUMN IF NOT EXISTS matched_rfq_variant JSONB;
+              ALTER TABLE matches ADD COLUMN IF NOT EXISTS matched_catalogue_item_id UUID;
+              ALTER TABLE matches ADD COLUMN IF NOT EXISTS semantic_score FLOAT;
+              ALTER TABLE matches ADD COLUMN IF NOT EXISTS delivery_feasibility_score FLOAT;
+              ALTER TABLE matches ADD COLUMN IF NOT EXISTS capacity_score FLOAT;
+              ALTER TABLE matches ADD COLUMN IF NOT EXISTS price_score FLOAT;
+              ALTER TABLE matches ADD COLUMN IF NOT EXISTS proximity_score FLOAT;
+              ALTER TABLE matches ADD COLUMN IF NOT EXISTS composite_score FLOAT;
+              ALTER TABLE matches ADD COLUMN IF NOT EXISTS estimated_delivery_days INTEGER;
+              ALTER TABLE matches ADD COLUMN IF NOT EXISTS distance_km INTEGER;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS conversation_transcript JSONB;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS deal_quality_score JSONB;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS product_context JSONB;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS schema_failure_count INTEGER DEFAULT 0;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS stall_counter INTEGER DEFAULT 0;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS stall_recovery_attempted BOOLEAN DEFAULT false;
+              ALTER TABLE negotiation_sessions ADD COLUMN IF NOT EXISTS opponent_beliefs JSONB;
+              ALTER TABLE rfqs ADD COLUMN IF NOT EXISTS all_products JSONB;
+            " 2>&1
+            echo "All columns fixed"
 
-            echo "=== RFQ embedding status ==="
-            psql "$DB_URL" -c "SELECT id, vector_dims(embedding) as dims, status, embedding IS NULL as no_embed FROM rfqs;"
+            echo "=== Restarting backend ==="
+            pm2 restart cadencia-backend
+            sleep 10
 
-            echo "=== LLM_PROVIDER ==="
-            grep "^LLM_PROVIDER=" .env
+            echo "=== Health ==="
+            curl -s http://localhost:8000/health | python3.12 -c 'import sys,json; print(json.load(sys.stdin)["data"]["overall"])' 2>/dev/null
 
-            echo "=== GEMINI_API_KEY set? ==="
-            grep -c "^GEMINI_API_KEY=" .env
-
-            echo "=== Backend match/embed logs ==="
-            pm2 logs cadencia-backend --lines 300 --nostream 2>&1 | grep -i -E "match|embed|rfq_no|rfq_parse|vector|cosine|dim|fallback|hash_embed|gemini|openai" | tail -30
+            echo "=== Reset PARSED RFQ so matching retries ==="
+            psql "$DB_URL" -c "UPDATE rfqs SET status = 'DRAFT' WHERE status = 'PARSED' AND id = '218c656e-3214-4ed8-bb9d-34e73c59871b';" 2>&1
+            echo "RFQ reset to DRAFT — will re-parse and match on next poll"
 
       - name: Cleanup
         if: always()
